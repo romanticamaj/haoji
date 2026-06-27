@@ -1,0 +1,29 @@
+# Node / Expo / React Native
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Native
+ios/Pods/
+ios/build/
+android/.gradle/
+android/build/
+android/app/build/
+*.keystore
+!debug.keystore
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
