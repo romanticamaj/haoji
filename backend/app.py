@@ -57,11 +57,17 @@ async def create_session(file: UploadFile = File(...)):
         return JSONResponse({"error": f"不支援的檔案格式：{ext or '未知'}"}, status_code=400)
     sid = sessions.create_session(file.filename or "audio")
     dest = os.path.join(config.UPLOAD_DIR, sid + ext)
-    with open(dest, "wb") as out:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk: break
-            out.write(chunk)
+    try:
+        with open(dest, "wb") as out:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk: break
+                out.write(chunk)
+    except Exception as e:
+        try: os.remove(dest)
+        except OSError: pass
+        sessions.update_session(sid, status="error", message="上傳失敗", error=str(e))
+        return JSONResponse({"error": "上傳失敗"}, status_code=500)
     await file.close()
     _executor.submit(_run_transcribe, sid, dest)
     return {"session_id": sid}
