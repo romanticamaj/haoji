@@ -72,6 +72,18 @@ async def create_session(file: UploadFile = File(...)):
     _executor.submit(_run_transcribe, sid, dest)
     return {"session_id": sid}
 
+@app.get("/api/sessions/{sid}")
+def session_status(sid: str):
+    s = sessions.get_session(sid)
+    if not s:
+        return JSONResponse({"error": "查無此工作"}, status_code=404)
+    out = {"status": s["status"], "pct": s["pct"], "message": s["message"]}
+    if s.get("transcript"):
+        out["transcript"] = json.loads(s["transcript"])
+    if s.get("error"):
+        out["error"] = s["error"]
+    return out
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=config.WEB_HOST, port=config.WEB_PORT, log_level="warning")
