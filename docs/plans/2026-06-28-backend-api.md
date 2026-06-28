@@ -647,7 +647,7 @@ def _safe_name(name):
 
 def _run_transcribe(sid, path):
     try:
-        sessions.update_session(sid, status="running", stage="probe", pct=0.05, message="讀取媒體…")
+        sessions.update_session(sid, status="running", pct=0.05, message="讀取媒體…")
         dur = asr.probe_duration(path)
         wav = path + ".wav"
         sessions.update_session(sid, pct=0.1, message="抽取音訊…")
@@ -681,7 +681,7 @@ async def create_session(file: UploadFile = File(...)):
     return {"session_id": sid}
 ```
 
-Also add a `stage` column tolerance: update `sessions.update_session` call sites only use existing columns — add `stage` to the table in `sessions.init_db` (`stage TEXT`) and re-run. (If the DB file already exists from a prior task run, delete `backend/data/haoji.db` before re-testing.)
+Note: if `backend/data/haoji.db` exists from an earlier task's test run, delete it before re-testing so the schema is fresh.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
