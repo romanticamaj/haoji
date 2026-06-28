@@ -11,7 +11,8 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 import config
-import asr, sessions
+import asr, sessions, llm
+from fastapi import Request
 
 app = FastAPI(title="好記 Haoji API")
 
@@ -83,6 +84,28 @@ def session_status(sid: str):
     if s.get("error"):
         out["error"] = s["error"]
     return out
+
+@app.get("/api/llm/models")
+def llm_models():
+    ok, names, _ = llm.llm_status()
+    return {"ok": ok, "models": names, "default": config.LLM_MODEL}
+
+@app.post("/api/sessions/{sid}/analyze")
+async def analyze(sid: str, req: Request):
+    s = sessions.get_session(sid)
+    if not s or not s.get("transcript"):
+        return JSONResponse({"error": "查無逐字稿"}, status_code=404)
+    body = await req.json()
+    data = json.loads(s["transcript"])
+    text = sessions.build_transcript_text(data["segments"], body.get("names") or {})
+    if not text.strip():
+        return JSONResponse({"error": "沒有逐字稿內容"}, status_code=400)
+    try:
+        notes = llm.get_provider("ollama").generate_meeting_notes(text, model=body.get("model") or None)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=502)
+    sessions.update_session(sid, notes=notes)
+    return {"notes": notes, "model": body.get("model") or config.LLM_MODEL}
 
 if __name__ == "__main__":
     import uvicorn
