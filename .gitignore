@@ -27,3 +27,11 @@ android/app/build/
 Thumbs.db
 .idea/
 .vscode/
+.superpowers/
+
+# Python / backend
+__pycache__/
+*.py[cod]
+.pytest_cache/
+backend/data/
+*.db
