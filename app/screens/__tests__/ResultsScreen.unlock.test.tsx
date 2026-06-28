@@ -7,6 +7,10 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('../../lib/api', () => ({ analyze: jest.fn(), getModels: jest.fn().mockResolvedValue({ ok: true, models: [], default: '' }) }));
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
 jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn().mockResolvedValue(false), shareAsync: jest.fn() }));
+jest.mock('expo-file-system', () => ({
+  cacheDirectory: 'file:///cache/',
+  writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
+}));
 import ResultsScreen from '../ResultsScreen';
 import { StoreProvider } from '../../lib/store-context';
 import { createMemoryStore, SavedSession } from '../../lib/store';
@@ -19,7 +23,8 @@ test('tapping unlock reveals the locked detail', async () => {
   const { getByText, findByText, queryByText } = await render(
     <StoreProvider store={store}><ResultsScreen /></StoreProvider>);
   fireEvent.press(await findByText('AI 分析'));
-  await waitFor(() => expect(queryByText(/機密/)).toBeNull());
+  await waitFor(() => expect(queryByText('🔒 解鎖完整內容')).not.toBeNull());
   fireEvent.press(await findByText('🔒 解鎖完整內容'));
-  await waitFor(() => getByText(/機密/));
+  await waitFor(() => getByText('複製'));
+  await waitFor(() => expect(queryByText('🔒 解鎖完整內容')).toBeNull());
 });

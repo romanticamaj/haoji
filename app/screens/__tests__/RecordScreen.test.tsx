@@ -29,3 +29,12 @@ test('uploading a file creates a session and navigates to Processing', async () 
   await waitFor(() => expect(api.createSession).toHaveBeenCalledWith({ uri: 'file:///u.m4a', name: 'u.m4a', mime: 'audio/mp4' }));
   expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: 'sess123' });
 });
+
+test('stopping recording uploads the file and navigates to Processing', async () => {
+  mockRecApi.state = 'recording';
+  const { getByLabelText } = await render(<RecordScreen />);
+  fireEvent.press(getByLabelText('停止錄音'));
+  await waitFor(() => expect(mockRecApi.stop).toHaveBeenCalled());
+  await waitFor(() => expect(api.createSession).toHaveBeenCalledWith({ uri: 'file:///r.m4a', name: 'r.m4a', mime: 'audio/mp4' }));
+  expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: 'sess123' });
+});

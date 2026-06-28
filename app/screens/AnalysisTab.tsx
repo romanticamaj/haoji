@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 import { analyze, getModels } from '../lib/api';
 import { splitNotesForPreview } from '../lib/gating';
 import { SavedSession } from '../lib/store';
@@ -26,7 +27,12 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
   }
   async function copy() { await Clipboard.setStringAsync(session.notes ?? ''); }
   async function exportMd() {
-    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync('data:text/markdown,' + encodeURIComponent(session.notes ?? ''));
+    try {
+      if (!(await Sharing.isAvailableAsync())) return;
+      const uri = FileSystem.cacheDirectory + 'meeting-notes.md';
+      await FileSystem.writeAsStringAsync(uri, session.notes ?? '');
+      await Sharing.shareAsync(uri);
+    } catch (e) { /* do not crash */ }
   }
 
   if (!session.notes) {
@@ -37,7 +43,15 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
               <Text style={styles.hint}>把逐字稿整理成會議記錄（摘要 / 重點 / 決議 / 待辦）。</Text>
               <Pressable style={styles.primary} onPress={generate}><Text style={styles.primaryText}>生成會議記錄</Text></Pressable>
               <Pressable onPress={() => setShowAdv((v) => !v)}><Text style={styles.adv}>進階</Text></Pressable>
-              {showAdv && <Text style={styles.advList}>{models.map((m) => (m === model || (!model && models[0] === m) ? `● ${m}` : `○ ${m}`)).join('   ')}</Text>}
+              {showAdv && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  {models.map((m) => (
+                    <Pressable key={m} onPress={() => setModel(m)}>
+                      <Text style={styles.advList}>{(m === model || (!model && models[0] === m) ? '● ' : '○ ') + m}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
               {err && <Text style={styles.err}>{err}</Text>}
             </>}
       </View>
@@ -58,6 +72,7 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
         </>
       ) : (
         <View style={styles.lockWrap}>
+          <Text style={[styles.md, styles.blurred]} numberOfLines={6}>{locked}</Text>
           <View style={styles.lockOverlay}>
             <Pressable style={styles.primary} onPress={onUnlock}><Text style={styles.primaryText}>🔒 解鎖完整內容</Text></Pressable>
           </View>
