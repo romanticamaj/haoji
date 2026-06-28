@@ -34,3 +34,11 @@ test('createSession throws on non-ok response', async () => {
   global.fetch = mockFetch({ error: '不支援的檔案格式' }, false, 400);
   await expect(api.createSession({ uri: 'f', name: 'a.txt', mime: 'text/plain' })).rejects.toThrow();
 });
+
+test('getModels returns models list and default', async () => {
+  global.fetch = mockFetch({ ok: true, models: ['gemma4:e4b-it-qat'], default: 'gemma4:e4b-it-qat' });
+  const result = await api.getModels();
+  expect(result).toEqual({ ok: true, models: ['gemma4:e4b-it-qat'], default: 'gemma4:e4b-it-qat' });
+  const [url] = (global.fetch as jest.Mock).mock.calls[0];
+  expect(url).toContain('/api/llm/models');
+});

@@ -1,4 +1,4 @@
-// Free preview = the 會議摘要 section only; everything else is locked behind IAP.
+// Free preview = title + preamble sections + 會議摘要; everything after is locked behind IAP.
 export function splitNotesForPreview(notes: string): { preview: string; locked: string } {
   const lines = notes.split(/\r?\n/);
   const startIdx = lines.findIndex((l) => /^##\s*會議摘要/.test(l.trim()));
@@ -11,13 +11,13 @@ export function splitNotesForPreview(notes: string): { preview: string; locked: 
     }
     return { preview: preview.join('\n'), locked: lines.slice(i).join('\n').trim() };
   }
-  // Find the next "## " heading after the summary section.
+  // Find the next "##" heading after the summary section.
   let endIdx = lines.length;
   for (let i = startIdx + 1; i < lines.length; i++) {
-    if (/^##\s+/.test(lines[i].trim())) { endIdx = i; break; }
+    if (/^##\s*\S/.test(lines[i].trim())) { endIdx = i; break; }
   }
   return {
-    preview: lines.slice(startIdx, endIdx).join('\n').trim(),
+    preview: lines.slice(0, endIdx).join('\n').trim(),
     locked: lines.slice(endIdx).join('\n').trim(),
   };
 }

@@ -18,14 +18,11 @@ const KEY = 'haoji.sessions';
 const sortNewest = (a: SavedSession[]) => [...a].sort((x, y) => y.createdAt - x.createdAt);
 
 function fromMap(map: Record<string, SavedSession>): SessionStore {
-  const save = async (m: Record<string, SavedSession>, persist?: (s: string) => Promise<void>) => {
-    if (persist) await persist(JSON.stringify(m));
-  };
   return {
     async list() { return sortNewest(Object.values(map)); },
     async get(id) { return map[id] ?? null; },
-    async upsert(s) { map[s.id] = s; await save(map); },
-    async remove(id) { delete map[id]; await save(map); },
+    async upsert(s) { map[s.id] = s; },
+    async remove(id) { delete map[id]; },
   };
 }
 
