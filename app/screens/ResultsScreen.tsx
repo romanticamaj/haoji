@@ -29,7 +29,7 @@ export default function ResultsScreen() {
       </View>
       {tab === 'transcript'
         ? <TranscriptTab session={session} onUpdate={update} />
-        : <AnalysisTab session={session} onUpdate={update} />}
+        : <AnalysisTab session={session} onUpdate={update} onUnlock={() => update({ ...session, unlocked: true })} />}
     </View>
   );
 }
