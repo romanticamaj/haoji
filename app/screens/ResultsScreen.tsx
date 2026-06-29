@@ -27,9 +27,12 @@ export default function ResultsScreen() {
           </Pressable>
         ))}
       </View>
-      {tab === 'transcript'
-        ? <TranscriptTab session={session} onUpdate={update} />
-        : <AnalysisTab session={session} onUpdate={update} onUnlock={() => update({ ...session, unlocked: true })} />}
+      <View style={{ flex: 1, display: tab === 'transcript' ? 'flex' : 'none' }}>
+        <TranscriptTab session={session} onUpdate={update} />
+      </View>
+      <View style={{ flex: 1, display: tab === 'analysis' ? 'flex' : 'none' }}>
+        <AnalysisTab session={session} onUpdate={update} onUnlock={() => update({ ...session, unlocked: true })} />
+      </View>
     </View>
   );
 }
