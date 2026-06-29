@@ -14,10 +14,9 @@ export default function TranscriptTab({ session, onUpdate }: { session: SavedSes
     <ScrollView style={styles.wrap} contentContainerStyle={{ paddingBottom: 40 }}>
       <View style={styles.speakerList}>
         {speakers.map((sp, i) => {
-          const hasEntry = sp in session.names;
-          const currentName = session.names[sp] ?? '';
-          const isHint = hasEntry && !currentName;
-          const displayName = currentName || (hasEntry ? '點此命名' : sp);
+          const currentName = session.names[sp] || '';
+          const isHint = !currentName;
+          const displayName = currentName || '點此命名';
           return (
             <View key={sp}>
               <TouchableOpacity testID={`speaker-row-${sp}`} style={styles.speakerRow}

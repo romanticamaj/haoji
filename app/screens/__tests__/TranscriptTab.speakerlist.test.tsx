@@ -22,7 +22,8 @@ test('tapping a speaker row reveals an input; editing updates names', async () =
   expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ names: expect.objectContaining({ SPEAKER_00: 'Gary' }) }));
 });
 
-test('unnamed speaker shows the 點此命名 hint', async () => {
-  const { getByText } = await render(<TranscriptTab session={s} onUpdate={() => {}} />);
-  getByText('點此命名');
+test('every unnamed speaker shows the 點此命名 hint (incl. ones absent from names map)', async () => {
+  // SPEAKER_00 has '' in names; SPEAKER_01 is absent from names — BOTH must prompt.
+  const { getAllByText } = await render(<TranscriptTab session={s} onUpdate={() => {}} />);
+  expect(getAllByText('點此命名').length).toBe(2);
 });
