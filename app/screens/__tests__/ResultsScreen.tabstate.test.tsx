@@ -14,7 +14,7 @@ import { StoreProvider } from '../../lib/store-context';
 import { createMemoryStore, SavedSession } from '../../lib/store';
 
 const seed: SavedSession = { id: 's', createdAt: 1, title: 't', unlocked: true, names: {},
-  transcript: { speakers: [], segments: [] } };
+  transcript: { speakers: [], segments: [] }, parts: [] };
 
 test('AI-analysis result survives switching tabs away and back', async () => {
   const store = createMemoryStore([seed]);

@@ -8,7 +8,7 @@ const s: SavedSession = { id: 's', createdAt: 1, title: 't', unlocked: false,
   transcript: { speakers: ['SPEAKER_00', 'SPEAKER_01'], segments: [
     { start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' },
     { start: 2, end: 4, speaker: 'SPEAKER_01', text: '嗨' },
-  ] } };
+  ] }, parts: [] };
 
 test('tapping a speaker row reveals an input; editing updates names', async () => {
   const onUpdate = jest.fn();

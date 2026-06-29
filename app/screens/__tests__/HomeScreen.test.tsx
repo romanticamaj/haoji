@@ -6,7 +6,7 @@ import { StoreProvider } from '../../lib/store-context';
 import { createMemoryStore, SavedSession } from '../../lib/store';
 
 const mk = (id: string, t: number, title: string): SavedSession =>
-  ({ id, createdAt: t, title, names: {}, unlocked: false });
+  ({ id, createdAt: t, title, names: {}, unlocked: false, parts: [] });
 
 const renderHome = async (seed: SavedSession[] = []) => {
   const store = createMemoryStore(seed);

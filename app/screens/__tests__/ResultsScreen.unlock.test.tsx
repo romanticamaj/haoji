@@ -16,7 +16,7 @@ import { StoreProvider } from '../../lib/store-context';
 import { createMemoryStore, SavedSession } from '../../lib/store';
 
 const s: SavedSession = { id: 's', createdAt: 1, title: 't', unlocked: false, names: {},
-  notes: '## 會議摘要\n摘要\n\n## 討論重點\n- 機密', transcript: { speakers: [], segments: [] } };
+  notes: '## 會議摘要\n摘要\n\n## 討論重點\n- 機密', transcript: { speakers: [], segments: [] }, parts: [] };
 
 test('tapping unlock reveals the locked detail', async () => {
   const store = createMemoryStore([s]);

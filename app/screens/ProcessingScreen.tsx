@@ -26,6 +26,7 @@ export default function ProcessingScreen() {
             title: existing?.title ?? new Date().toLocaleString(),
             transcript: s.transcript, names: existing?.names ?? {},
             notes: existing?.notes, unlocked: existing?.unlocked ?? false,
+            parts: existing?.parts ?? [],
           });
           nav.replace('Results', { sessionId });
           return;

@@ -5,6 +5,7 @@ export type SavedSession = {
   id: string; createdAt: number; title: string;
   transcript?: Transcript; names: Record<string, string>;
   notes?: string; unlocked: boolean;
+  parts: { uri: string; durationMs: number }[];
 };
 
 export interface SessionStore {
