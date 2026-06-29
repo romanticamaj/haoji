@@ -18,9 +18,11 @@ test('renders merged paragraphs with timestamps', async () => {
   getByText('00:00');
 });
 
-test('editing a speaker name calls onUpdate with names mapping', async () => {
+test('editing a speaker name via tap-to-edit calls onUpdate with names mapping', async () => {
   const onUpdate = jest.fn();
-  const { getAllByPlaceholderText } = await render(<TranscriptTab session={session} onUpdate={onUpdate} />);
-  fireEvent.changeText(getAllByPlaceholderText('講者名稱')[0], 'Gary');
+  const { getByTestId } = await render(<TranscriptTab session={session} onUpdate={onUpdate} />);
+  await fireEvent.press(getByTestId('speaker-row-SPEAKER_00'));
+  const input = getByTestId('speaker-input-SPEAKER_00');
+  fireEvent.changeText(input, 'Gary');
   expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ names: expect.objectContaining({ SPEAKER_00: 'Gary' }) }));
 });
