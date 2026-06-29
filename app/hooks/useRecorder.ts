@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Audio } from 'expo-av';
-import { ensureDir } from '../lib/recordings';
+import { ensureDir, moveToPart } from '../lib/recordings';
 
 export type Part = { uri: string; durationMs: number };
 export type RecorderState = 'idle' | 'recording' | 'paused' | 'stopped';
@@ -34,8 +34,9 @@ export function useRecorder(sessionId: string): RecorderApi {
   async function finalize(): Promise<Part | null> {
     const rec = recRef.current; if (!rec) return null;
     try { await rec.stopAndUnloadAsync(); } catch {}
-    const uri = rec.getURI() ?? ''; recRef.current = null;
-    if (!uri) return null;
+    const tmp = rec.getURI() ?? ''; recRef.current = null;
+    if (!tmp) return null;
+    const uri = await moveToPart(sessionId, partsRef.current.length, tmp);  // persist out of temp cache
     const part = { uri, durationMs };
     partsRef.current = [...partsRef.current, part]; setParts(partsRef.current);
     return part;
