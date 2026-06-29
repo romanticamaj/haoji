@@ -3,9 +3,19 @@ import { ScrollView, View, Text, Pressable, ActivityIndicator, StyleSheet } from
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
+import Markdown from 'react-native-markdown-display';
 import { analyze, getModels } from '../lib/api';
 import { splitNotesForPreview } from '../lib/gating';
 import { SavedSession } from '../lib/store';
+
+const mdStyles = {
+  body: { fontSize: 15, lineHeight: 24, color: '#1c1c1e' },
+  heading2: { fontSize: 16, fontWeight: '700', color: '#E5342B', marginTop: 14, marginBottom: 4 },
+  heading3: { fontSize: 15, fontWeight: '700', color: '#1c1c1e', marginTop: 10 },
+  strong: { fontWeight: '700' },
+  bullet_list: { marginVertical: 4 },
+  list_item: { marginVertical: 2 },
+} as const;
 
 export default function AnalysisTab({ session, onUpdate, onUnlock }:
   { session: SavedSession; onUpdate(s: SavedSession): void; onUnlock(): void }) {
@@ -61,10 +71,10 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
   const { preview, locked } = splitNotesForPreview(session.notes);
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={{ paddingBottom: 48 }}>
-      <Text style={styles.md}>{preview}</Text>
+      <Markdown style={mdStyles}>{preview}</Markdown>
       {session.unlocked ? (
         <>
-          <Text style={styles.md}>{locked}</Text>
+          <Markdown style={mdStyles}>{locked}</Markdown>
           <View style={styles.actions}>
             <Pressable style={styles.ghost} onPress={copy}><Text style={styles.ghostText}>複製</Text></Pressable>
             <Pressable style={styles.ghost} onPress={exportMd}><Text style={styles.ghostText}>匯出</Text></Pressable>
@@ -72,7 +82,9 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
         </>
       ) : (
         <View style={styles.lockWrap}>
-          <Text style={[styles.md, styles.blurred]} numberOfLines={6}>{locked}</Text>
+          <View style={styles.blurred}>
+            <Markdown style={mdStyles}>{locked}</Markdown>
+          </View>
           <View style={styles.lockOverlay}>
             <Pressable style={styles.primary} onPress={onUnlock}><Text style={styles.primaryText}>🔒 解鎖完整內容</Text></Pressable>
           </View>
