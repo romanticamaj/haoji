@@ -35,41 +35,45 @@ IAP 真實付費**不在這輪**（解鎖維持 dev stub；真 IAP = 之後的 B
 
 ---
 
-## B. 錄音強化（分段防丟失 + 可續接 + 背景）
+## B. 錄音強化（背景錄音 + 中斷可續接，不主動切段）
 
-### 資料模型改變
-一個 session 的錄音從「單一檔案」改成**多個分段**：
+**設計原則（依使用者意見調整）：不做固定 60 秒切段，正常就連續錄一個檔；只有在「真的被中斷」時才產生新的一段。**
+
+### 資料模型
+一場錄音 = 一或多個 part：
 ```ts
-type SavedSession = { ...; segments: { uri: string; durationMs: number }[]; ... }
+type SavedSession = { ...; parts: { uri: string; durationMs: number }[]; ... }
 ```
-分段檔存在 `FileSystem.documentDirectory + 'haoji/<sessionId>/seg-<n>.m4a'`，每段**錄完即落磁碟 + 立刻寫進 session**（crash-safe）。
+part 檔存在 `FileSystem.documentDirectory + 'haoji/<sessionId>/part-<n>.m4a'`。**乾淨錄完通常只有 1 個 part**；被中斷才會 >1。
 
-### B1. 防丟失（crash-safe）
-- 錄音以 `expo-av` 進行；**每約 60 秒輪轉一個分段**（stop 當前段→存檔→寫入 session→立刻開新段繼續），暫停/停止時也 finalize 當前段。
-- 因為每段一錄完就是完整檔案並已寫入 session，app crash / 被殺只會損失「最後一段未滿 60 秒的部分」，前面全部保住。
-
-### B2. 可續接（resume/append）
-- session 在「未送分析」前是 draft；回到該 draft 按錄音 = **接著錄新分段**，append 到 `segments`。
-- 中斷（來電、被切走、暫停）後回來可繼續。
-
-### B3. 背景錄音（需 dev/TestFlight build）
+### B1. 背景 / 上鎖持續錄（需 dev/TestFlight build）
 - `app.json` → `ios.infoPlist.UIBackgroundModes: ['audio']` + `NSMicrophoneUsageDescription`。
 - `expo-av` audio mode：`allowsRecordingIOS:true, staysActiveInBackground:true, playsInSilentModeIOS:true`。
-- app 推到背景時，當前分段持續錄音（Expo Go 不支援，所以這項只在 dev/TestFlight build 生效）。
+- app 推背景、手機上鎖 → 當前 part 持續錄、不中斷（Expo Go 不支援，僅 dev/TestFlight build 生效）。
+
+### B2. 中斷可續接（來電等）
+- 訂閱 expo-av 錄音狀態 / iOS audio-session 中斷事件。
+- 被強制中斷時（來電…）→ **立刻把當前 part finalize 存檔**（中斷前全部保住），記下「被中斷」狀態。
+- 回到 app → 提示「錄音中途被中斷，要接著錄嗎？」→ 按「繼續」開新 part 接續；按「結束」就以現有 parts 收尾。
+- 手動暫停/繼續 → 用 expo-av pause/resume（同一 part，不切）。
+
+### B3. 不丟失 + 誠實取捨
+- 來電、上鎖、背景、手動暫停 → 都接得回、不丟。
+- **唯一補不到**：整個 app crash / 被系統強殺（無中斷事件）→ expo-av 錄音檔要「停止」才寫完整，會丟掉「當下尚未停止的 part」。這是「不主動切段」的代價（錄音中被強殺機率很低）。預設不加固定切段；未來若需要可加「每 N 分鐘自動 finalize 保險」。
 
 ### 送分析流程
-按「分析」時，app 依序把該 session 的所有分段上傳後端 → 後端串接 → ASR。
+按「分析」→ app 依序上傳該 session 所有 parts → 後端 ffmpeg 串接 → ASR。
 
 ---
 
 ## C. 後端多段支援
 
-現有 `POST /api/sessions` 收單一檔。改成支援多段：
+現有 `POST /api/sessions` 收單一檔。改成支援多 part：
 - `POST /api/sessions` → 建立空 session，回 `session_id`（不帶檔）。
-- `POST /api/sessions/{id}/segments` → multipart 上傳一個分段，append（可多次呼叫）。
-- `POST /api/sessions/{id}/transcribe` → ffmpeg **concat 所有分段** → wav → Breeze ASR + 分離 → transcript（取代舊的背景 job 觸發）。
+- `POST /api/sessions/{id}/parts` → multipart 上傳一個 part，append（可多次呼叫；多數情況只呼叫 1 次）。
+- `POST /api/sessions/{id}/transcribe` → ffmpeg **concat 所有 parts** → wav → Breeze ASR + 分離 → transcript（取代舊的背景 job 觸發）。
 - `GET /api/sessions/{id}`、`POST /analyze` 不變。
-- 後端的分段暫存檔在 transcribe 完即刪（隱私）；**原始錄音保留在手機端**（給 A3）。
+- 後端的 part 暫存檔在 transcribe 完即刪（隱私）；**原始錄音保留在手機端**（給 A3）。
 
 向後相容：保留舊單檔 `POST /api/sessions(file)` 或直接改掉（app 是唯一 client，可直接改）。決定：**直接改成多段流程**（app 同步改）。
 
@@ -112,8 +116,8 @@ type SavedSession = { ...; segments: { uri: string; durationMs: number }[]; ... 
 - TestFlight 裝到你 iPhone，能：錄音（含背景持續、中斷可續接、分段不丟）→ 看到原始錄音分段清單 → 上傳分析 → 逐字稿（點擊式改講者名）→ AI 分析（漂亮 Markdown、切分頁狀態不丟）→ 解鎖（dev stub）。
 - 全程透過 Tailscale 連家裡後端，離開家也能用。
 
-## 需要你拍板
+## 已拍板 / 待拍板
 
-1. bundle identifier（`com.haoji.app`?）
-2. App Store Connect Issuer ID（build 時要）
-3. 分段輪轉長度（預設 60 秒）OK 嗎？
+- ✅ Issuer ID：`efcfbd71-5d12-4d85-8efc-5cee020286d9`，Key ID：`S4KA24P9A5`，Team：`64N77Z6TV3`。
+- ✅ 錄音：不主動切段，連續錄 + 中斷才分 part（依使用者意見）。
+- ⏳ bundle identifier（建議 `com.haoji.app`）— 待確認。
