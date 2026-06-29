@@ -5,6 +5,7 @@ import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
 import TranscriptTab from './TranscriptTab';
 import AnalysisTab from './AnalysisTab';
+import RecordingsList from './RecordingsList';
 
 export default function ResultsScreen() {
   const route = useRoute<any>();
@@ -20,6 +21,7 @@ export default function ResultsScreen() {
   if (!session) return <View style={styles.center}><ActivityIndicator color="#E5342B" /></View>;
   return (
     <View style={styles.container}>
+      <RecordingsList parts={session.parts ?? []} />
       <View style={styles.tabs}>
         {(['transcript', 'analysis'] as const).map((t) => (
           <Pressable key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>

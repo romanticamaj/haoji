@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
+jest.mock('../../hooks/usePlayer', () => ({ usePlayer: () => ({ positionMs: 0, isPlaying: false, load: jest.fn().mockResolvedValue(undefined), seek: jest.fn(), toggle: jest.fn(), unload: jest.fn() }) }));
 jest.mock('@react-navigation/native', () => ({
   useRoute: () => ({ params: { sessionId: 's' } }),
   useFocusEffect: (cb: any) => { const React = require('react'); React.useEffect(cb, []); },
