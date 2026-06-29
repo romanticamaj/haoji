@@ -1,7 +1,7 @@
 # 好記 Haoji v2 — UI fixes + recording robustness + TestFlight pipeline
 
 - 日期：2026-06-29
-- 狀態：DRAFT（待 review）
+- 狀態：APPROVED
 - 目標：把下列改動全部做完，並做到**可發 TestFlight 給使用者實機測試**的程度。
 
 ## 範圍總覽
@@ -82,7 +82,7 @@ part 檔存在 `FileSystem.documentDirectory + 'haoji/<sessionId>/part-<n>.m4a'`
 ## D. Native 設定 + EAS + TestFlight
 
 ### app.json
-- `name: 好記`、`slug: haoji`、`ios.bundleIdentifier: com.haoji.app`（待你確認）、`ios.buildNumber`、`version`。
+- `name: 好記`、`slug: haoji`、`ios.bundleIdentifier: com.garyhsieh.haoji`（待你確認）、`ios.buildNumber`、`version`。
 - `ios.infoPlist`：
   - `NSMicrophoneUsageDescription`（中文說明）
   - `UIBackgroundModes: ['audio']`
@@ -99,7 +99,7 @@ part 檔存在 `FileSystem.documentDirectory + 'haoji/<sessionId>/part-<n>.m4a'`
 
 ### 需要你提供 / 你來操作（安全）
 - **App Store Connect Issuer ID**（App Store Connect → Users and Access → Integrations → App Store Connect API → Issuer ID）。
-- 確認 **bundle identifier**（建議 `com.haoji.app`）。
+- 確認 **bundle identifier**（建議 `com.garyhsieh.haoji`）。
 - 互動式登入步驟由你執行：`eas login`、任何 Apple 2FA。`.p8` 我只用路徑引用、不開啟內容。
 
 ---
@@ -120,4 +120,4 @@ part 檔存在 `FileSystem.documentDirectory + 'haoji/<sessionId>/part-<n>.m4a'`
 
 - ✅ Issuer ID：`efcfbd71-5d12-4d85-8efc-5cee020286d9`，Key ID：`S4KA24P9A5`，Team：`64N77Z6TV3`。
 - ✅ 錄音：不主動切段，連續錄 + 中斷才分 part（依使用者意見）。
-- ⏳ bundle identifier（建議 `com.haoji.app`）— 待確認。
+- ✅ bundle identifier：`com.garyhsieh.haoji`。
