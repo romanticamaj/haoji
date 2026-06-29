@@ -3,29 +3,32 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-nati
 import { useNavigation } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRecorder } from '../hooks/useRecorder';
-import { createSession, uploadPart } from '../lib/api';
+import { createSession } from '../lib/api';
 import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
 
 export default function RecordScreen() {
-  const sidRef = React.useRef<string | null>(null);
+  // I1 fix: hold session id in state so re-render fires when it resolves
+  const [sid, setSid] = useState<string | null>(null);
   const store = useStore();
   const nav = useNavigation<any>();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   React.useEffect(() => {
-    createSession().then((id) => {
-      sidRef.current = id;
-      store.upsert({ id, createdAt: Date.now(), title: new Date().toLocaleString(), names: {}, unlocked: false, parts: [] });
-    });
+    createSession()
+      .then((id) => {
+        setSid(id);
+        store.upsert({ id, createdAt: Date.now(), title: new Date().toLocaleString(), names: {}, unlocked: false, parts: [] });
+      })
+      .catch(() => setErr('無法建立工作'));
   }, []);
 
-  const rec = useRecorder(sidRef.current || 'pending');
+  const rec = useRecorder(sid ?? 'pending');
 
   async function onStop() {
     const parts = await rec.stop();
-    const id = sidRef.current!;
+    const id = sid!;
     const existing = await store.get(id);
     await store.upsert({ ...(existing as any), parts });
     nav.replace('Processing', { sessionId: id });
@@ -37,12 +40,11 @@ export default function RecordScreen() {
     setBusy(true); setErr(null);
     try {
       const a = res.assets[0];
+      // C2 fix: do NOT call uploadPart here — ProcessingScreen owns all uploads.
+      // Just create the session, persist the local uri as a draft part, and hand off.
       const id = await createSession();
       const createdAt = Date.now();
       const title = new Date().toLocaleString();
-      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [] });
-      const file = { uri: a.uri, name: a.name, mime: a.mimeType || 'application/octet-stream' };
-      await uploadPart(id, file);
       await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: a.uri, durationMs: 0 }] });
       nav.replace('Processing', { sessionId: id });
     } catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
@@ -64,6 +66,7 @@ export default function RecordScreen() {
           accessibilityLabel={isRec ? '停止錄音' : '開始錄音'}
           style={[styles.recordBtn, (isRec || isPaused) && styles.recordBtnActive]}
           onPress={isRec || isPaused ? onStop : rec.start}
+          disabled={!sid}
         >
           <View style={isRec ? styles.squareIcon : styles.circleIcon} />
         </Pressable>

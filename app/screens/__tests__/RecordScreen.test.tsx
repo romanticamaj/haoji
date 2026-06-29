@@ -37,11 +37,16 @@ test('tapping the record button starts recording', async () => {
   expect(mockRecApi.start).toHaveBeenCalled();
 });
 
-test('uploading a file creates a session, uploads the part, and navigates to Processing', async () => {
+// C2 fix: onUpload must NOT call uploadPart (ProcessingScreen owns all uploads)
+test('uploading a file creates a session, does NOT call uploadPart, sets parts in store, and navigates to Processing', async () => {
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('上傳音檔 / 影片'));
-  await waitFor(() => expect(api.uploadPart).toHaveBeenCalledWith('sess123', { uri: 'file:///u.m4a', name: 'u.m4a', mime: 'audio/mp4' }));
-  expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: 'sess123' });
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: 'sess123' }));
+  expect(api.createSession).toHaveBeenCalled();
+  expect(api.uploadPart).not.toHaveBeenCalled();
+  expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
+    parts: [{ uri: 'file:///u.m4a', durationMs: 0 }],
+  }));
 });
 
 test('stopping recording persists parts and navigates to Processing', async () => {
