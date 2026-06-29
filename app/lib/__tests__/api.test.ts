@@ -5,14 +5,13 @@ const mockFetch = (body: any, ok = true, status = 200) =>
 
 afterEach(() => jest.restoreAllMocks());
 
-test('createSession posts multipart and returns session_id', async () => {
+test('createSession posts empty and returns session_id', async () => {
   global.fetch = mockFetch({ session_id: 'abc123' });
-  const id = await api.createSession({ uri: 'file:///a.m4a', name: 'a.m4a', mime: 'audio/mp4' });
+  const id = await api.createSession();
   expect(id).toBe('abc123');
   const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
   expect(url).toContain('/api/sessions');
   expect(init.method).toBe('POST');
-  expect(init.body).toBeInstanceOf(FormData);
 });
 
 test('getSession returns parsed status', async () => {
@@ -32,7 +31,7 @@ test('analyze sends model + names and returns notes', async () => {
 
 test('createSession throws on non-ok response', async () => {
   global.fetch = mockFetch({ error: '不支援的檔案格式' }, false, 400);
-  await expect(api.createSession({ uri: 'f', name: 'a.txt', mime: 'text/plain' })).rejects.toThrow();
+  await expect(api.createSession()).rejects.toThrow();
 });
 
 test('getModels returns models list and default', async () => {
