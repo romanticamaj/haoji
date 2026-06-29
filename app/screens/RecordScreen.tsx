@@ -3,28 +3,49 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-nati
 import { useNavigation } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRecorder } from '../hooks/useRecorder';
-import { createSession } from '../lib/api';
+import { createSession, uploadPart } from '../lib/api';
 import { mmss } from '../lib/transcript';
+import { useStore } from '../lib/store-context';
 
 export default function RecordScreen() {
-  const rec = useRecorder();
+  const sidRef = React.useRef<string | null>(null);
+  const store = useStore();
   const nav = useNavigation<any>();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function submit(file: { uri: string; name: string; mime: string }) {
-    setBusy(true); setErr(null);
-    try {
-      const id = await createSession(file);
-      nav.replace('Processing', { sessionId: id });
-    } catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
+  React.useEffect(() => {
+    createSession().then((id) => {
+      sidRef.current = id;
+      store.upsert({ id, createdAt: Date.now(), title: new Date().toLocaleString(), names: {}, unlocked: false, parts: [] });
+    });
+  }, []);
+
+  const rec = useRecorder(sidRef.current || 'pending');
+
+  async function onStop() {
+    const parts = await rec.stop();
+    const id = sidRef.current!;
+    const existing = await store.get(id);
+    await store.upsert({ ...(existing as any), parts });
+    nav.replace('Processing', { sessionId: id });
   }
-  async function onStop() { const f = await rec.stop(); if (f) await submit(f); }
+
   async function onUpload() {
     const res = await DocumentPicker.getDocumentAsync({ type: ['audio/*', 'video/*'], copyToCacheDirectory: true });
     if (res.canceled || !res.assets?.[0]) return;
-    const a = res.assets[0];
-    await submit({ uri: a.uri, name: a.name, mime: a.mimeType || 'application/octet-stream' });
+    setBusy(true); setErr(null);
+    try {
+      const a = res.assets[0];
+      const id = await createSession();
+      const createdAt = Date.now();
+      const title = new Date().toLocaleString();
+      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [] });
+      const file = { uri: a.uri, name: a.name, mime: a.mimeType || 'application/octet-stream' };
+      await uploadPart(id, file);
+      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: a.uri, durationMs: 0 }] });
+      nav.replace('Processing', { sessionId: id });
+    } catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
   }
 
   const isRec = rec.state === 'recording';
@@ -47,10 +68,17 @@ export default function RecordScreen() {
           <View style={isRec ? styles.squareIcon : styles.circleIcon} />
         </Pressable>
       </View>
-      {(isRec || isPaused) && (
+      {(isRec || isPaused) && !rec.wasInterrupted && (
         <Pressable style={styles.secondary} onPress={isPaused ? rec.resume : rec.pause} accessibilityRole="button">
           <Text style={styles.secondaryText}>{isPaused ? '繼續' : '暫停'}</Text>
         </Pressable>
+      )}
+      {rec.wasInterrupted && (
+        <View style={styles.resumeRow}>
+          <Text style={styles.resumeText}>錄音被中斷，要接著錄嗎？</Text>
+          <Pressable onPress={rec.resume}><Text style={styles.resumeBtn}>繼續</Text></Pressable>
+          <Pressable onPress={onStop}><Text style={styles.resumeBtn}>結束</Text></Pressable>
+        </View>
       )}
       {rec.state === 'idle' && (
         <Pressable style={styles.uploadBtn} onPress={onUpload} accessibilityRole="button">
@@ -79,4 +107,7 @@ const styles = StyleSheet.create({
   uploadBtn: { marginTop: 48, paddingVertical: 12, paddingHorizontal: 24 },
   uploadText: { color: RED, fontSize: 16, fontWeight: '600' },
   err: { color: RED, marginTop: 20 },
+  resumeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 12 },
+  resumeText: { color: '#1c1c1e', fontSize: 15 },
+  resumeBtn: { color: RED, fontSize: 15, fontWeight: '600' },
 });
