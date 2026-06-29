@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { getSession } from '../lib/api';
+import { uploadPart, transcribe, getSession } from '../lib/api';
 import { useStore } from '../lib/store-context';
 
 export default function ProcessingScreen() {
@@ -16,6 +16,16 @@ export default function ProcessingScreen() {
   useEffect(() => {
     cancelled.current = false;
     (async () => {
+      const s0 = await store.get(sessionId);
+      const parts = s0?.parts ?? [];
+      for (let i = 0; i < parts.length; i++) {
+        setMessage(`上傳中… ${i + 1}/${parts.length}`);
+        try { await uploadPart(sessionId, { uri: parts[i].uri, name: `part-${i}.m4a`, mime: 'audio/mp4' }); }
+        catch (e: any) { setError('上傳失敗：' + (e?.message || '')); return; }
+      }
+      setMessage('開始辨識…');
+      try { await transcribe(sessionId); }
+      catch (e: any) { setError(e?.message || '辨識失敗'); return; }
       while (!cancelled.current) {
         let s; try { s = await getSession(sessionId); } catch { await delay(1500); continue; }
         setMessage(s.message || s.status);
