@@ -6,13 +6,13 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-import os, uuid, json
+import os, json
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import config
-import asr, sessions, llm
+import asr, sessions, llm, media
 from fastapi import Request
 
 app = FastAPI(title="好記 Haoji API")
@@ -20,60 +20,59 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 _executor = ThreadPoolExecutor(max_workers=2)
 
+PARTS_DIR = os.path.join(config.UPLOAD_DIR, "parts")
+os.makedirs(PARTS_DIR, exist_ok=True)
+
 @app.on_event("startup")
 def _startup():
     sessions.init_db()
-
-def _safe_name(name):
-    name = os.path.basename(name or "").strip()
-    keep = "-_.()[] "
-    name = "".join(c for c in name if c.isalnum() or c in keep or ord(c) > 127).strip()
-    return name or ("upload_" + uuid.uuid4().hex[:8])
-
-def _run_transcribe(sid, path):
-    try:
-        sessions.update_session(sid, status="running", pct=0.05, message="讀取媒體…")
-        dur = asr.probe_duration(path)
-        wav = path + ".wav"
-        sessions.update_session(sid, pct=0.1, message="抽取音訊…")
-        asr.extract_audio(path, wav, on_progress=lambda fr: sessions.update_session(sid, pct=0.1 + fr * 0.2), total_dur=dur)
-        sessions.update_session(sid, pct=0.35, message="辨識中（含講者分離）…")
-        raw = asr.transcribe_diarize(wav)
-        norm = asr.normalize(raw)
-        sessions.update_session(sid, status="done", pct=1.0, message="完成",
-                                transcript=json.dumps(norm, ensure_ascii=False))
-    except Exception as e:
-        sessions.update_session(sid, status="error", message=str(e), error=str(e))
-    finally:
-        for p in (path, path + ".wav"):   # delete media; keep only the transcript
-            try: os.remove(p)
-            except OSError: pass
 
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "haoji-backend"}
 
 @app.post("/api/sessions")
-async def create_session(file: UploadFile = File(...)):
-    ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in config.MEDIA_EXTS:
-        return JSONResponse({"error": f"不支援的檔案格式：{ext or '未知'}"}, status_code=400)
-    sid = sessions.create_session(file.filename or "audio")
-    dest = os.path.join(config.UPLOAD_DIR, sid + ext)
-    try:
-        with open(dest, "wb") as out:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk: break
-                out.write(chunk)
-    except Exception as e:
-        try: os.remove(dest)
-        except OSError: pass
-        sessions.update_session(sid, status="error", message="上傳失敗", error=str(e))
-        return JSONResponse({"error": "上傳失敗"}, status_code=500)
-    await file.close()
-    _executor.submit(_run_transcribe, sid, dest)
+def create_session():
+    sid = sessions.create_session("recording")
     return {"session_id": sid}
+
+@app.post("/api/sessions/{sid}/parts")
+async def add_part(sid: str, file: UploadFile = File(...)):
+    if not sessions.get_session(sid):
+        return JSONResponse({"error": "查無此工作"}, status_code=404)
+    dest = os.path.join(PARTS_DIR, f"{sid}-{len(sessions.get_parts(sid))}.m4a")
+    with open(dest, "wb") as out:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk: break
+            out.write(chunk)
+    await file.close()
+    return {"count": sessions.add_part(sid, dest)}
+
+def _run_transcribe(sid):
+    parts = sessions.get_parts(sid)
+    try:
+        sessions.update_session(sid, status="running", pct=0.1, message="串接音檔…")
+        wav = os.path.join(config.UPLOAD_DIR, sid + ".wav")
+        media.concat_to_wav(parts, wav)
+        sessions.update_session(sid, pct=0.35, message="辨識中（含講者分離）…")
+        norm = asr.normalize(asr.transcribe_diarize(wav))
+        sessions.update_session(sid, status="done", pct=1.0, message="完成",
+                                transcript=json.dumps(norm, ensure_ascii=False))
+    except Exception as e:
+        sessions.update_session(sid, status="error", message=str(e), error=str(e))
+    finally:
+        for p in parts + [os.path.join(config.UPLOAD_DIR, sid + ".wav")]:
+            try: os.remove(p)
+            except OSError: pass
+
+@app.post("/api/sessions/{sid}/transcribe")
+def transcribe(sid: str):
+    if not sessions.get_parts(sid):
+        return JSONResponse({"error": "沒有錄音段落"}, status_code=400)
+    sessions.update_session(sid, status="queued", message="排隊中…")
+    _executor.submit(_run_transcribe, sid)
+    return {"ok": True}
 
 @app.get("/api/sessions/{sid}")
 def session_status(sid: str):

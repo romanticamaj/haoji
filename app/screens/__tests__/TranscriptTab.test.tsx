@@ -10,6 +10,7 @@ const session: SavedSession = {
     { start: 2, end: 4, speaker: 'SPEAKER_00', text: '今天開會' },
     { start: 4, end: 6, speaker: 'SPEAKER_01', text: '好' },
   ] },
+  parts: [],
 };
 
 test('renders merged paragraphs with timestamps', async () => {

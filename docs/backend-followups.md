@@ -20,3 +20,10 @@ From the final whole-branch review of `feat/backend-api` (2026-06-28). None are 
 
 ## Latent
 - **A9 — SQLite write contention.** Every ffmpeg progress line writes to the DB; shared file across 2 workers + request threads. Default busy-timeout makes locks unlikely at MVP scale; a latent throughput limit for cloud.
+
+## v2-2 follow-ups (from final review, 2026-06-30 — non-blocking)
+- **M1 (backend, Windows)**: `media.concat_to_wav` writes part paths with backslashes into the ffmpeg concat list; verify multi-part concat on the Windows host or normalize to forward slashes.
+- **M2 (backend)**: after `_run_transcribe` deletes part files, the session's `parts` JSON still points at deleted paths — a re-`/transcribe` would fail at concat (no retry path today).
+- **K1 (backend)**: `/api/sessions/{id}/parts` has no bad-ext/write-failure/404 tests (old single-file tests deleted); `add_part` leaves an orphan file on write failure. Add tests + cleanup.
+- **K3 (app)**: there is no session-deletion UI yet; `haoji/<sid>/` part dirs grow unbounded. When delete is added, it must `deleteAsync(haoji/<sid>)` too.
+- **M3 (app)**: part `durationMs` read from state can lag the final status tick (cosmetic — only the 段 N label).

@@ -1,7 +1,7 @@
 import { createMemoryStore, SavedSession } from '../store';
 
 const mk = (id: string, t: number): SavedSession =>
-  ({ id, createdAt: t, title: id, names: {}, unlocked: false });
+  ({ id, createdAt: t, title: id, names: {}, unlocked: false, parts: [] });
 
 test('upsert + get round-trips', async () => {
   const s = createMemoryStore();

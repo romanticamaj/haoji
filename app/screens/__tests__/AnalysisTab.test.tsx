@@ -20,6 +20,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 const base: SavedSession = {
   id: 's', createdAt: 1, title: 't', unlocked: false, names: { SPEAKER_00: 'Gary' },
   transcript: { speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 1, speaker: 'SPEAKER_00', text: '嗨' }] },
+  parts: [],
 };
 
 beforeEach(() => {

@@ -8,7 +8,7 @@ import AnalysisTab from '../AnalysisTab';
 import { SavedSession } from '../../lib/store';
 
 const s: SavedSession = { id: 's', createdAt: 1, title: 't', unlocked: true, names: {},
-  notes: '## 會議摘要\n**重點**一行\n\n## 待辦\n- [ ] 做事', transcript: { speakers: [], segments: [] } };
+  notes: '## 會議摘要\n**重點**一行\n\n## 待辦\n- [ ] 做事', transcript: { speakers: [], segments: [] }, parts: [] };
 
 test('notes render through react-native-markdown-display (heading text present)', async () => {
   const { getByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);

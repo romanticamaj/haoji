@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """SQLite-backed session store + transcript text builder."""
-import os, sqlite3, uuid, time
+import os, sqlite3, uuid, time, json
 import config
 
 def _conn():
@@ -13,7 +13,8 @@ def init_db():
     with _conn() as c:
         c.execute("""CREATE TABLE IF NOT EXISTS sessions(
             id TEXT PRIMARY KEY, filename TEXT, status TEXT, pct REAL,
-            message TEXT, transcript TEXT, notes TEXT, error TEXT, created REAL)""")
+            message TEXT, transcript TEXT, notes TEXT, error TEXT, created REAL,
+            parts TEXT)""")
 
 def create_session(filename):
     sid = uuid.uuid4().hex[:12]
@@ -33,6 +34,16 @@ def update_session(sid, **fields):
     cols = ", ".join(f"{k}=?" for k in fields)
     with _conn() as c:
         c.execute(f"UPDATE sessions SET {cols} WHERE id=?", (*fields.values(), sid))
+
+def get_parts(sid):
+    s = get_session(sid)
+    return json.loads(s["parts"]) if s and s.get("parts") else []
+
+def add_part(sid, path):
+    parts = get_parts(sid)
+    parts.append(path)
+    update_session(sid, parts=json.dumps(parts))
+    return len(parts)
 
 def _mmss(t):
     t = max(0, int(t)); return f"{t // 60:02d}:{t % 60:02d}"

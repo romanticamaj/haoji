@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
+jest.mock('../../hooks/usePlayer', () => ({ usePlayer: () => ({ positionMs: 0, isPlaying: false, load: jest.fn().mockResolvedValue(undefined), seek: jest.fn(), toggle: jest.fn(), unload: jest.fn() }) }));
 jest.mock('@react-navigation/native', () => ({
   useRoute: () => ({ params: { sessionId: 's' } }),
   useFocusEffect: (cb: any) => { const React = require('react'); React.useEffect(cb, []); },
@@ -16,7 +17,7 @@ import { StoreProvider } from '../../lib/store-context';
 import { createMemoryStore, SavedSession } from '../../lib/store';
 
 const s: SavedSession = { id: 's', createdAt: 1, title: 't', unlocked: false, names: {},
-  notes: '## 會議摘要\n摘要\n\n## 討論重點\n- 機密', transcript: { speakers: [], segments: [] } };
+  notes: '## 會議摘要\n摘要\n\n## 討論重點\n- 機密', transcript: { speakers: [], segments: [] }, parts: [] };
 
 test('tapping unlock reveals the locked detail', async () => {
   const store = createMemoryStore([s]);

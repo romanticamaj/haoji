@@ -7,13 +7,18 @@ async function asJson(res: Response) {
   return body;
 }
 
-export async function createSession(file: { uri: string; name: string; mime: string }): Promise<string> {
+export async function createSession(): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/sessions`, { method: 'POST' });
+  return ((await asJson(res)) as any).session_id;
+}
+export async function uploadPart(id: string, file: { uri: string; name: string; mime: string }): Promise<number> {
   const form = new FormData();
-  // React Native FormData accepts { uri, name, type } file objects
   form.append('file', { uri: file.uri, name: file.name, type: file.mime } as any);
-  const res = await fetch(`${API_BASE}/api/sessions`, { method: 'POST', body: form });
-  const body = await asJson(res);
-  return (body as any).session_id;
+  const res = await fetch(`${API_BASE}/api/sessions/${id}/parts`, { method: 'POST', body: form });
+  return ((await asJson(res)) as any).count;
+}
+export async function transcribe(id: string): Promise<void> {
+  await asJson(await fetch(`${API_BASE}/api/sessions/${id}/transcribe`, { method: 'POST' }));
 }
 
 export async function getSession(id: string): Promise<SessionStatus> {

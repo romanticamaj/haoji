@@ -1,8 +1,14 @@
 import React from 'react';
 import { render, waitFor } from '@testing-library/react-native';
 
+const mockUploadPart = jest.fn();
+const mockTranscribe = jest.fn();
 const mockGetSession = jest.fn();
-jest.mock('../../lib/api', () => ({ getSession: (...a: any[]) => mockGetSession(...a) }));
+jest.mock('../../lib/api', () => ({
+  uploadPart: (...a: any[]) => mockUploadPart(...a),
+  transcribe: (...a: any[]) => mockTranscribe(...a),
+  getSession: (...a: any[]) => mockGetSession(...a),
+}));
 const mockReplace = jest.fn();
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ replace: mockReplace }),
@@ -15,6 +21,7 @@ import ProcessingScreen from '../ProcessingScreen';
 beforeEach(() => { jest.clearAllMocks(); });
 
 test('polls until done, saves session, navigates to Results', async () => {
+  mockTranscribe.mockResolvedValue(undefined);
   mockGetSession
     .mockResolvedValueOnce({ status: 'running', pct: 0.5, message: '辨識中…' })
     .mockResolvedValueOnce({ status: 'done', pct: 1, message: '完成',
