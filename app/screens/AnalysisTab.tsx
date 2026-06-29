@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { analyze, getModels } from '../lib/api';
 import { splitNotesForPreview } from '../lib/gating';
 import { SavedSession } from '../lib/store';
