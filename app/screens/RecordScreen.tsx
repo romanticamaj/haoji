@@ -6,6 +6,8 @@ import { useRecorder } from '../hooks/useRecorder';
 import { createSession } from '../lib/api';
 import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
+import Waveform from '../components/Waveform';
+import BreathingRing from '../components/BreathingRing';
 
 export default function RecordScreen() {
   // I1 fix: hold session id in state so re-render fires when it resolves
@@ -52,15 +54,15 @@ export default function RecordScreen() {
 
   const isRec = rec.state === 'recording';
   const isPaused = rec.state === 'paused';
-  const scale = 1 + Math.min(0.25, rec.meteringLevel * 0.25);
 
   if (busy) return <View style={styles.center}><ActivityIndicator color="#E5342B" size="large" /><Text style={styles.hint}>上傳中…</Text></View>;
 
   return (
     <View style={styles.container}>
       <Text style={styles.time}>{mmss(Math.floor(rec.durationMs / 1000))}</Text>
+      <Waveform level={rec.meteringLevel} active={isRec} />
       <View style={styles.recordWrap}>
-        <View style={[styles.ring, { transform: [{ scale }], opacity: isRec ? 0.35 : 0 }]} />
+        <BreathingRing active={isRec} level={rec.meteringLevel} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={isRec ? '停止錄音' : '開始錄音'}
@@ -100,7 +102,6 @@ const styles = StyleSheet.create({
   hint: { color: '#8e8e93', marginTop: 12 },
   time: { fontSize: 44, fontWeight: '300', color: '#1c1c1e', fontVariant: ['tabular-nums'], marginBottom: 40 },
   recordWrap: { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
-  ring: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: RED },
   recordBtn: { width: 120, height: 120, borderRadius: 60, backgroundColor: RED, alignItems: 'center', justifyContent: 'center' },
   recordBtnActive: { backgroundColor: '#fff', borderWidth: 4, borderColor: RED },
   circleIcon: { width: 0, height: 0 },
