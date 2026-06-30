@@ -2,3 +2,6 @@
 // so without this every suite that touches the store fails with "AsyncStorage is null".
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
+
+// react-native-reanimated must be mocked in jest environment (native module not available)
+jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
