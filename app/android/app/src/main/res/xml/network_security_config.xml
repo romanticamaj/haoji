@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Backend runs over plain HTTP on the dev/GPU box (Tailscale + LAN). Allow cleartext only to it. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">100.106.118.45</domain>
+        <domain includeSubdomains="false">192.168.100.10</domain>
+    </domain-config>
+</network-security-config>

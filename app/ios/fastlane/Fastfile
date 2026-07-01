@@ -1,0 +1,45 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build a Release archive and upload it to TestFlight"
+  lane :beta do
+    key = app_store_connect_api_key(
+      key_id: "S4KA24P9A5",
+      issuer_id: "efcfbd71-5d12-4d85-8efc-5cee020286d9",
+      key_filepath: File.expand_path("~/.private_keys/AuthKey_S4KA24P9A5.p8"),
+    )
+
+    # Next build number = latest on TestFlight + 1
+    latest = latest_testflight_build_number(
+      api_key: key,
+      app_identifier: "com.garyhsieh.haoji",
+      initial_build_number: 0,
+    )
+    increment_build_number(build_number: latest.to_i + 1, xcodeproj: "Haoji.xcodeproj")
+
+    # development: false -> Apple *Distribution* cert (needs Admin/Developer role on the ASC key)
+    cert(api_key: key, development: false, output_path: "./certs")
+
+    profile_name = "Haoji AppStore"
+    get_provisioning_profile(
+      api_key: key,
+      app_identifier: "com.garyhsieh.haoji",
+      app_store: true,
+      provisioning_name: profile_name,
+      force: true,
+    )
+
+    build_app(
+      workspace: "Haoji.xcworkspace",
+      scheme: "Haoji",
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: { "com.garyhsieh.haoji" => profile_name },
+      },
+    )
+
+    upload_to_testflight(api_key: key, skip_waiting_for_build_processing: true)
+  end
+end
