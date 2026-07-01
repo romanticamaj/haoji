@@ -12,8 +12,11 @@ jest.mock('../../lib/api', () => ({
   createSession: jest.fn().mockResolvedValue('sess123'),
   uploadPart: jest.fn().mockResolvedValue(1),
 }));
-jest.mock('expo-document-picker', () => ({
-  getDocumentAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///u.m4a', name: 'u.m4a', mimeType: 'audio/mp4' }] }),
+jest.mock('@react-native-documents/picker', () => ({
+  pick: jest.fn().mockResolvedValue([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]),
+  types: { audio: 'public.audio', video: 'public.movie' },
+  isErrorWithCode: (e) => !!e && typeof e.code === 'string',
+  errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
 }));
 const mockReplace = jest.fn();
 jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ replace: mockReplace }) }));

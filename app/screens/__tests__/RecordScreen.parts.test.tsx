@@ -12,8 +12,11 @@ jest.mock('../../lib/api', () => ({
   createSession: jest.fn().mockResolvedValue('sess123'),
   uploadPart: jest.fn().mockResolvedValue(1),
 }));
-jest.mock('expo-document-picker', () => ({
-  getDocumentAsync: jest.fn().mockResolvedValue({ canceled: true }),
+jest.mock('@react-native-documents/picker', () => ({
+  pick: jest.fn(),
+  types: { audio: 'public.audio', video: 'public.movie' },
+  isErrorWithCode: (e: any) => !!e && typeof e.code === 'string',
+  errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
 }));
 const mockReplace = jest.fn();
 jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ replace: mockReplace }) }));
@@ -28,13 +31,13 @@ jest.mock('../../lib/store-context', () => ({ useStore: () => mockStore }));
 
 import RecordScreen from '../RecordScreen';
 import * as api from '../../lib/api';
-import * as DocumentPicker from 'expo-document-picker';
+import { pick } from '@react-native-documents/picker';
 
 beforeEach(() => { jest.clearAllMocks(); mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false;
   // Re-establish implementations cleared by clearAllMocks
   (api.createSession as jest.Mock).mockResolvedValue('sess123');
   (api.uploadPart as jest.Mock).mockResolvedValue(1);
-  (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValue({ canceled: true });
+  (pick as jest.Mock).mockRejectedValue({ code: 'OPERATION_CANCELED' });
   mockStore.upsert.mockResolvedValue(undefined);
   mockStore.get.mockResolvedValue({ id: 'sess123', createdAt: 0, title: 't', names: {}, unlocked: false, parts: [] });
   mockRecApi.stop.mockResolvedValue([{ uri: 'file:///r.m4a', durationMs: 1000 }]);
@@ -66,10 +69,7 @@ test('pressing 結束 in interruption prompt stops recording and navigates to Pr
 
 // C2 fix: onUpload must NOT call uploadPart; ProcessingScreen owns all uploads
 test('C2: pressing 上傳 creates session, skips uploadPart, stores draft part, navigates to Processing', async () => {
-  (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValueOnce({
-    canceled: false,
-    assets: [{ uri: 'file:///u.m4a', name: 'u.m4a', mimeType: 'audio/mp4' }],
-  });
+  (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('上傳音檔 / 影片'));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: 'sess123' }));

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import * as DocumentPicker from 'expo-document-picker';
+import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import { useRecorder } from '../hooks/useRecorder';
 import { createSession } from '../lib/api';
 import { mmss } from '../lib/transcript';
@@ -37,17 +37,23 @@ export default function RecordScreen() {
   }
 
   async function onUpload() {
-    const res = await DocumentPicker.getDocumentAsync({ type: ['audio/*', 'video/*'], copyToCacheDirectory: true });
-    if (res.canceled || !res.assets?.[0]) return;
+    let file: { uri: string; name?: string | null } | undefined;
+    try {
+      [file] = await pick({ type: [types.audio, types.video] });
+    } catch (e) {
+      if (isErrorWithCode(e) && e.code === errorCodes.OPERATION_CANCELED) return; // user dismissed picker
+      setErr('選取失敗');
+      return;
+    }
+    if (!file) return;
     setBusy(true); setErr(null);
     try {
-      const a = res.assets[0];
       // C2 fix: do NOT call uploadPart here — ProcessingScreen owns all uploads.
       // Just create the session, persist the local uri as a draft part, and hand off.
       const id = await createSession();
       const createdAt = Date.now();
       const title = new Date().toLocaleString();
-      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: a.uri, durationMs: 0 }] });
+      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: file.uri, durationMs: 0 }] });
       nav.replace('Processing', { sessionId: id });
     } catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
   }
