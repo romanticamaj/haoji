@@ -37,3 +37,6 @@ yarn-error.*
 *.tsbuildinfo
 
 # generated native folders
+
+# react-native-config secrets
+.env
