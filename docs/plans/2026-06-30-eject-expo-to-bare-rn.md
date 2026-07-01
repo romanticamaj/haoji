@@ -291,6 +291,8 @@ Preserve the existing upload→Processing navigation flow.
 **Interfaces:**
 - Produces (unchanged public shape of usePlayer): whatever the current hook exports — keep identical.
 
+**Package note (review NEW-1):** `react-native-nitro-sound` is real and **verified present on npm at `0.2.15`** (confirmed via `npm view`). It's the Nitro-modules successor to `react-native-audio-recorder-player` by the same author — which is why its recorder/player API matches. If install ever fails, the spec §3 fallback is `react-native-audio-recorder-player@4.5.0` (near-identical API).
+
 **Singleton caveat (review F4):** `react-native-nitro-sound` is a **singleton** — one recorder+player sharing the native audio session, not per-instance like `expo-av`'s `Audio.Sound`. Playback happens only on the Results screen and recording only on the Record screen, so they never overlap in practice — but `usePlayer` must `stopPlayer()` on unmount/track-change to release the singleton, and must not assume it can run concurrently with recording. `seekToPlayer(ms)` returns `Promise<string>`; discard the return (don't type it `void`).
 
 - [ ] **Step 1: Update mock** — replace `expo-av` mock with a `react-native-nitro-sound` mock exposing `startPlayer`, `pausePlayer`, `resumePlayer`, `stopPlayer`, `seekToPlayer`, `addPlayBackListener`, `removePlayBackListener`.
@@ -388,6 +390,7 @@ class AudioInterruption: RCTEventEmitter {
 ```bash
 cd app && npx react-native run-ios --simulator "iPhone 17"
 ```
+(The `iPhone 17` simulator is verified booted under Xcode 26.3 — review NEW-3. If absent, `xcrun simctl list devices available | grep iPhone` and use an available name.)
 Expected: app builds, boots, Home screen renders. (Recording won't function on simulator — that's expected; verify no red-box on launch/navigation.)
 - [ ] **Step 5: Commit** — `git commit -am "chore(ios): Info.plist perms/ATS + pods; simulator smoke passes"`
 
@@ -446,8 +449,10 @@ platform :ios do
     # development: false → Apple *Distribution* cert (review F17). Needs Admin/Developer role on the ASC key.
     cert(api_key: key, development: false, output_path: "./certs")
     profile_name = "Haoji AppStore"
-    sigh(api_key: key, app_identifier: "com.garyhsieh.haoji", platform: "ios",
-         provisioning_name: profile_name)
+    # get_provisioning_profile (NOT the deprecated `sigh` action — review NEW-2) creates+downloads
+    # the App Store profile; app_store: true selects the distribution profile type.
+    get_provisioning_profile(api_key: key, app_identifier: "com.garyhsieh.haoji",
+                             app_store: true, provisioning_name: profile_name, force: true)
     build_app(
       workspace: "Haoji.xcworkspace",
       scheme: "Haoji",
