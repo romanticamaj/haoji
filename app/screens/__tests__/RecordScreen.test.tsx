@@ -15,7 +15,7 @@ jest.mock('../../lib/api', () => ({
 jest.mock('@react-native-documents/picker', () => ({
   pick: jest.fn().mockResolvedValue([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]),
   types: { audio: 'public.audio', video: 'public.movie' },
-  isErrorWithCode: (e) => !!e && typeof e.code === 'string',
+  isErrorWithCode: (e: any) => !!e && typeof e.code === 'string',
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
 }));
 const mockReplace = jest.fn();

@@ -3,9 +3,9 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 const mockAnalyze = jest.fn().mockResolvedValue({ notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 機密', model: 'm' });
 jest.mock('../../lib/api', () => ({ analyze: (...a: any[]) => mockAnalyze(...a), getModels: jest.fn().mockResolvedValue({ ok: true, models: [], default: '' }) }));
 jest.mock('../../hooks/usePlayer', () => ({ usePlayer: () => ({ positionMs: 0, isPlaying: false, load: jest.fn().mockResolvedValue(undefined), seek: jest.fn(), toggle: jest.fn(), unload: jest.fn() }) }));
-jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
-jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn().mockResolvedValue(false), shareAsync: jest.fn() }));
-jest.mock('expo-file-system/legacy', () => ({ cacheDirectory: 'file:///c/', writeAsStringAsync: jest.fn() }));
+jest.mock('@react-native-clipboard/clipboard', () => ({ setString: jest.fn() }));
+jest.mock('react-native-share', () => ({ open: jest.fn().mockResolvedValue({}) }));
+jest.mock('react-native-fs', () => ({ DocumentDirectoryPath: '/doc', writeFile: jest.fn().mockResolvedValue(undefined), unlink: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('@react-navigation/native', () => ({
   useRoute: () => ({ params: { sessionId: 's' } }),
   useFocusEffect: (cb: any) => { const React = require('react'); React.useEffect(cb, []); },

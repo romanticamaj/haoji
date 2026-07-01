@@ -6,11 +6,12 @@ jest.mock('@react-navigation/native', () => ({
   useFocusEffect: (cb: any) => { const React = require('react'); React.useEffect(cb, []); },
 }));
 jest.mock('../../lib/api', () => ({ analyze: jest.fn(), getModels: jest.fn().mockResolvedValue({ ok: true, models: [], default: '' }) }));
-jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
-jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn().mockResolvedValue(false), shareAsync: jest.fn() }));
-jest.mock('expo-file-system', () => ({
-  cacheDirectory: 'file:///cache/',
-  writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
+jest.mock('@react-native-clipboard/clipboard', () => ({ setString: jest.fn() }));
+jest.mock('react-native-share', () => ({ open: jest.fn().mockResolvedValue({}) }));
+jest.mock('react-native-fs', () => ({
+  DocumentDirectoryPath: '/doc',
+  writeFile: jest.fn().mockResolvedValue(undefined),
+  unlink: jest.fn().mockResolvedValue(undefined),
 }));
 import ResultsScreen from '../ResultsScreen';
 import { StoreProvider } from '../../lib/store-context';
