@@ -2,7 +2,7 @@
 
 不綁帳號的繁體中文會議錄音工具：錄音/上傳 → 逐字稿（含講者分離）→ AI 會議記錄，結果存在你手機上。
 
-- 平台：原生 iOS / Android（Expo / React Native）
+- 平台：原生 iOS / Android（React Native 0.81，@react-native-community/cli，非 Expo）
 - 後端：Breeze ASR + 講者分離 → 本機 LLM（Ollama / gemma4）生成繁中會議記錄
 - 商業模式：逐字稿免費，AI 會議記錄預覽免費、解鎖完整付費（IAP）
 - 不綁帳號、不保存音檔、結果只存使用者手機

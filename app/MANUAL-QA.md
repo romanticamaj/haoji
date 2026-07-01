@@ -1,10 +1,15 @@
-# 好記 App — Manual QA (Expo Go)
+# 好記 App — Manual QA (dev build / TestFlight)
 
-Jest covers logic + component behaviour with native modules mocked. Verify these on a real device / simulator (`npx expo start`, open in Expo Go). Set `EXPO_PUBLIC_API_BASE` to the dev machine's LAN/Tailscale IP:8780 so the phone reaches the backend.
+Jest covers logic + component behaviour with native modules mocked. Recording, playback, and
+call-interruption behaviour can only be verified on a **real device** — run a local dev build
+(`npm run ios` on a connected device) or install the TestFlight build. The backend URL comes
+from `.env` (`react-native-config`), defaulting to the Tailscale IP `100.106.118.45:8780`.
 
 - [ ] Mic permission prompt appears on first record.
 - [ ] Big red button records; timer counts up; button shows stop (square) while recording.
 - [ ] Pause then 繼續 resumes; level/animation responds to voice.
+- [ ] **Interruption:** take a phone call (or trigger Siri) mid-record → recording finalizes that
+      part; on 繼續 a NEW part starts; final transcript still covers everything.
 - [ ] Stop → uploads → Processing shows progress → Results opens.
 - [ ] Upload 音檔/影片 picker works; same flow to Results.
 - [ ] 逐字稿 tab: paragraphs grouped by speaker; renaming a speaker updates all their lines and persists (re-open from Home).
