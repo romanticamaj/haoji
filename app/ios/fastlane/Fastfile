@@ -24,7 +24,6 @@ platform :ios do
     get_provisioning_profile(
       api_key: key,
       app_identifier: "com.garyhsieh.haoji",
-      app_store: true,
       provisioning_name: profile_name,
       force: true,
     )
@@ -45,39 +44,47 @@ platform :ios do
 end
 
 platform :ios do
-  desc "One-time: register the bundle id + create the App Store Connect app record (API key)"
+  desc "One-time: create the App Store Connect app record via the stored Apple ID session"
   lane :bootstrap do
-    require 'spaceship'
-    token = Spaceship::ConnectAPI::Token.create(
+    produce(
+      username: "romanticamaj@gmail.com",
+      app_identifier: "com.garyhsieh.haoji",
+      app_name: "好記",
+      language: "Traditional Chinese",
+      sku: "haoji-garyhsieh-2026",
+      company_name: "Gary Hsieh",
+      team_id: "64N77Z6TV3",
+      skip_devcenter: true,
+    )
+  end
+end
+
+platform :ios do
+  desc "Ensure an internal TestFlight group exists and add an internal tester (email via ENV TESTER_EMAIL)"
+  lane :add_tester do
+    app_store_connect_api_key(
       key_id: "S4KA24P9A5",
       issuer_id: "efcfbd71-5d12-4d85-8efc-5cee020286d9",
-      filepath: File.expand_path("~/.private_keys/AuthKey_S4KA24P9A5.p8"),
+      key_filepath: File.expand_path("~/.private_keys/AuthKey_S4KA24P9A5.p8"),
     )
-    Spaceship::ConnectAPI.token = token
-
-    bundle_id = "com.garyhsieh.haoji"
-    bid = Spaceship::ConnectAPI::BundleId.all.find { |b| b.identifier == bundle_id }
-    if bid.nil?
-      bid = Spaceship::ConnectAPI::BundleId.create(name: "Haoji", identifier: bundle_id, platform: "IOS")
-      UI.success("Registered bundle id #{bundle_id} (#{bid.id})")
+    email = ENV["TESTER_EMAIL"] || "romanticamaj@gmail.com"
+    app = Spaceship::ConnectAPI::App.find("com.garyhsieh.haoji")
+    group = app.get_beta_groups.find(&:is_internal_group)
+    if group.nil?
+      # create_beta_group always sends publicLink* attrs, which Apple rejects for internal
+      # groups — POST a clean internal-group body instead.
+      body = { data: { attributes: { name: "Internal", isInternalGroup: true, hasAccessToAllBuilds: true },
+                       relationships: { app: { data: { id: app.id, type: "apps" } } }, type: "betaGroups" } }
+      Spaceship::ConnectAPI.client.test_flight_request_client.post("v1/betaGroups", body)
+      group = app.get_beta_groups.find(&:is_internal_group)
+      UI.success("Created internal group '#{group.name}' (#{group.id})")
     else
-      UI.message("Bundle id already registered (#{bid.id})")
+      UI.message("Using internal group '#{group.name}' (#{group.id})")
     end
-
-    app = Spaceship::ConnectAPI::App.find(bundle_id)
-    if app.nil?
-      app = Spaceship::ConnectAPI::App.create(
-        name: "好記",
-        version_string: "1.0",
-        sku: "haoji-garyhsieh-2026",
-        primary_locale: "zh-Hant",
-        bundle_id: bid.id,
-        platforms: ["IOS"],
-        company_name: "Gary Hsieh",
-      )
-      UI.success("Created App Store Connect app id=#{app.id}")
-    else
-      UI.message("App already exists id=#{app.id}")
-    end
+    Spaceship::ConnectAPI.client.post_beta_tester_assignment(
+      beta_group_ids: [group.id],
+      attributes: { email: email, firstName: "Gary", lastName: "Hsieh" },
+    )
+    UI.success("Added internal tester #{email} to '#{group.name}'")
   end
 end
