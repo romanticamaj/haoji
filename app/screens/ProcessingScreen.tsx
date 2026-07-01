@@ -61,7 +61,7 @@ export default function ProcessingScreen() {
     </View>
   );
 }
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(() => r(), ms));
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 24 },
   msg: { marginTop: 16, color: '#8e8e93', fontSize: 15 },
