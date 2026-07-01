@@ -1,9 +1,9 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
 jest.mock('../../lib/api', () => ({ analyze: jest.fn(), getModels: jest.fn().mockResolvedValue({ ok: true, models: [], default: '' }) }));
-jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn() }));
-jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn().mockResolvedValue(false), shareAsync: jest.fn() }));
-jest.mock('expo-file-system/legacy', () => ({ cacheDirectory: 'file:///c/', writeAsStringAsync: jest.fn() }));
+jest.mock('@react-native-clipboard/clipboard', () => ({ setString: jest.fn() }));
+jest.mock('react-native-share', () => ({ open: jest.fn().mockResolvedValue({}) }));
+jest.mock('react-native-fs', () => ({ DocumentDirectoryPath: '/doc', writeFile: jest.fn().mockResolvedValue(undefined), unlink: jest.fn().mockResolvedValue(undefined) }));
 import AnalysisTab from '../AnalysisTab';
 import { SavedSession } from '../../lib/store';
 

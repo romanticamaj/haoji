@@ -6,16 +6,18 @@ jest.mock('../../lib/api', () => ({
   analyze: (...a: any[]) => mockAnalyze(...a),
   getModels: jest.fn().mockResolvedValue({ ok: true, models: ['gemma4:e4b-it-qat'], default: 'gemma4:e4b-it-qat' }),
 }));
-jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn().mockResolvedValue(undefined) }));
-jest.mock('expo-sharing', () => ({ isAvailableAsync: jest.fn().mockResolvedValue(false), shareAsync: jest.fn() }));
-jest.mock('expo-file-system/legacy', () => ({
-  cacheDirectory: 'file:///cache/',
-  writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
+jest.mock('@react-native-clipboard/clipboard', () => ({ setString: jest.fn() }));
+jest.mock('react-native-share', () => ({ open: jest.fn().mockResolvedValue({}) }));
+jest.mock('react-native-fs', () => ({
+  DocumentDirectoryPath: '/doc',
+  writeFile: jest.fn().mockResolvedValue(undefined),
+  unlink: jest.fn().mockResolvedValue(undefined),
 }));
 import AnalysisTab from '../AnalysisTab';
 import { SavedSession } from '../../lib/store';
-import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system/legacy';
+import Share from 'react-native-share';
+import RNFS from 'react-native-fs';
+import Clipboard from '@react-native-clipboard/clipboard';
 
 const base: SavedSession = {
   id: 's', createdAt: 1, title: 't', unlocked: false, names: { SPEAKER_00: 'Gary' },
@@ -44,32 +46,32 @@ test('locked: shows preview and unlock CTA, hides copy action', async () => {
   expect(queryByText('複製')).toBeNull();
 });
 
-test('unlocked: shows full notes + 複製', async () => {
+test('unlocked: shows full notes + 複製; 複製 copies to clipboard', async () => {
   const s = { ...base, notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 機密重點', unlocked: true };
   const { getByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);
   getByText(/機密重點/);
-  getByText('複製');
+  fireEvent.press(getByText('複製'));
+  expect((Clipboard.setString as jest.Mock)).toHaveBeenCalledWith(expect.stringContaining('機密重點'));
 });
 
-test('匯出 writes temp file and shares via file:// URI', async () => {
-  (Sharing.isAvailableAsync as jest.Mock).mockResolvedValueOnce(true);
+test('匯出 writes temp .md and shares via file:// URI (no availability gate)', async () => {
   const s = { ...base, notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 機密重點', unlocked: true };
   const { getByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);
   fireEvent.press(getByText('匯出'));
-  await waitFor(() => expect(FileSystem.writeAsStringAsync).toHaveBeenCalled());
-  expect(Sharing.shareAsync).toHaveBeenCalledWith(expect.stringMatching(/^file:\/\//));
+  await waitFor(() => expect(RNFS.writeFile as jest.Mock).toHaveBeenCalled());
+  expect(Share.open as jest.Mock).toHaveBeenCalledWith(
+    expect.objectContaining({ url: expect.stringMatching(/^file:\/\/.*會議記錄\.md$/) }),
+  );
 });
 
 test('進階 model list: selecting a model passes it to analyze', async () => {
-  // Use two models so pressing the non-default one produces a visible state change
   const { getModels } = require('../../lib/api');
   (getModels as jest.Mock).mockResolvedValueOnce({ ok: true, models: ['gemma4:e4b-it-qat', 'phi4:mini'], default: 'gemma4:e4b-it-qat' });
   const onUpdate = jest.fn();
   const { getByText, findByText } = await render(<AnalysisTab session={base} onUpdate={onUpdate} onUnlock={() => {}} />);
   fireEvent.press(getByText('進階'));
-  await findByText(/phi4:mini/); // wait for models list to render
-  fireEvent.press(getByText(/phi4:mini/)); // press the non-default model
-  // Wait for the selection to visually change (first model loses ●)
+  await findByText(/phi4:mini/);
+  fireEvent.press(getByText(/phi4:mini/));
   await waitFor(() => getByText(/○ gemma4:e4b-it-qat/));
   fireEvent.press(getByText('生成會議記錄'));
   await waitFor(() => expect(mockAnalyze).toHaveBeenCalledWith('s', { model: 'phi4:mini', names: { SPEAKER_00: 'Gary' } }));

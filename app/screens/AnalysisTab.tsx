@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
-import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system/legacy';
+import Clipboard from '@react-native-clipboard/clipboard';
+import Share from 'react-native-share';
+import RNFS from 'react-native-fs';
 import Markdown from 'react-native-markdown-display';
 import { analyze, getModels } from '../lib/api';
 import { splitNotesForPreview } from '../lib/gating';
@@ -35,14 +35,17 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
     } catch (e: any) { setErr(e?.message || '生成失敗'); }
     setBusy(false);
   }
-  async function copy() { await Clipboard.setStringAsync(session.notes ?? ''); }
+  function copy() { Clipboard.setString(session.notes ?? ''); }
   async function exportMd() {
+    const path = `${RNFS.DocumentDirectoryPath}/會議記錄.md`;
     try {
-      if (!(await Sharing.isAvailableAsync())) return;
-      const uri = FileSystem.cacheDirectory + 'meeting-notes.md';
-      await FileSystem.writeAsStringAsync(uri, session.notes ?? '');
-      await Sharing.shareAsync(uri);
-    } catch (e) { /* do not crash */ }
+      await RNFS.writeFile(path, session.notes ?? '', 'utf8');
+      await Share.open({ url: `file://${path}`, type: 'text/markdown', filename: '會議記錄.md' });
+    } catch (e) {
+      // Share.open rejects when the user dismisses the sheet — not an error; do not crash.
+    } finally {
+      try { await RNFS.unlink(path); } catch {}
+    }
   }
 
   if (!session.notes) {
