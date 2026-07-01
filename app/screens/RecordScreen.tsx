@@ -1,32 +1,32 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import { useRecorder } from '../hooks/useRecorder';
-import { createSession } from '../lib/api';
 import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
 import Waveform from '../components/Waveform';
 import BreathingRing from '../components/BreathingRing';
 
+// Recording is local-first: the session id is generated on-device so the record button is never
+// gated on a backend round-trip (the GPU box is often unreachable from the phone unless Tailscale
+// is up). The backend draft session is created lazily in ProcessingScreen at upload time.
+const makeLocalId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 export default function RecordScreen() {
-  // I1 fix: hold session id in state so re-render fires when it resolves
-  const [sid, setSid] = useState<string | null>(null);
   const store = useStore();
   const nav = useNavigation<any>();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    createSession()
-      .then((id) => {
-        setSid(id);
-        store.upsert({ id, createdAt: Date.now(), title: new Date().toLocaleString(), names: {}, unlocked: false, parts: [] });
-      })
-      .catch(() => setErr('無法建立工作'));
-  }, []);
+  // Local id available immediately — recording works fully offline.
+  const [sid] = useState(makeLocalId);
 
-  const rec = useRecorder(sid ?? 'pending');
+  React.useEffect(() => {
+    store.upsert({ id: sid, createdAt: Date.now(), title: new Date().toLocaleString(), names: {}, unlocked: false, parts: [] });
+  }, [sid]);
+
+  const rec = useRecorder(sid);
 
   async function onStop() {
     const parts = await rec.stop();
@@ -48,9 +48,9 @@ export default function RecordScreen() {
     if (!file) return;
     setBusy(true); setErr(null);
     try {
-      // C2 fix: do NOT call uploadPart here — ProcessingScreen owns all uploads.
-      // Just create the session, persist the local uri as a draft part, and hand off.
-      const id = await createSession();
+      // C2 fix: do NOT call uploadPart or createSession here — ProcessingScreen owns all backend
+      // work. Just persist the picked file as a draft part under a local id and hand off.
+      const id = makeLocalId();
       const createdAt = Date.now();
       const title = new Date().toLocaleString();
       await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: file.uri, durationMs: 0 }] });
@@ -60,6 +60,7 @@ export default function RecordScreen() {
 
   const isRec = rec.state === 'recording';
   const isPaused = rec.state === 'paused';
+  const isStarting = rec.state === 'starting';
 
   if (busy) return <View style={styles.center}><ActivityIndicator color="#E5342B" size="large" /><Text style={styles.hint}>上傳中…</Text></View>;
 
@@ -72,13 +73,25 @@ export default function RecordScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={isRec ? '停止錄音' : '開始錄音'}
+          accessibilityState={{ busy: isStarting, disabled: !sid || isStarting }}
           style={[styles.recordBtn, (isRec || isPaused) && styles.recordBtnActive]}
           onPress={isRec || isPaused ? onStop : rec.start}
-          disabled={!sid}
+          disabled={!sid || isStarting}
         >
-          <View style={isRec ? styles.squareIcon : styles.circleIcon} />
+          {isStarting ? <ActivityIndicator color="#fff" /> : <View style={isRec ? styles.squareIcon : styles.circleIcon} />}
         </Pressable>
       </View>
+      {isStarting && <Text style={styles.hint}>啟動麥克風中…</Text>}
+      {rec.error && (
+        <View style={styles.recErrWrap}>
+          <Text style={styles.err}>{rec.error}</Text>
+          {/權限|麥克風|設定/.test(rec.error) && (
+            <Pressable onPress={() => Linking.openSettings()} accessibilityRole="button">
+              <Text style={styles.settingsLink}>前往設定開啟麥克風</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
       {(isRec || isPaused) && !rec.wasInterrupted && (
         <Pressable style={styles.secondary} onPress={isPaused ? rec.resume : rec.pause} accessibilityRole="button">
           <Text style={styles.secondaryText}>{isPaused ? '繼續' : '暫停'}</Text>
@@ -116,7 +129,9 @@ const styles = StyleSheet.create({
   secondaryText: { color: '#1c1c1e', fontSize: 16, fontWeight: '600' },
   uploadBtn: { marginTop: 48, paddingVertical: 12, paddingHorizontal: 24 },
   uploadText: { color: RED, fontSize: 16, fontWeight: '600' },
-  err: { color: RED, marginTop: 20 },
+  err: { color: RED, marginTop: 20, textAlign: 'center', paddingHorizontal: 24 },
+  recErrWrap: { alignItems: 'center', marginTop: 8 },
+  settingsLink: { color: RED, fontSize: 15, fontWeight: '700', marginTop: 10, textDecorationLine: 'underline' },
   resumeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 12 },
   resumeText: { color: '#1c1c1e', fontSize: 15 },
   resumeBtn: { color: RED, fontSize: 15, fontWeight: '600' },

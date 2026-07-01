@@ -30,7 +30,8 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
   async function generate() {
     setBusy(true); setErr(null);
     try {
-      const r = await analyze(session.id, { model, names: session.names });
+      // analyze runs against the backend draft session (holds the transcript), not the local id.
+      const r = await analyze(session.backendId ?? session.id, { model, names: session.names });
       onUpdate({ ...session, notes: r.notes });
     } catch (e: any) { setErr(e?.message || '生成失敗'); }
     setBusy(false);

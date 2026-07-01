@@ -38,6 +38,14 @@ test('generating notes calls analyze with names and saves via onUpdate', async (
   expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ notes: expect.stringContaining('會議摘要') }));
 });
 
+test('analyze targets the backend id when present (not the local id)', async () => {
+  const onUpdate = jest.fn();
+  const s = { ...base, id: 'local-123', backendId: 'backend-xyz' };
+  const { getByText } = await render(<AnalysisTab session={s} onUpdate={onUpdate} onUnlock={() => {}} />);
+  fireEvent.press(getByText('生成會議記錄'));
+  await waitFor(() => expect(mockAnalyze).toHaveBeenCalledWith('backend-xyz', { model: undefined, names: { SPEAKER_00: 'Gary' } }));
+});
+
 test('locked: shows preview and unlock CTA, hides copy action', async () => {
   const s = { ...base, notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 機密重點', unlocked: false };
   const { getByText, queryByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);

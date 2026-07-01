@@ -47,6 +47,32 @@ test('start records with metering enabled', async () => {
   expect(S.startRecorder).toHaveBeenCalledWith(expect.stringContaining('rec-s-0'), expect.any(Object), true);
 });
 
+// The reported bug: a failed startRecorder must NOT leave the UI silently idle with no feedback.
+test('startRecorder rejection surfaces an error and returns to idle (no silent hang)', async () => {
+  S.startRecorder.mockRejectedValueOnce(new Error('Recording permission denied. Please enable microphone access in Settings.'));
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  expect(result.current.state).toBe('idle');
+  expect(result.current.error).toMatch(/麥克風權限/);
+});
+
+test('a generic startRecorder failure is reported, not swallowed', async () => {
+  S.startRecorder.mockRejectedValueOnce(new Error('Audio session setup failed: boom'));
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  expect(result.current.state).toBe('idle');
+  expect(result.current.error).toMatch(/無法(開始|啟動)錄音|麥克風/);
+});
+
+test('clearError resets the error', async () => {
+  S.startRecorder.mockRejectedValueOnce(new Error('permission denied'));
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  expect(result.current.error).toBeTruthy();
+  await act(async () => { result.current.clearError(); });
+  expect(result.current.error).toBeNull();
+});
+
 test('stop finalizes a part and returns parts array', async () => {
   const { result } = await renderHook(() => useRecorder('s'));
   await act(async () => { await result.current.start(); });

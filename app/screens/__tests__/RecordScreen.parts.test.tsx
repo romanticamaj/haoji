@@ -1,10 +1,10 @@
 import React from 'react';
-import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 
 const mockRecApi = {
   state: 'idle', durationMs: 0, meteringLevel: 0,
-  parts: [], wasInterrupted: false,
-  start: jest.fn(), pause: jest.fn(), resume: jest.fn(),
+  parts: [], wasInterrupted: false, error: null as string | null,
+  start: jest.fn(), pause: jest.fn(), resume: jest.fn(), clearError: jest.fn(),
   stop: jest.fn().mockResolvedValue([{ uri: 'file:///r.m4a', durationMs: 1000 }]),
 };
 jest.mock('../../hooks/useRecorder', () => ({ useRecorder: () => mockRecApi }));
@@ -33,7 +33,7 @@ import RecordScreen from '../RecordScreen';
 import * as api from '../../lib/api';
 import { pick } from '@react-native-documents/picker';
 
-beforeEach(() => { jest.clearAllMocks(); mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false;
+beforeEach(() => { jest.clearAllMocks(); mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false; mockRecApi.error = null;
   // Re-establish implementations cleared by clearAllMocks
   (api.createSession as jest.Mock).mockResolvedValue('sess123');
   (api.uploadPart as jest.Mock).mockResolvedValue(1);
@@ -61,39 +61,30 @@ test('pressing 繼續 in interruption prompt calls resume', async () => {
 test('pressing 結束 in interruption prompt stops recording and navigates to Processing', async () => {
   mockRecApi.wasInterrupted = true;
   const { getByText } = await render(<RecordScreen />);
-  await waitFor(() => expect(mockStore.upsert).toHaveBeenCalled()); // ensure session created
+  await waitFor(() => expect(mockStore.upsert).toHaveBeenCalled()); // ensure local session created
   fireEvent.press(getByText('結束'));
   await waitFor(() => expect(mockRecApi.stop).toHaveBeenCalled());
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: 'sess123' }));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
 });
 
-// C2 fix: onUpload must NOT call uploadPart; ProcessingScreen owns all uploads
-test('C2: pressing 上傳 creates session, skips uploadPart, stores draft part, navigates to Processing', async () => {
+// C2 + local-first: onUpload must NOT call createSession or uploadPart; ProcessingScreen owns all backend work
+test('C2: pressing 上傳 skips backend, stores draft part, navigates to Processing', async () => {
   (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('上傳音檔 / 影片'));
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: 'sess123' }));
-  expect(api.createSession).toHaveBeenCalled();
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+  expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
   expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
     parts: [{ uri: 'file:///u.m4a', durationMs: 0 }],
   }));
 });
 
-// I1 fix: record button disabled while createSession is unresolved
-test('I1: record button is disabled until createSession resolves', async () => {
-  let resolveSession!: (id: string) => void;
-  const sessionPromise = new Promise<string>((res) => { resolveSession = res; });
-  (api.createSession as jest.Mock).mockReturnValueOnce(sessionPromise);
-
+// Local-first fix (replaces the old I1 "disable until createSession resolves" behavior, which WAS the
+// bug): recording must be usable instantly, with no backend round-trip.
+test('record button is enabled immediately without any backend call', async () => {
   const { getByLabelText } = await render(<RecordScreen />);
-  // sid is null → Pressable sets accessibilityState.disabled = true
-  expect(getByLabelText('開始錄音').props.accessibilityState).toMatchObject({ disabled: true });
-
-  // Resolve the session id
-  await act(async () => { resolveSession('sess-resolved'); });
-
-  // sid is now set → button is enabled (disabled false or absent)
-  const disabledAfter = getByLabelText('開始錄音').props.accessibilityState?.disabled;
-  expect(disabledAfter).toBeFalsy();
+  const disabled = getByLabelText('開始錄音').props.accessibilityState?.disabled;
+  expect(disabled).toBeFalsy();
+  expect(api.createSession).not.toHaveBeenCalled();
 });

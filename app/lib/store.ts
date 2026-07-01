@@ -6,6 +6,10 @@ export type SavedSession = {
   transcript?: Transcript; names: Record<string, string>;
   notes?: string; unlocked: boolean;
   parts: { uri: string; durationMs: number }[];
+  // Backend draft-session id, created lazily in ProcessingScreen at upload time. `id` is a
+  // local, device-generated id so recording never depends on backend reachability; `backendId`
+  // is what the transcribe/analyze endpoints key on.
+  backendId?: string;
 };
 
 export interface SessionStore {

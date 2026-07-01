@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { uploadPart, transcribe, getSession } from '../lib/api';
+import { createSession, uploadPart, transcribe, getSession } from '../lib/api';
 import { useStore } from '../lib/store-context';
 
 export default function ProcessingScreen() {
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const store = useStore();
+  // Local id (device source of truth). The backend draft session is created lazily below; all
+  // results are persisted back under this local id.
   const sessionId: string = route.params.sessionId;
   const [message, setMessage] = useState('準備中…');
   const [error, setError] = useState<string | null>(null);
@@ -18,16 +20,25 @@ export default function ProcessingScreen() {
     (async () => {
       const s0 = await store.get(sessionId);
       const parts = s0?.parts ?? [];
+
+      // Create the backend draft session now (recording/upload up to this point was fully offline).
+      // Reuse an existing backendId if this screen is retried for the same local session.
+      setMessage('連線後端…');
+      let backendId: string;
+      try { backendId = s0?.backendId ?? (await createSession()); }
+      catch { setError('無法連線後端，請確認手機已連上 Tailscale／後端已啟動。'); return; }
+      if (cancelled.current) return;
+
       for (let i = 0; i < parts.length; i++) {
         setMessage(`上傳中… ${i + 1}/${parts.length}`);
-        try { await uploadPart(sessionId, { uri: parts[i].uri, name: `part-${i}.m4a`, mime: 'audio/mp4' }); }
+        try { await uploadPart(backendId, { uri: parts[i].uri, name: `part-${i}.m4a`, mime: 'audio/mp4' }); }
         catch (e: any) { setError('上傳失敗：' + (e?.message || '')); return; }
       }
       setMessage('開始辨識…');
-      try { await transcribe(sessionId); }
+      try { await transcribe(backendId); }
       catch (e: any) { setError(e?.message || '辨識失敗'); return; }
       while (!cancelled.current) {
-        let s; try { s = await getSession(sessionId); } catch { await delay(1500); continue; }
+        let s; try { s = await getSession(backendId); } catch { await delay(1500); continue; }
         setMessage(s.message || s.status);
         if (s.status === 'done') {
           const existing = await store.get(sessionId);
@@ -36,7 +47,7 @@ export default function ProcessingScreen() {
             title: existing?.title ?? new Date().toLocaleString(),
             transcript: s.transcript, names: existing?.names ?? {},
             notes: existing?.notes, unlocked: existing?.unlocked ?? false,
-            parts: existing?.parts ?? [],
+            parts: existing?.parts ?? [], backendId,
           });
           nav.replace('Results', { sessionId });
           return;

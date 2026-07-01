@@ -12,12 +12,23 @@ import { moveToPart } from '../lib/recordings';
 import { onAudioInterruption } from '../lib/audioInterruption';
 
 export type Part = { uri: string; durationMs: number };
-export type RecorderState = 'idle' | 'recording' | 'paused' | 'stopped';
+export type RecorderState = 'idle' | 'starting' | 'recording' | 'paused' | 'stopped';
 export type RecorderApi = {
   state: RecorderState; durationMs: number; meteringLevel: number; parts: Part[]; wasInterrupted: boolean;
+  error: string | null;
   start(): Promise<void>; pause(): Promise<void>; resume(): Promise<void>; stop(): Promise<Part[]>;
+  clearError(): void;
 };
 const dbToLevel = (db?: number) => (db == null ? 0 : (Math.max(-60, Math.min(0, db)) + 60) / 60);
+
+// nitro-sound's native startRecorder rejects with English messages (permission denied, audio
+// session failures). Map them to a user-facing zh-TW message so recording never fails silently.
+export function recorderErrorMessage(e: unknown): string {
+  const raw = (e && ((e as any).message || String(e))) || '';
+  if (/permission|denied|microphone|麥克風/i.test(raw)) return '沒有麥克風權限，請到「設定 > 好記」開啟麥克風後再試。';
+  if (/session|another app|in use|hijack/i.test(raw)) return '無法啟動錄音（麥克風可能被其他 App／通話佔用）。請關閉後重試。';
+  return raw ? `無法開始錄音：${raw}` : '無法開始錄音，請重試。';
+}
 
 const AUDIO_SET: AudioSet = {
   AVFormatIDKeyIOS: 'aac',
@@ -39,6 +50,7 @@ export function useRecorder(sessionId: string): RecorderApi {
   const [meteringLevel, setMeteringLevel] = useState(0);
   const [parts, setParts] = useState<Part[]>([]);
   const [wasInterrupted, setWasInterrupted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // C1: keep a ref in sync with state so the interruption handler always sees the current value
   const goto = (s: RecorderState) => { stateRef.current = s; setState(s); };
@@ -72,26 +84,38 @@ export function useRecorder(sessionId: string): RecorderApi {
   async function onInterrupted() { await finalize(); setWasInterrupted(true); setMeteringLevel(0); goto('paused'); }
 
   async function start() {
-    if (Platform.OS === 'android') {
-      const g = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-      if (g !== PermissionsAndroid.RESULTS.GRANTED) throw new Error('需要麥克風權限');
+    setError(null);
+    goto('starting'); // immediate feedback so a tap is never silently ignored
+    try {
+      if (Platform.OS === 'android') {
+        const g = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+        if (g !== PermissionsAndroid.RESULTS.GRANTED) throw new Error('microphone permission denied');
+      }
+      partsRef.current = []; setParts([]); setWasInterrupted(false);
+      unsubRef.current?.();
+      // interrupted → finalize the current part; resume() then starts a fresh part
+      unsubRef.current = onAudioInterruption(() => { if (stateRef.current === 'recording') void onInterrupted(); });
+      await beginPart(); // → goto('recording') on success; throws (rejects) on permission/session failure
+    } catch (e) {
+      unsubRef.current?.(); unsubRef.current = null;
+      setError(recorderErrorMessage(e));
+      goto('idle');
     }
-    partsRef.current = []; setParts([]); setWasInterrupted(false);
-    unsubRef.current?.();
-    // interrupted → finalize the current part; resume() then starts a fresh part
-    unsubRef.current = onAudioInterruption(() => { if (stateRef.current === 'recording') void onInterrupted(); });
-    await beginPart();
   }
 
   async function pause() { goto('paused'); await Sound.pauseRecorder(); }
   async function resume() {
-    if (wasInterrupted) { setWasInterrupted(false); await beginPart(); }   // interrupted → new part
-    else { await Sound.resumeRecorder(); goto('recording'); }              // manual → same part
+    if (wasInterrupted) {
+      // interrupted → new part; surface a failure instead of hanging on the "繼續" prompt
+      setWasInterrupted(false); setError(null); goto('starting');
+      try { await beginPart(); }
+      catch (e) { setError(recorderErrorMessage(e)); goto('idle'); }
+    } else { await Sound.resumeRecorder(); goto('recording'); } // manual → same part
   }
   async function stop() {
     goto('stopped'); await finalize(); setMeteringLevel(0);
     unsubRef.current?.(); unsubRef.current = null;
     return partsRef.current;
   }
-  return { state, durationMs, meteringLevel, parts, wasInterrupted, start, pause, resume, stop };
+  return { state, durationMs, meteringLevel, parts, wasInterrupted, error, start, pause, resume, stop, clearError: () => setError(null) };
 }
