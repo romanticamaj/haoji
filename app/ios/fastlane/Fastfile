@@ -43,3 +43,41 @@ platform :ios do
     upload_to_testflight(api_key: key, skip_waiting_for_build_processing: true)
   end
 end
+
+platform :ios do
+  desc "One-time: register the bundle id + create the App Store Connect app record (API key)"
+  lane :bootstrap do
+    require 'spaceship'
+    token = Spaceship::ConnectAPI::Token.create(
+      key_id: "S4KA24P9A5",
+      issuer_id: "efcfbd71-5d12-4d85-8efc-5cee020286d9",
+      filepath: File.expand_path("~/.private_keys/AuthKey_S4KA24P9A5.p8"),
+    )
+    Spaceship::ConnectAPI.token = token
+
+    bundle_id = "com.garyhsieh.haoji"
+    bid = Spaceship::ConnectAPI::BundleId.all.find { |b| b.identifier == bundle_id }
+    if bid.nil?
+      bid = Spaceship::ConnectAPI::BundleId.create(name: "Haoji", identifier: bundle_id, platform: "IOS")
+      UI.success("Registered bundle id #{bundle_id} (#{bid.id})")
+    else
+      UI.message("Bundle id already registered (#{bid.id})")
+    end
+
+    app = Spaceship::ConnectAPI::App.find(bundle_id)
+    if app.nil?
+      app = Spaceship::ConnectAPI::App.create(
+        name: "好記",
+        version_string: "1.0",
+        sku: "haoji-garyhsieh-2026",
+        primary_locale: "zh-Hant",
+        bundle_id: bid.id,
+        platforms: ["IOS"],
+        company_name: "Gary Hsieh",
+      )
+      UI.success("Created App Store Connect app id=#{app.id}")
+    else
+      UI.message("App already exists id=#{app.id}")
+    end
+  end
+end
