@@ -30,19 +30,21 @@ export function recorderErrorMessage(e: unknown): string {
   return raw ? `無法開始錄音：${raw}` : '無法開始錄音，請重試。';
 }
 
-// Recorder settings tuned for on-device AAC capture. nitro-sound's built-in `high` preset is
-// 48kHz / 2ch / 192kbps; we record mono for speech, but overriding only channels+rate (not
-// bitrate) left the 192kbps *stereo* bitrate in the settings dict — the device hardware AAC
-// encoder rejects that for a mono 44.1kHz stream, so prepareToRecord() returned false ("Failed
-// to prepare recorder") on real iPhones while the simulator's permissive software encoder passed.
-// Fix: match the device-native 48kHz input rate and set a valid mono bitrate. 64kbps mono is
-// plenty for speech/ASR — the backend downsamples to 16kHz mono WAV anyway.
+// AAC capture settings. IMPORTANT: the NitroModules C++ interop currently corrupts the numeric
+// AudioSet fields (sample rate, channels, quality) between JS and Swift — they arrive as finite
+// garbage (e.g. a sample rate of ~3.99e252), which passed AVAudioRecorder init but made
+// prepareToRecord() return false ("Failed to prepare recorder") on every device and the simulator.
+// That was the real cause of "recording doesn't work" (NOT the audio session, file path, or the
+// exact bitrate we chased earlier). The fix lives natively in the vendored nitro-sound Swift
+// (patches/react-native-nitro-sound+0.2.15.patch → getAudioSettings clamps AVSampleRateKey to a
+// sane range and drops the garbage). The native layer therefore ignores these JS values and uses
+// its own 48kHz/AAC defaults; we still pass a valid dict for the day the interop bug is fixed
+// upstream. Mono/rate don't matter downstream — the backend downsamples to 16kHz mono WAV.
 const AUDIO_SET: AudioSet = {
   AVFormatIDKeyIOS: 'aac',
-  AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
   AVNumberOfChannelsKeyIOS: 1,
-  AVSampleRateKeyIOS: 48000,
-  AudioEncodingBitRate: 64000,
+  AVSampleRateKeyIOS: 44100,
+  AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.medium,
   AudioSourceAndroid: AudioSourceAndroidType.MIC,
   OutputFormatAndroid: OutputFormatAndroidType.MPEG_4,
   AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
@@ -67,7 +69,7 @@ export function useRecorder(sessionId: string): RecorderApi {
     const idx = partsRef.current.length;
     const tmp = `${RNFS.CachesDirectoryPath}/rec-${sessionId}-${idx}.m4a`;
     tmpPathRef.current = tmp;
-    // meteringEnabled MUST be true or currentMetering is undefined and the waveform stays flat
+    // meteringEnabled (3rd arg) MUST be true or currentMetering is undefined and the waveform stays flat
     await Sound.startRecorder(tmp, AUDIO_SET, true);
     Sound.addRecordBackListener((e) => {
       setDurationMs(e.currentPosition ?? 0);

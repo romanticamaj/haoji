@@ -1,0 +1,38 @@
+diff --git a/node_modules/react-native-nitro-sound/ios/Sound.swift b/node_modules/react-native-nitro-sound/ios/Sound.swift
+index 65cd4df..13d8538 100644
+--- a/node_modules/react-native-nitro-sound/ios/Sound.swift
++++ b/node_modules/react-native-nitro-sound/ios/Sound.swift
+@@ -135,7 +135,11 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+             print("🎙️ Recorder prepared: \(prepared)")
+ 
+             if !prepared {
+-                throw NSError(domain: "AudioRecorder", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare recorder"])
++                // HAOJI: include the settings dict + session state in the error so a future
++                // prepare failure is diagnosable from the JS layer (no side effects).
++                let s = AVAudioSession.sharedInstance()
++                let diag = "cat=\(s.category.rawValue) active_sr=\(s.sampleRate) inAvail=\(s.isInputAvailable) settings=\(settings)"
++                throw NSError(domain: "AudioRecorder", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare recorder | \(diag)"])
+             }
+ 
+             // Start recording on main queue
+@@ -771,6 +775,20 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+             }
+         }
+ 
++        // HAOJI_FIX: the NitroModules C++ interop delivers AudioSet Double fields as finite
++        // garbage (e.g. 3.99e+252 for the sample rate) that passes the isFinite check in
++        // safeDouble but makes AVAudioRecorder.prepareToRecord() return false ("Failed to prepare
++        // recorder"). AVSampleRateKey is the only Double in the settings dict (the rest are Ints,
++        // which safeInt already coerces to nil). Clamp it to a valid audio range; if it's garbage,
++        // fall back to 44.1kHz.
++        if let sr = settings[AVSampleRateKey] as? Double, sr >= 8000, sr <= 192000 {
++            // sane value, keep it
++        } else if let sr = settings[AVSampleRateKey] as? Int, sr >= 8000, sr <= 192000 {
++            // sane integer value, keep it
++        } else {
++            settings[AVSampleRateKey] = 44100.0
++        }
++
+         return settings
+     }
+ 
