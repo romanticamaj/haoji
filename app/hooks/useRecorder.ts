@@ -30,11 +30,19 @@ export function recorderErrorMessage(e: unknown): string {
   return raw ? `無法開始錄音：${raw}` : '無法開始錄音，請重試。';
 }
 
+// Recorder settings tuned for on-device AAC capture. nitro-sound's built-in `high` preset is
+// 48kHz / 2ch / 192kbps; we record mono for speech, but overriding only channels+rate (not
+// bitrate) left the 192kbps *stereo* bitrate in the settings dict — the device hardware AAC
+// encoder rejects that for a mono 44.1kHz stream, so prepareToRecord() returned false ("Failed
+// to prepare recorder") on real iPhones while the simulator's permissive software encoder passed.
+// Fix: match the device-native 48kHz input rate and set a valid mono bitrate. 64kbps mono is
+// plenty for speech/ASR — the backend downsamples to 16kHz mono WAV anyway.
 const AUDIO_SET: AudioSet = {
   AVFormatIDKeyIOS: 'aac',
   AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.high,
   AVNumberOfChannelsKeyIOS: 1,
-  AVSampleRateKeyIOS: 44100,
+  AVSampleRateKeyIOS: 48000,
+  AudioEncodingBitRate: 64000,
   AudioSourceAndroid: AudioSourceAndroidType.MIC,
   OutputFormatAndroid: OutputFormatAndroidType.MPEG_4,
   AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
