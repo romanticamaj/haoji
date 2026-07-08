@@ -8,6 +8,7 @@ jest.mock('react-native-share', () => ({ open: jest.fn().mockResolvedValue({}) }
 jest.mock('react-native-fs', () => ({ DocumentDirectoryPath: '/doc', writeFile: jest.fn().mockResolvedValue(undefined), unlink: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('@react-navigation/native', () => ({
   useRoute: () => ({ params: { sessionId: 's' } }),
+  useNavigation: () => ({ navigate: jest.fn(), replace: jest.fn() }),
   useFocusEffect: (cb: any) => { const React = require('react'); React.useEffect(cb, []); },
 }));
 import ResultsScreen from '../ResultsScreen';
@@ -15,7 +16,7 @@ import { StoreProvider } from '../../lib/store-context';
 import { createMemoryStore, SavedSession } from '../../lib/store';
 
 const seed: SavedSession = { id: 's', createdAt: 1, title: 't', unlocked: true, names: {},
-  transcript: { speakers: [], segments: [] }, parts: [] };
+  transcript: { speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 1, speaker: 'SPEAKER_00', text: '嗨' }] }, parts: [] };
 
 test('AI-analysis result survives switching tabs away and back', async () => {
   const store = createMemoryStore([seed]);

@@ -11,6 +11,9 @@ export default function ProcessingScreen() {
   // Local id (device source of truth). The backend draft session is created lazily below; all
   // results are persisted back under this local id.
   const sessionId: string = route.params.sessionId;
+  // regen (from "重新生成逐字稿"): force a brand-new backend session instead of reusing the old
+  // backendId, whose uploaded parts were already deleted server-side after the previous attempt.
+  const regen: boolean = route.params.regen ?? false;
   const [message, setMessage] = useState('準備中…');
   const [error, setError] = useState<string | null>(null);
   const cancelled = useRef(false);
@@ -25,7 +28,7 @@ export default function ProcessingScreen() {
       // Reuse an existing backendId if this screen is retried for the same local session.
       setMessage('連線後端…');
       let backendId: string;
-      try { backendId = s0?.backendId ?? (await createSession()); }
+      try { backendId = (!regen && s0?.backendId) ? s0.backendId : (await createSession()); }
       catch { setError('無法連線後端，請確認手機已連上 Tailscale／後端已啟動。'); return; }
       if (cancelled.current) return;
 

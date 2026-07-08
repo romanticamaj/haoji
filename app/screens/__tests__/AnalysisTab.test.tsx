@@ -46,20 +46,42 @@ test('analyze targets the backend id when present (not the local id)', async () 
   await waitFor(() => expect(mockAnalyze).toHaveBeenCalledWith('backend-xyz', { model: undefined, names: { SPEAKER_00: 'Gary' } }));
 });
 
+test('no transcript: blocks generation, shows gate hint + 前往逐字稿', async () => {
+  const onGo = jest.fn();
+  const s = { ...base, transcript: { speakers: [], segments: [] } };
+  const { getByText, queryByText } = await render(
+    <AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} onGoToTranscript={onGo} />);
+  expect(queryByText('生成會議記錄')).toBeNull();
+  getByText(/還沒有逐字稿/);
+  fireEvent.press(getByText('前往逐字稿'));
+  expect(onGo).toHaveBeenCalled();
+});
+
 test('locked: shows preview and unlock CTA, hides copy action', async () => {
   const s = { ...base, notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 機密重點', unlocked: false };
   const { getByText, queryByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);
   getByText(/摘要內容/);
   getByText('🔒 解鎖完整內容');
-  expect(queryByText('複製')).toBeNull();
+  expect(queryByText('複製 Markdown')).toBeNull();
+  expect(queryByText('複製純文字')).toBeNull();
 });
 
-test('unlocked: shows full notes + 複製; 複製 copies to clipboard', async () => {
+test('unlocked: 複製 Markdown copies raw markdown to clipboard', async () => {
   const s = { ...base, notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 機密重點', unlocked: true };
   const { getByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);
   getByText(/機密重點/);
-  fireEvent.press(getByText('複製'));
-  expect((Clipboard.setString as jest.Mock)).toHaveBeenCalledWith(expect.stringContaining('機密重點'));
+  fireEvent.press(getByText('複製 Markdown'));
+  expect((Clipboard.setString as jest.Mock)).toHaveBeenCalledWith(expect.stringContaining('## 會議摘要'));
+});
+
+test('unlocked: 複製純文字 copies markdown-stripped plain text', async () => {
+  const s = { ...base, notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 機密重點', unlocked: true };
+  const { getByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);
+  fireEvent.press(getByText('複製純文字'));
+  const arg = (Clipboard.setString as jest.Mock).mock.calls[0][0] as string;
+  expect(arg).toContain('會議摘要');
+  expect(arg).not.toContain('##');
+  expect(arg).toContain('• 機密重點');
 });
 
 test('匯出 writes temp .md and shares via file:// URI (no availability gate)', async () => {

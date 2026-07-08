@@ -6,6 +6,7 @@ import RNFS from 'react-native-fs';
 import Markdown from 'react-native-markdown-display';
 import { analyze, getModels } from '../lib/api';
 import { splitNotesForPreview } from '../lib/gating';
+import { markdownToPlainText } from '../lib/notes';
 import { SavedSession } from '../lib/store';
 
 const mdStyles = {
@@ -17,8 +18,9 @@ const mdStyles = {
   list_item: { marginVertical: 2 },
 } as const;
 
-export default function AnalysisTab({ session, onUpdate, onUnlock }:
-  { session: SavedSession; onUpdate(s: SavedSession): void; onUnlock(): void }) {
+export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscript }:
+  { session: SavedSession; onUpdate(s: SavedSession): void; onUnlock(): void; onGoToTranscript?(): void }) {
+  const hasTranscript = (session.transcript?.segments?.length ?? 0) > 0;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showAdv, setShowAdv] = useState(false);
@@ -36,7 +38,8 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
     } catch (e: any) { setErr(e?.message || '生成失敗'); }
     setBusy(false);
   }
-  function copy() { Clipboard.setString(session.notes ?? ''); }
+  function copyMarkdown() { Clipboard.setString(session.notes ?? ''); }
+  function copyPlainText() { Clipboard.setString(markdownToPlainText(session.notes ?? '')); }
   async function exportMd() {
     const path = `${RNFS.DocumentDirectoryPath}/會議記錄.md`;
     try {
@@ -50,6 +53,18 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
   }
 
   if (!session.notes) {
+    // Flow gate: meeting notes are generated FROM the transcript, so block generation until a
+    // transcript exists (e.g. the backend died mid-transcription and never produced one).
+    if (!hasTranscript) {
+      return (
+        <View style={styles.center}>
+          <Text style={styles.hint}>還沒有逐字稿。請先完成「逐字稿」，才能生成 AI 會議記錄。</Text>
+          {onGoToTranscript && (
+            <Pressable style={styles.primary} onPress={onGoToTranscript}><Text style={styles.primaryText}>前往逐字稿</Text></Pressable>
+          )}
+        </View>
+      );
+    }
     return (
       <View style={styles.center}>
         {busy ? <><ActivityIndicator color="#E5342B" /><Text style={styles.hint}>本機 LLM 生成中…</Text></>
@@ -80,7 +95,8 @@ export default function AnalysisTab({ session, onUpdate, onUnlock }:
         <>
           <Markdown style={mdStyles}>{locked}</Markdown>
           <View style={styles.actions}>
-            <Pressable style={styles.ghost} onPress={copy}><Text style={styles.ghostText}>複製</Text></Pressable>
+            <Pressable style={styles.ghost} onPress={copyMarkdown}><Text style={styles.ghostText}>複製 Markdown</Text></Pressable>
+            <Pressable style={styles.ghost} onPress={copyPlainText}><Text style={styles.ghostText}>複製純文字</Text></Pressable>
             <Pressable style={styles.ghost} onPress={exportMd}><Text style={styles.ghostText}>匯出</Text></Pressable>
           </View>
         </>
@@ -111,7 +127,7 @@ const styles = StyleSheet.create({
   lockWrap: { marginTop: 8 },
   blurred: { opacity: 0.25 },
   lockOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 24 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 24 },
   ghost: { paddingVertical: 10, paddingHorizontal: 22, borderRadius: 20, backgroundColor: '#f2f2f7' },
   ghostText: { color: '#1c1c1e', fontWeight: '600' },
 });

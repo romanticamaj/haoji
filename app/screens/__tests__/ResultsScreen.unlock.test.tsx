@@ -3,6 +3,7 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 jest.mock('../../hooks/usePlayer', () => ({ usePlayer: () => ({ positionMs: 0, isPlaying: false, load: jest.fn().mockResolvedValue(undefined), seek: jest.fn(), toggle: jest.fn(), unload: jest.fn() }) }));
 jest.mock('@react-navigation/native', () => ({
   useRoute: () => ({ params: { sessionId: 's' } }),
+  useNavigation: () => ({ navigate: jest.fn(), replace: jest.fn() }),
   useFocusEffect: (cb: any) => { const React = require('react'); React.useEffect(cb, []); },
 }));
 jest.mock('../../lib/api', () => ({ analyze: jest.fn(), getModels: jest.fn().mockResolvedValue({ ok: true, models: [], default: '' }) }));
@@ -27,6 +28,6 @@ test('tapping unlock reveals the locked detail', async () => {
   fireEvent.press(await findByText('AI 分析'));
   await waitFor(() => expect(queryByText('🔒 解鎖完整內容')).not.toBeNull());
   fireEvent.press(await findByText('🔒 解鎖完整內容'));
-  await waitFor(() => getByText('複製'));
+  await waitFor(() => getByText('複製 Markdown'));
   await waitFor(() => expect(queryByText('🔒 解鎖完整內容')).toBeNull());
 });
