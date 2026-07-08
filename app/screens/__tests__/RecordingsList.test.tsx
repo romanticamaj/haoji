@@ -24,14 +24,14 @@ test('renders one row per part with label and duration', async () => {
 test('pressing play on row 1 calls load with its uri then toggle', async () => {
   const { getByTestId } = await render(<RecordingsList parts={parts} />);
   fireEvent.press(getByTestId('play-0'));
-  await waitFor(() => expect(mockPlayer.load).toHaveBeenCalledWith('file://p1'));
+  await waitFor(() => expect(mockPlayer.load).toHaveBeenCalledWith('file:///doc/p1')); // resolved to current Documents dir
   await waitFor(() => expect(mockPlayer.toggle).toHaveBeenCalled());
 });
 
 test('pressing play on row 2 calls load with its uri', async () => {
   const { getByTestId } = await render(<RecordingsList parts={parts} />);
   fireEvent.press(getByTestId('play-1'));
-  await waitFor(() => expect(mockPlayer.load).toHaveBeenCalledWith('file://p2'));
+  await waitFor(() => expect(mockPlayer.load).toHaveBeenCalledWith('file:///doc/p2')); // resolved to current Documents dir
 });
 
 test('renders nothing when parts is empty', async () => {

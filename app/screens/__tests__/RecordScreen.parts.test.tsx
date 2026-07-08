@@ -70,19 +70,20 @@ test('pressing 結束 in interruption prompt stops recording and navigates to Pr
 });
 
 // C2 + local-first: onUpload must NOT call createSession or uploadPart; ProcessingScreen owns all backend work
-test('C2: pressing 上傳 copies file locally, skips backend, stores draft part, navigates to Processing', async () => {
+test('C2: pressing 上傳 copies file into the persistent per-session dir, skips backend, navigates to Processing', async () => {
   (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('上傳音檔 / 影片'));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
-  // The part uri must be the STABLE local copy (not the security-scoped picker uri).
+  // First copy out of the security-scoped picker uri into the app cache...
   expect(keepLocalCopy).toHaveBeenCalledWith(expect.objectContaining({
-    files: [{ uri: 'file:///u.m4a', fileName: 'u.m4a' }], destination: 'documentDirectory',
+    files: [{ uri: 'file:///u.m4a', fileName: 'u.m4a' }], destination: 'cachesDirectory',
   }));
+  // ...then persist as a RELATIVE per-session path (survives app updates), not an absolute uri.
   expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
-    parts: [{ uri: 'file:///doc/haoji/u.m4a', durationMs: 0 }],
+    parts: [{ uri: expect.stringMatching(/^haoji\/local-.*\/part-0\.m4a$/), durationMs: 0 }],
   }));
 });
 

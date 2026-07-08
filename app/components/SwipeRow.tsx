@@ -1,0 +1,70 @@
+import React, { useRef } from 'react';
+import { Animated, PanResponder, StyleSheet, Text, Pressable, View, Alert } from 'react-native';
+
+const DELETE_W = 96;
+
+// Swipe a row left to reveal a red "刪除" button (iOS Voice-Memos style), then tap it to delete
+// (with a confirm). Built on core RN PanResponder/Animated so it needs no native gesture library —
+// the pan is only claimed for clearly-horizontal drags, so the vertical list scroll still works.
+export default function SwipeRow({
+  children, onDelete, confirmTitle, testID,
+}: { children: React.ReactNode; onDelete: () => void; confirmTitle: string; testID?: string }) {
+  const tx = useRef(new Animated.Value(0)).current;
+  const openRef = useRef(false);
+  const startX = useRef(0);
+
+  const snap = (open: boolean) => {
+    openRef.current = open;
+    Animated.spring(tx, { toValue: open ? -DELETE_W : 0, useNativeDriver: false, bounciness: 0 }).start();
+  };
+
+  const pan = useRef(
+    PanResponder.create({
+      // Only take over the touch when the drag is clearly horizontal, so vertical scrolling passes through.
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderGrant: () => { startX.current = openRef.current ? -DELETE_W : 0; },
+      onPanResponderMove: (_e, g) => {
+        let next = startX.current + g.dx;
+        if (next > 0) next = 0;                                   // don't drag past closed
+        if (next < -DELETE_W - 40) next = -DELETE_W - 40;          // slight rubber-band past open
+        tx.setValue(next);
+      },
+      onPanResponderRelease: (_e, g) => snap(startX.current + g.dx < -DELETE_W / 2),
+      onPanResponderTerminate: () => snap(openRef.current),
+    }),
+  ).current;
+
+  const confirmDelete = () => {
+    Alert.alert(confirmTitle, '刪除後無法復原，確定要刪除嗎？', [
+      { text: '取消', style: 'cancel', onPress: () => snap(false) },
+      { text: '刪除', style: 'destructive', onPress: () => { snap(false); onDelete(); } },
+    ]);
+  };
+
+  return (
+    <View style={styles.wrap}>
+      <View style={styles.deleteBg}>
+        <Pressable
+          testID={testID ? `${testID}-delete` : undefined}
+          accessibilityRole="button"
+          accessibilityLabel="刪除"
+          style={styles.deleteBtn}
+          onPress={confirmDelete}
+        >
+          <Text style={styles.deleteText}>刪除</Text>
+        </Pressable>
+      </View>
+      <Animated.View style={[styles.fg, { transform: [{ translateX: tx }] }]} {...pan.panHandlers}>
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { position: 'relative' },
+  deleteBg: { position: 'absolute', top: 0, right: 0, bottom: 0, width: DELETE_W, backgroundColor: '#E5342B', alignItems: 'center', justifyContent: 'center' },
+  deleteBtn: { flex: 1, width: DELETE_W, alignItems: 'center', justifyContent: 'center' },
+  deleteText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  fg: { backgroundColor: '#fff' },
+});

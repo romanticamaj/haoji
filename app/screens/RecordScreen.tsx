@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'r
 import { useNavigation } from '@react-navigation/native';
 import { pick, keepLocalCopy, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import { useRecorder } from '../hooks/useRecorder';
+import { moveToPart } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
 import Waveform from '../components/Waveform';
@@ -50,17 +51,19 @@ export default function RecordScreen() {
     try {
       // The picker hands back a security-scoped iOS uri whose access is released once we navigate
       // away — ProcessingScreen then can't read it to upload, so it hung on "上傳中…". Copy the file
-      // into the app's document dir first and hand off that stable file:// uri (same place
-      // recordings live). C2: still no backend call here — ProcessingScreen owns all backend work.
+      // into the app's cache, then move it into the persistent per-session dir (same place
+      // recordings live) so it survives app restarts/updates. We persist the RELATIVE path.
+      // C2: still no backend call here — ProcessingScreen owns all backend work.
       const [copied] = await keepLocalCopy({
         files: [{ uri: file.uri, fileName: file.name || `upload-${Date.now()}.m4a` }],
-        destination: 'documentDirectory',
+        destination: 'cachesDirectory',
       });
       if (copied.status !== 'success') throw new Error(copied.copyError || '檔案複製失敗，請再試一次');
       const id = makeLocalId();
       const createdAt = Date.now();
       const title = new Date().toLocaleString();
-      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: copied.localUri, durationMs: 0 }] });
+      const rel = await moveToPart(id, 0, copied.localUri);
+      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: rel, durationMs: 0 }] });
       nav.replace('Processing', { sessionId: id });
     } catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
   }

@@ -51,8 +51,8 @@ test('uploads both parts in order, transcribes, polls until done, preserves part
 
   // Both parts uploaded in order, keyed on the lazily-created backend id (NOT the local route id)
   expect(mockUploadPart).toHaveBeenCalledTimes(2);
-  expect(mockUploadPart).toHaveBeenNthCalledWith(1, 'backend-1', { uri: 'file://part0.m4a', name: 'part-0.m4a', mime: 'audio/mp4' });
-  expect(mockUploadPart).toHaveBeenNthCalledWith(2, 'backend-1', { uri: 'file://part1.m4a', name: 'part-1.m4a', mime: 'audio/mp4' });
+  expect(mockUploadPart).toHaveBeenNthCalledWith(1, 'backend-1', { uri: 'file:///doc/part0.m4a', name: 'part-0.m4a', mime: 'audio/mp4' });
+  expect(mockUploadPart).toHaveBeenNthCalledWith(2, 'backend-1', { uri: 'file:///doc/part1.m4a', name: 'part-1.m4a', mime: 'audio/mp4' });
 
   // transcribe called once with the backend id
   expect(mockTranscribe).toHaveBeenCalledWith('backend-1');

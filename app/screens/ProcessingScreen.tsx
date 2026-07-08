@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { createSession, uploadPart, transcribe, getSession } from '../lib/api';
+import { resolvePartUri } from '../lib/recordings';
 import { useStore } from '../lib/store-context';
 
 export default function ProcessingScreen() {
@@ -34,7 +35,7 @@ export default function ProcessingScreen() {
 
       for (let i = 0; i < parts.length; i++) {
         setMessage(`上傳中… ${i + 1}/${parts.length}`);
-        try { await uploadPart(backendId, { uri: parts[i].uri, name: `part-${i}.m4a`, mime: 'audio/mp4' }); }
+        try { await uploadPart(backendId, { uri: resolvePartUri(parts[i].uri), name: `part-${i}.m4a`, mime: 'audio/mp4' }); }
         catch (e: any) { setError('上傳失敗：' + (e?.message || '')); return; }
       }
       setMessage('開始辨識…');

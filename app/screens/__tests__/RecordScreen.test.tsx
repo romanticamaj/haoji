@@ -66,7 +66,7 @@ test('uploading a file does NOT call createSession/uploadPart, sets parts in sto
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
   expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
-    parts: [{ uri: 'file:///doc/haoji/u.m4a', durationMs: 0 }], // stable local copy, not the picker uri
+    parts: [{ uri: expect.stringMatching(/^haoji\/local-.*\/part-0\.m4a$/), durationMs: 0 }], // relative, persisted
   }));
 });
 

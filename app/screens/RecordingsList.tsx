@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { usePlayer } from '../hooks/usePlayer';
+import { resolvePartUri } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 
 type Part = { uri: string; durationMs: number };
@@ -16,7 +17,7 @@ export default function RecordingsList({ parts }: { parts: Part[] }) {
           <Text style={styles.duration}>{mmss(part.durationMs / 1000)}</Text>
           <Pressable
             testID={`play-${i}`}
-            onPress={() => player.load(part.uri).then(() => player.toggle())}
+            onPress={() => player.load(resolvePartUri(part.uri)).then(() => player.toggle())}
             style={styles.playBtn}
           >
             <Text style={styles.playIcon}>▶</Text>

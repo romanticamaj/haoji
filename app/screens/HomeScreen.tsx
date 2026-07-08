@@ -4,7 +4,9 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
+import { deleteSessionFiles } from '../lib/recordings';
 import { RootStackParamList } from '../navigation';
+import SwipeRow from '../components/SwipeRow';
 
 export default function HomeScreen() {
   const store = useStore();
@@ -12,6 +14,14 @@ export default function HomeScreen() {
   const [items, setItems] = useState<SavedSession[]>([]);
 
   useFocusEffect(useCallback(() => { store.list().then(setItems); }, [store]));
+
+  // Permanently remove a recording: drop it from the list immediately, then delete its audio files
+  // and the stored entry. The device is the source of truth, so this frees the on-device storage.
+  const onDelete = async (id: string) => {
+    setItems((prev) => prev.filter((s) => s.id !== id));
+    await store.remove(id);
+    await deleteSessionFiles(id);
+  };
 
   return (
     <View style={styles.container}>
@@ -23,10 +33,12 @@ export default function HomeScreen() {
           data={items}
           keyExtractor={(s) => s.id}
           renderItem={({ item }) => (
-            <Pressable style={styles.row} onPress={() => nav.navigate('Results', { sessionId: item.id })}>
-              <Text style={styles.rowTitle}>{item.title}</Text>
-              <Text style={styles.rowMeta}>{new Date(item.createdAt).toLocaleString()}</Text>
-            </Pressable>
+            <SwipeRow testID={`session-${item.id}`} confirmTitle={`刪除「${item.title}」`} onDelete={() => onDelete(item.id)}>
+              <Pressable style={styles.row} onPress={() => nav.navigate('Results', { sessionId: item.id })}>
+                <Text style={styles.rowTitle}>{item.title}</Text>
+                <Text style={styles.rowMeta}>{new Date(item.createdAt).toLocaleString()}</Text>
+              </Pressable>
+            </SwipeRow>
           )}
         />
       )}

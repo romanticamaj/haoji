@@ -1,4 +1,5 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import HomeScreen from '../HomeScreen';
@@ -34,4 +35,27 @@ test('lists saved sessions newest-first', async () => {
 test('has a 新錄音 button', async () => {
   const { getByText } = await renderHome([]);
   await waitFor(() => getByText('＋ 新錄音'));
+});
+
+test('swipe-delete confirms then removes the session from the list and store', async () => {
+  // Auto-confirm the destructive Alert
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
+    const del = (buttons || []).find((b: any) => b.style === 'destructive');
+    del?.onPress?.();
+  });
+
+  const { store, getByText, getByTestId, queryByText } = await renderHome([
+    mk('a', 1, '會議A'),
+    mk('b', 2, '會議B'),
+  ]);
+  await waitFor(() => getByText('會議A'));
+
+  fireEvent.press(getByTestId('session-a-delete'));
+
+  await waitFor(() => expect(queryByText('會議A')).toBeNull());
+  getByText('會議B'); // the other session stays
+  expect(await store.get('a')).toBeNull();
+  expect(await store.get('b')).toBeTruthy();
+
+  spy.mockRestore();
 });
