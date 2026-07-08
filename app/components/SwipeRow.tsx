@@ -18,10 +18,16 @@ export default function SwipeRow({
     Animated.spring(tx, { toValue: open ? -DELETE_W : 0, useNativeDriver: false, bounciness: 0 }).start();
   };
 
+  // Claim only clearly-horizontal drags — vertical moves pass through to the FlatList scroll.
+  const isHorizontal = (g: { dx: number; dy: number }) =>
+    Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.2;
+
   const pan = useRef(
     PanResponder.create({
-      // Only take over the touch when the drag is clearly horizontal, so vertical scrolling passes through.
-      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      // CAPTURE phase: intercept the horizontal drag BEFORE the child Pressable (which grabs the
+      // touch on press-down). Without this, wrapping a touchable swallows the swipe and nothing moves.
+      onMoveShouldSetPanResponderCapture: (_e, g) => isHorizontal(g),
+      onMoveShouldSetPanResponder: (_e, g) => isHorizontal(g),
       onPanResponderGrant: () => { startX.current = openRef.current ? -DELETE_W : 0; },
       onPanResponderMove: (_e, g) => {
         let next = startX.current + g.dx;
