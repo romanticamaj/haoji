@@ -14,6 +14,7 @@ jest.mock('../../lib/api', () => ({
 }));
 jest.mock('@react-native-documents/picker', () => ({
   pick: jest.fn().mockResolvedValue([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]),
+  keepLocalCopy: jest.fn().mockResolvedValue([{ status: 'success', sourceUri: 'file:///u.m4a', localUri: 'file:///doc/haoji/u.m4a' }]),
   types: { audio: 'public.audio', video: 'public.movie' },
   isErrorWithCode: (e: any) => !!e && typeof e.code === 'string',
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
@@ -65,7 +66,7 @@ test('uploading a file does NOT call createSession/uploadPart, sets parts in sto
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
   expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
-    parts: [{ uri: 'file:///u.m4a', durationMs: 0 }],
+    parts: [{ uri: 'file:///doc/haoji/u.m4a', durationMs: 0 }], // stable local copy, not the picker uri
   }));
 });
 

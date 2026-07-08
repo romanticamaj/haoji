@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
+import { pick, keepLocalCopy, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import { useRecorder } from '../hooks/useRecorder';
 import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
@@ -48,12 +48,19 @@ export default function RecordScreen() {
     if (!file) return;
     setBusy(true); setErr(null);
     try {
-      // C2 fix: do NOT call uploadPart or createSession here — ProcessingScreen owns all backend
-      // work. Just persist the picked file as a draft part under a local id and hand off.
+      // The picker hands back a security-scoped iOS uri whose access is released once we navigate
+      // away — ProcessingScreen then can't read it to upload, so it hung on "上傳中…". Copy the file
+      // into the app's document dir first and hand off that stable file:// uri (same place
+      // recordings live). C2: still no backend call here — ProcessingScreen owns all backend work.
+      const [copied] = await keepLocalCopy({
+        files: [{ uri: file.uri, fileName: file.name || `upload-${Date.now()}.m4a` }],
+        destination: 'documentDirectory',
+      });
+      if (copied.status !== 'success') throw new Error(copied.copyError || '檔案複製失敗，請再試一次');
       const id = makeLocalId();
       const createdAt = Date.now();
       const title = new Date().toLocaleString();
-      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: file.uri, durationMs: 0 }] });
+      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: copied.localUri, durationMs: 0 }] });
       nav.replace('Processing', { sessionId: id });
     } catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
   }

@@ -65,7 +65,13 @@ export default function ProcessingScreen() {
   if (error) return (
     <View style={styles.center}>
       <Text style={styles.err}>{error}</Text>
-      <Pressable style={styles.back} onPress={() => nav.navigate('Home')}><Text style={styles.backText}>返回</Text></Pressable>
+      <View style={styles.errActions}>
+        {/* retry with a fresh backend session (regen) so a partial/failed upload starts clean */}
+        <Pressable style={styles.retry} onPress={() => nav.replace('Processing', { sessionId, regen: true })}>
+          <Text style={styles.retryText}>重試</Text>
+        </Pressable>
+        <Pressable style={styles.back} onPress={() => nav.navigate('Home')}><Text style={styles.backText}>返回</Text></Pressable>
+      </View>
     </View>
   );
   return (
@@ -80,6 +86,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 24 },
   msg: { marginTop: 16, color: '#8e8e93', fontSize: 15 },
   err: { color: '#E5342B', fontSize: 16, textAlign: 'center' },
-  back: { marginTop: 24, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: '#f2f2f7' },
+  errActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
+  retry: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: '#E5342B' },
+  retryText: { color: '#fff', fontWeight: '700' },
+  back: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: '#f2f2f7' },
   backText: { color: '#1c1c1e', fontWeight: '600' },
 });

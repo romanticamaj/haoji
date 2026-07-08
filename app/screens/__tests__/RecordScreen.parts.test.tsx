@@ -14,6 +14,7 @@ jest.mock('../../lib/api', () => ({
 }));
 jest.mock('@react-native-documents/picker', () => ({
   pick: jest.fn(),
+  keepLocalCopy: jest.fn(),
   types: { audio: 'public.audio', video: 'public.movie' },
   isErrorWithCode: (e: any) => !!e && typeof e.code === 'string',
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
@@ -31,13 +32,14 @@ jest.mock('../../lib/store-context', () => ({ useStore: () => mockStore }));
 
 import RecordScreen from '../RecordScreen';
 import * as api from '../../lib/api';
-import { pick } from '@react-native-documents/picker';
+import { pick, keepLocalCopy } from '@react-native-documents/picker';
 
 beforeEach(() => { jest.clearAllMocks(); mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false; mockRecApi.error = null;
   // Re-establish implementations cleared by clearAllMocks
   (api.createSession as jest.Mock).mockResolvedValue('sess123');
   (api.uploadPart as jest.Mock).mockResolvedValue(1);
   (pick as jest.Mock).mockRejectedValue({ code: 'OPERATION_CANCELED' });
+  (keepLocalCopy as jest.Mock).mockResolvedValue([{ status: 'success', sourceUri: 'file:///u.m4a', localUri: 'file:///doc/haoji/u.m4a' }]);
   mockStore.upsert.mockResolvedValue(undefined);
   mockStore.get.mockResolvedValue({ id: 'sess123', createdAt: 0, title: 't', names: {}, unlocked: false, parts: [] });
   mockRecApi.stop.mockResolvedValue([{ uri: 'file:///r.m4a', durationMs: 1000 }]);
@@ -68,16 +70,29 @@ test('pressing 結束 in interruption prompt stops recording and navigates to Pr
 });
 
 // C2 + local-first: onUpload must NOT call createSession or uploadPart; ProcessingScreen owns all backend work
-test('C2: pressing 上傳 skips backend, stores draft part, navigates to Processing', async () => {
+test('C2: pressing 上傳 copies file locally, skips backend, stores draft part, navigates to Processing', async () => {
   (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('上傳音檔 / 影片'));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
-  expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
-    parts: [{ uri: 'file:///u.m4a', durationMs: 0 }],
+  // The part uri must be the STABLE local copy (not the security-scoped picker uri).
+  expect(keepLocalCopy).toHaveBeenCalledWith(expect.objectContaining({
+    files: [{ uri: 'file:///u.m4a', fileName: 'u.m4a' }], destination: 'documentDirectory',
   }));
+  expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
+    parts: [{ uri: 'file:///doc/haoji/u.m4a', durationMs: 0 }],
+  }));
+});
+
+test('upload surfaces an error (not a hang) when the local copy fails', async () => {
+  (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
+  (keepLocalCopy as jest.Mock).mockResolvedValueOnce([{ status: 'error', sourceUri: 'file:///u.m4a', copyError: 'boom' }]);
+  const { getByText } = await render(<RecordScreen />);
+  fireEvent.press(getByText('上傳音檔 / 影片'));
+  await waitFor(() => getByText('boom'));
+  expect(mockReplace).not.toHaveBeenCalled();
 });
 
 // Local-first fix (replaces the old I1 "disable until createSession resolves" behavior, which WAS the
