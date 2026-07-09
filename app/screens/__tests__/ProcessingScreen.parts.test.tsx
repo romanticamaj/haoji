@@ -49,10 +49,12 @@ test('uploads both parts in order, transcribes, polls until done, preserves part
     { timeout: 12000 },
   );
 
-  // Both parts uploaded in order, keyed on the lazily-created backend id (NOT the local route id)
+  // createSession keyed on the LOCAL session id (idempotency/task key) so duplicates map to one server session
+  expect(mockCreateSession).toHaveBeenCalledWith('sess-parts');
+  // Both parts uploaded in order with their index, keyed on the backend id (NOT the local route id)
   expect(mockUploadPart).toHaveBeenCalledTimes(2);
-  expect(mockUploadPart).toHaveBeenNthCalledWith(1, 'backend-1', { uri: 'file:///doc/part0.m4a', name: 'part-0.m4a', mime: 'audio/mp4' });
-  expect(mockUploadPart).toHaveBeenNthCalledWith(2, 'backend-1', { uri: 'file:///doc/part1.m4a', name: 'part-1.m4a', mime: 'audio/mp4' });
+  expect(mockUploadPart).toHaveBeenNthCalledWith(1, 'backend-1', { uri: 'file:///doc/part0.m4a', name: 'part-0.m4a', mime: 'audio/mp4' }, 0);
+  expect(mockUploadPart).toHaveBeenNthCalledWith(2, 'backend-1', { uri: 'file:///doc/part1.m4a', name: 'part-1.m4a', mime: 'audio/mp4' }, 1);
 
   // transcribe called once with the backend id
   expect(mockTranscribe).toHaveBeenCalledWith('backend-1');

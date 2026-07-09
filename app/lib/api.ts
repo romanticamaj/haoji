@@ -23,16 +23,24 @@ async function asJson(res: Response) {
   return body;
 }
 
-export async function createSession(): Promise<string> {
-  const res = await timedFetch(`${API_BASE}/api/sessions`, { method: 'POST' }, 20000);
+// clientId is an idempotency/task key (the local session id). Passing it lets the backend return the
+// SAME server session if the pipeline is (re)tried, so a duplicated upload can't spawn extra sessions.
+export async function createSession(clientId?: string): Promise<string> {
+  const res = await timedFetch(`${API_BASE}/api/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(clientId ? { client_id: clientId } : {}),
+  }, 20000);
   return ((await asJson(res)) as any).session_id;
 }
-export async function uploadPart(id: string, file: { uri: string; name: string; mime: string }): Promise<number> {
+export async function uploadPart(
+  id: string, file: { uri: string; name: string; mime: string }, index: number,
+): Promise<number> {
   const form = new FormData();
   form.append('file', { uri: file.uri, name: file.name, type: file.mime } as any);
-  // Uploads carry the whole payload — an audio part, or a video picked from the library whose audio
-  // the backend extracts. Videos can be hundreds of MB, so allow a long deadline over Tailscale/LAN.
-  const res = await timedFetch(`${API_BASE}/api/sessions/${id}/parts`, { method: 'POST', body: form }, 600000);
+  // The index makes the upload idempotent: re-sending part i overwrites slot i server-side instead
+  // of appending a duplicate. Long deadline — a video part can be hundreds of MB over Tailscale/LAN.
+  const res = await timedFetch(`${API_BASE}/api/sessions/${id}/parts?index=${index}`, { method: 'POST', body: form }, 600000);
   return ((await asJson(res)) as any).count;
 }
 export async function transcribe(id: string): Promise<void> {

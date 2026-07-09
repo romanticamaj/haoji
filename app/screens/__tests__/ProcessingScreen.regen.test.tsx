@@ -38,7 +38,7 @@ test('regen ignores the stale backendId, creates a fresh session, re-uploads par
   await render(<StoreProvider store={store}><ProcessingScreen /></StoreProvider>);
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Results', { sessionId: 'sess123' }), { timeout: 8000 });
   expect(mockCreateSession).toHaveBeenCalled();                 // did NOT reuse old-dead-backend
-  expect(mockUploadPart).toHaveBeenCalledWith('fresh-backend', expect.objectContaining({ name: 'part-0.m4a' }));
+  expect(mockUploadPart).toHaveBeenCalledWith('fresh-backend', expect.objectContaining({ name: 'part-0.m4a' }), 0);
   expect(mockTranscribe).toHaveBeenCalledWith('fresh-backend');
   const saved = await store.get('sess123');
   expect(saved?.backendId).toBe('fresh-backend');

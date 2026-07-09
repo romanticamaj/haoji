@@ -18,24 +18,35 @@ export default function ProcessingScreen() {
   const [message, setMessage] = useState('準備中…');
   const [error, setError] = useState<string | null>(null);
   const cancelled = useRef(false);
+  // Ensures the upload pipeline runs at most once per mount — a second run would re-upload the same
+  // audio and, combined with any backend hiccup, is exactly how duplicates crept in.
+  const started = useRef(false);
 
   useEffect(() => {
     cancelled.current = false;
     (async () => {
+      if (started.current) return;
+      started.current = true;
       const s0 = await store.get(sessionId);
       const parts = s0?.parts ?? [];
 
       // Create the backend draft session now (recording/upload up to this point was fully offline).
-      // Reuse an existing backendId if this screen is retried for the same local session.
+      // Reuse an existing backendId if this screen is retried; otherwise create one keyed on the
+      // local session id (idempotency/task key) so a duplicated pipeline maps to ONE server session.
       setMessage('連線後端…');
       let backendId: string;
-      try { backendId = (!regen && s0?.backendId) ? s0.backendId : (await createSession()); }
+      try { backendId = (!regen && s0?.backendId) ? s0.backendId : (await createSession(regen ? undefined : sessionId)); }
       catch { setError('無法連線後端，請確認手機已連上 Tailscale／後端已啟動。'); return; }
       if (cancelled.current) return;
+      // Persist backendId immediately so a retry/analyze reuses the same server session.
+      if (backendId !== s0?.backendId) {
+        const cur = await store.get(sessionId);
+        if (cur) await store.upsert({ ...cur, backendId });
+      }
 
       for (let i = 0; i < parts.length; i++) {
         setMessage(`上傳中… ${i + 1}/${parts.length}`);
-        try { await uploadPart(backendId, { uri: resolvePartUri(parts[i].uri), name: `part-${i}.m4a`, mime: 'audio/mp4' }); }
+        try { await uploadPart(backendId, { uri: resolvePartUri(parts[i].uri), name: `part-${i}.m4a`, mime: 'audio/mp4' }, i); }
         catch (e: any) { setError('上傳失敗：' + (e?.message || '')); return; }
       }
       setMessage('開始辨識…');
