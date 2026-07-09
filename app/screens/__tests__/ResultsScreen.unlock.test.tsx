@@ -26,8 +26,8 @@ test('tapping unlock reveals the locked detail', async () => {
   const { getByText, findByText, queryByText } = await render(
     <StoreProvider store={store}><ResultsScreen /></StoreProvider>);
   fireEvent.press(await findByText('AI 分析'));
-  await waitFor(() => expect(queryByText('🔒 解鎖完整內容')).not.toBeNull());
-  fireEvent.press(await findByText('🔒 解鎖完整內容'));
+  await waitFor(() => expect(queryByText('🔒 解鎖完整會議記錄')).not.toBeNull());
+  fireEvent.press(await findByText('🔒 解鎖完整會議記錄'));
   await waitFor(() => getByText('複製 Markdown'));
-  await waitFor(() => expect(queryByText('🔒 解鎖完整內容')).toBeNull());
+  await waitFor(() => expect(queryByText('🔒 解鎖完整會議記錄')).toBeNull());
 });
