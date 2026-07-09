@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, PanResponder, LayoutChangeEvent, GestureResponderEvent } from 'react-native';
-import { usePlayer } from '../hooks/usePlayer';
+import { usePlayer, PlayerApi } from '../hooks/usePlayer';
 import { resolvePartUri } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 import { colors, radius, tabularNums } from '../lib/theme';
@@ -14,72 +14,87 @@ const WAVE_BARS = 48;
 const BARS = waveformBars(WAVE_BARS);
 
 export default function RecordingsList({ parts }: { parts: Part[] }) {
+  // ONE player for the whole list (nitro-sound is a singleton). Rows share it and act on their own
+  // uri; the player tracks which uri is active so only one row ever shows a live position.
+  const player = usePlayer();
+
+  // Reset when the session's parts change (navigating to a different meeting) so no position/waveform/
+  // playing-state carries over from another session. The signature keys on the actual part uris.
+  const sig = parts.map((p) => p.uri).join('|');
+  useEffect(() => {
+    void player.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
+
   if (parts.length === 0) return null;
   return (
     <View style={styles.container}>
       {parts.map((part, i) => (
-        <PlayerRow key={i} index={i} part={part} multi={parts.length > 1} />
+        <PlayerRow key={part.uri} index={i} storedMs={part.durationMs} uri={resolvePartUri(part.uri)} multi={parts.length > 1} player={player} />
       ))}
     </View>
   );
 }
 
-function PlayerRow({ index, part, multi }: { index: number; part: Part; multi: boolean }) {
-  const player = usePlayer();
-  const [speed, setLocalSpeed] = useState(1);
+function PlayerRow(
+  { index, uri, storedMs, multi, player }:
+  { index: number; uri: string; storedMs: number; multi: boolean; player: PlayerApi },
+) {
+  const active = player.activeUri === uri;
+  const [speed, setSpeed] = useState(1);
   const [dragMs, setDragMs] = useState<number | null>(null);
   const widthRef = useRef(0);
-  const loadedRef = useRef(false);
+  const dragRef = useRef<number | null>(null);
+  const playerRef = useRef(player);
+  playerRef.current = player;
 
   // Prefer the live duration reported by playback; fall back to the stored part duration. Uploaded
   // parts may have durationMs: 0, so total is only known once playback starts → render "--:--".
-  const totalMs = player.durationMs > 0 ? player.durationMs : part.durationMs;
+  const liveDuration = active && player.durationMs > 0 ? player.durationMs : storedMs;
+  const totalMs = liveDuration;
   const totalKnown = totalMs > 0;
-  const positionMs = dragMs ?? player.positionMs;
+  const basePos = active ? player.positionMs : 0;
+  const positionMs = dragMs ?? basePos;               // dragMs overrides while scrubbing
   const ratio = totalKnown ? Math.min(1, positionMs / totalMs) : 0;
+  const isPlaying = active && player.isPlaying;
 
-  async function ensureLoaded() {
-    if (!loadedRef.current) {
-      await player.load(resolvePartUri(part.uri));
-      loadedRef.current = true;
-    }
-  }
-
-  async function onTogglePlay() {
-    await ensureLoaded();
-    await player.toggle();
-  }
-
-  function seekToRatio(r: number) {
-    const ms = ratioToMs(r, totalMs);
-    setDragMs(ms);
-    void player.seek(ms);
-  }
-
-  async function onSkip(delta: number) {
-    await ensureLoaded();
-    await player.seek(skipTo(player.positionMs, delta, totalMs));
-  }
-
-  async function onCycleSpeed() {
+  const onTogglePlay = () => { void playerRef.current.toggle(uri); };
+  const onSkip = (delta: number) => {
+    const from = player.activeUri === uri ? player.positionMs : 0;
+    void playerRef.current.seek(uri, skipTo(from, delta, totalMs));
+  };
+  const onCycleSpeed = () => {
     const next = nextSpeed(speed);
-    setLocalSpeed(next);
-    await player.setSpeed(next);
-  }
+    setSpeed(next);
+    void playerRef.current.setSpeed(uri, next);
+  };
 
-  // Tap AND drag to seek (core RN PanResponder — no gesture-handler). Compute x relative to the
-  // bar's measured width → ratio → seek. Local dragMs gives immediate visual feedback.
+  // Tap AND drag to seek (core RN PanResponder — no gesture-handler). Drag updates the visible
+  // playhead live via dragMs; the actual audio seek is committed once on RELEASE so it stays in sync
+  // and never snaps back. A tap is a grant+release at the same x, so it seeks to that point too.
+  const commitDrag = () => {
+    const ms = dragRef.current;
+    dragRef.current = null;
+    setDragMs(null);
+    if (ms != null) void playerRef.current.seek(uri, ms);
+  };
   const pan = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => totalKnown,
       onMoveShouldSetPanResponder: () => totalKnown,
-      onPanResponderGrant: (e: GestureResponderEvent) => seekToRatio(xToRatio(e.nativeEvent.locationX, widthRef.current)),
-      onPanResponderMove: (e: GestureResponderEvent) => seekToRatio(xToRatio(e.nativeEvent.locationX, widthRef.current)),
-      onPanResponderRelease: () => setDragMs(null),
-      onPanResponderTerminate: () => setDragMs(null),
+      onPanResponderGrant: (e: GestureResponderEvent) => {
+        const ms = ratioToMs(xToRatio(e.nativeEvent.locationX, widthRef.current), totalMs);
+        dragRef.current = ms; setDragMs(ms);
+      },
+      onPanResponderMove: (e: GestureResponderEvent) => {
+        const ms = ratioToMs(xToRatio(e.nativeEvent.locationX, widthRef.current), totalMs);
+        dragRef.current = ms; setDragMs(ms);
+      },
+      onPanResponderRelease: commitDrag,
+      onPanResponderTerminate: commitDrag,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [totalKnown, totalMs],
+    [totalKnown, totalMs, uri],
   );
 
   const onWaveLayout = (e: LayoutChangeEvent) => { widthRef.current = e.nativeEvent.layout.width; };
@@ -89,7 +104,7 @@ function PlayerRow({ index, part, multi }: { index: number; part: Part; multi: b
       {multi && (
         <View style={styles.segHead}>
           <Text style={styles.segLabel}>段 {index + 1}</Text>
-          <Text style={[styles.segDur, tabularNums]}>{part.durationMs > 0 ? mmss(part.durationMs / 1000) : '--:--'}</Text>
+          <Text style={[styles.segDur, tabularNums]}>{storedMs > 0 ? mmss(storedMs / 1000) : '--:--'}</Text>
         </View>
       )}
 
@@ -127,9 +142,9 @@ function PlayerRow({ index, part, multi }: { index: number; part: Part; multi: b
           testID={`play-${index}`}
           onPress={onTogglePlay}
           style={styles.play}
-          accessibilityLabel={player.isPlaying ? '暫停' : '播放'}
+          accessibilityLabel={isPlaying ? '暫停' : '播放'}
         >
-          <Text style={styles.playIcon}>{player.isPlaying ? '❚❚' : '▶'}</Text>
+          <Text style={styles.playIcon}>{isPlaying ? '❚❚' : '▶'}</Text>
         </Pressable>
 
         <Pressable onPress={() => onSkip(SKIP_FWD_MS)} style={styles.skip} accessibilityLabel="快進 30 秒">

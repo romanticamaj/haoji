@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-jest.mock('../../hooks/usePlayer', () => ({ usePlayer: () => ({ positionMs: 0, isPlaying: false, load: jest.fn().mockResolvedValue(undefined), seek: jest.fn(), toggle: jest.fn(), unload: jest.fn() }) }));
+jest.mock('../../hooks/usePlayer', () => ({ usePlayer: () => ({ activeUri: null, positionMs: 0, durationMs: 0, isPlaying: false, toggle: jest.fn().mockResolvedValue(undefined), seek: jest.fn().mockResolvedValue(undefined), setSpeed: jest.fn().mockResolvedValue(undefined), reset: jest.fn().mockResolvedValue(undefined) }) }));
 jest.mock('@react-navigation/native', () => ({
   useRoute: () => ({ params: { sessionId: 's' } }),
   useNavigation: () => ({ navigate: jest.fn(), replace: jest.fn() }),
