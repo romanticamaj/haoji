@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 import TranscriptTab from '../TranscriptTab';
 import { SavedSession } from '../../lib/store';
 
@@ -19,11 +19,17 @@ test('renders merged paragraphs with timestamps', async () => {
   getByText('00:00');
 });
 
-test('editing a speaker name via tap-to-edit calls onUpdate with names mapping', async () => {
+test('tapping a turn header opens the rename sheet; 完成 commits via onUpdate', async () => {
   const onUpdate = jest.fn();
-  const { getByTestId } = await render(<TranscriptTab session={session} onUpdate={onUpdate} />);
-  await fireEvent.press(getByTestId('speaker-row-SPEAKER_00'));
-  const input = getByTestId('speaker-input-SPEAKER_00');
-  fireEvent.changeText(input, 'Gary');
-  expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ names: expect.objectContaining({ SPEAKER_00: 'Gary' }) }));
+  const { getByTestId, queryByTestId } = await render(
+    <TranscriptTab session={session} onUpdate={onUpdate} />);
+  // sheet not open initially
+  expect(queryByTestId('rename-input-SPEAKER_00')).toBeNull();
+  // tap the first speaker's turn header (state-changing press needs an act flush under React 19)
+  await act(async () => { fireEvent.press(getByTestId('turn-head-SPEAKER_00')); });
+  const input = getByTestId('rename-input-SPEAKER_00');
+  await act(async () => { fireEvent.changeText(input, 'Gary'); });
+  await act(async () => { fireEvent.press(getByTestId('rename-done-SPEAKER_00')); });
+  expect(onUpdate).toHaveBeenCalledWith(
+    expect.objectContaining({ names: expect.objectContaining({ SPEAKER_00: 'Gary' }) }));
 });
