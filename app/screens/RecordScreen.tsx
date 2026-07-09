@@ -18,7 +18,9 @@ const makeLocalId = () => `local-${Date.now()}-${Math.random().toString(36).slic
 export default function RecordScreen() {
   const store = useStore();
   const nav = useNavigation<any>();
-  const [busy, setBusy] = useState(false);
+  // Non-null while an upload/import is in flight — its text is shown full-screen so the user always
+  // has feedback (picking a big video can spend many seconds copying with the picker already gone).
+  const [busyMsg, setBusyMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   // Local id available immediately — recording works fully offline.
@@ -52,19 +54,30 @@ export default function RecordScreen() {
   }
 
   // Pick a video from the Photos library (圖庫). Videos shot on the phone live in Photos, not the
-  // Files app, so the document picker below can't see them. image-picker copies the asset into the
-  // app's tmp dir and returns a readable file:// uri, so we can move it straight in (no keepLocalCopy).
+  // Files app, so the document picker below can't see them.
+  //
+  // IMPORTANT: on iOS the picker sheet dismisses the instant you tap a video, but launchImageLibrary
+  // does NOT resolve until it has finished COPYING that video into the app's tmp dir — seconds for a
+  // big clip. So we show the busy screen BEFORE awaiting; otherwise the screen just sits there with
+  // no feedback during the copy (looked like "縮小了然後完全沒反應"). We reset it only on cancel/error.
   async function onPickVideo() {
+    setErr(null);
+    setBusyMsg('讀取影片中…');
     let res;
     try {
       res = await launchImageLibrary({ mediaType: 'video', selectionLimit: 1 });
-    } catch { setErr('選取失敗'); return; }
-    if (res.didCancel) return;
+    } catch { setBusyMsg(null); setErr('選取失敗'); return; }
+    if (res.didCancel) { setBusyMsg(null); return; }
     const asset = res.assets?.[0];
-    if (!asset?.uri) { if (res.errorCode) setErr('無法讀取圖庫影片，請確認已允許「照片」權限。'); return; }
-    setBusy(true); setErr(null);
-    try { await ingestLocalFile(asset.uri); }
-    catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
+    const uri = asset?.uri || asset?.originalPath; // uri is the tmp copy; fall back to the source path
+    if (!uri) {
+      setBusyMsg(null);
+      setErr(res.errorMessage || '無法讀取這支影片，可能是 iCloud 尚未下載或格式不支援，請改用「從檔案上傳」。');
+      return;
+    }
+    setBusyMsg('準備中…');
+    try { await ingestLocalFile(uri); }
+    catch (e: any) { setBusyMsg(null); setErr(e?.message || '上傳失敗'); }
   }
 
   // Pick an audio/video file from the Files app (iCloud Drive, On My iPhone, etc.).
@@ -78,7 +91,7 @@ export default function RecordScreen() {
       return;
     }
     if (!file) return;
-    setBusy(true); setErr(null);
+    setBusyMsg('讀取檔案中…'); setErr(null);
     try {
       // The picker hands back a security-scoped iOS uri whose access is released once we navigate
       // away — ProcessingScreen then can't read it to upload, so it hung on "上傳中…". Copy the file
@@ -89,14 +102,14 @@ export default function RecordScreen() {
       });
       if (copied.status !== 'success') throw new Error(copied.copyError || '檔案複製失敗，請再試一次');
       await ingestLocalFile(copied.localUri);
-    } catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
+    } catch (e: any) { setBusyMsg(null); setErr(e?.message || '上傳失敗'); }
   }
 
   const isRec = rec.state === 'recording';
   const isPaused = rec.state === 'paused';
   const isStarting = rec.state === 'starting';
 
-  if (busy) return <View style={styles.center}><ActivityIndicator color="#E5342B" size="large" /><Text style={styles.hint}>上傳中…</Text></View>;
+  if (busyMsg) return <View style={styles.center}><ActivityIndicator color="#E5342B" size="large" /><Text style={styles.hint}>{busyMsg}</Text></View>;
 
   return (
     <View style={styles.container}>
