@@ -1,0 +1,95 @@
+// UI-free helpers for the meeting-list (home) screen. Kept pure and unit-tested so HomeScreen can
+// stay a thin map from grouped sessions to cards. All time math takes `now` as a parameter so the
+// relative-day / grouping logic is deterministic in tests.
+import { SavedSession } from './store';
+import { mmss, nameOf } from './transcript';
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const WEEKDAY_ZH = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'] as const;
+
+// Local midnight (start of the calendar day) for a timestamp.
+function startOfDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+const hhmm = (ts: number): string => {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+// Whole calendar days between two timestamps (today = 0, yesterday = 1, ...), by day boundary
+// rather than raw 24h difference so "昨天 23:59 → 今天 00:01" reads as yesterday.
+function daysAgo(createdAt: number, now: number): number {
+  return Math.round((startOfDay(now) - startOfDay(createdAt)) / MS_PER_DAY);
+}
+
+// "今天 14:30" / "昨天 09:12" / "週二 16:20" (same ISO week, 2–6 days ago) / "M/D" (older).
+export function relativeDay(createdAt: number, now: number): string {
+  const diff = daysAgo(createdAt, now);
+  if (diff <= 0) return `今天 ${hhmm(createdAt)}`;
+  if (diff === 1) return `昨天 ${hhmm(createdAt)}`;
+  if (diff < 7) return `${WEEKDAY_ZH[new Date(createdAt).getDay()]} ${hhmm(createdAt)}`;
+  const d = new Date(createdAt);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+export type SessionGroupKey = '今天' | '本週' | '更早';
+export type SessionGroup = { key: SessionGroupKey; items: SavedSession[] };
+
+// Bucket sessions into 今天 / 本週 / 更早. Assumes `sessions` is already newest-first (store.list()
+// sorts that way); order is preserved within each group. Empty groups are dropped.
+export function groupSessions(sessions: SavedSession[], now: number): SessionGroup[] {
+  const groups: Record<SessionGroupKey, SavedSession[]> = { 今天: [], 本週: [], 更早: [] };
+  for (const s of sessions) {
+    const diff = daysAgo(s.createdAt, now);
+    if (diff <= 0) groups['今天'].push(s);
+    else if (diff < 7) groups['本週'].push(s);
+    else groups['更早'].push(s);
+  }
+  return (['今天', '本週', '更早'] as SessionGroupKey[])
+    .map((key) => ({ key, items: groups[key] }))
+    .filter((g) => g.items.length > 0);
+}
+
+// Sum of all part durations, in ms. Uploaded parts can carry durationMs: 0, so this may be 0.
+export function totalDurationMs(session: SavedSession): number {
+  return session.parts.reduce((sum, p) => sum + (p.durationMs || 0), 0);
+}
+
+// Formatted total duration ("mm:ss"), or null when the sum is 0 (caller omits the chip).
+export function durationLabel(session: SavedSession): string | null {
+  const ms = totalDurationMs(session);
+  return ms > 0 ? mmss(ms / 1000) : null;
+}
+
+// Number of diarized speakers, or 0 when there's no transcript yet.
+export function speakerCount(session: SavedSession): number {
+  return session.transcript?.speakers.length ?? 0;
+}
+
+export function hasTranscript(session: SavedSession): boolean {
+  return (session.transcript?.segments.length ?? 0) > 0;
+}
+
+export function hasNotes(session: SavedSession): boolean {
+  return !!session.notes && session.notes.trim().length > 0;
+}
+
+export type AvatarSpec = { initials: string[]; overflow: number };
+
+// Up to 3 speaker initials plus an overflow count. Each initial is the first char of the mapped
+// real name (session.names), falling back to the 1-based speaker index when unnamed. No transcript
+// → no avatars.
+export function avatarSpec(session: SavedSession, max = 3): AvatarSpec {
+  const speakers = session.transcript?.speakers ?? [];
+  const shown = speakers.slice(0, max);
+  const initials = shown.map((sp, i) => {
+    const name = nameOf(sp, session.names);
+    // nameOf returns the raw speaker code when unnamed; show the 1-based index instead of a code.
+    const named = !!session.names[sp] && session.names[sp].trim().length > 0;
+    return named ? [...name.trim()][0] : String(i + 1);
+  });
+  return { initials, overflow: Math.max(0, speakers.length - shown.length) };
+}
