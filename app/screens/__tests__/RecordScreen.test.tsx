@@ -32,8 +32,12 @@ jest.mock('../../lib/store-context', () => ({ useStore: () => mockStore }));
 
 import RecordScreen from '../RecordScreen';
 import * as api from '../../lib/api';
+import { launchImageLibrary } from 'react-native-image-picker';
 
-beforeEach(() => { jest.clearAllMocks(); mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false; mockRecApi.error = null; });
+beforeEach(() => {
+  jest.clearAllMocks(); mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false; mockRecApi.error = null;
+  (launchImageLibrary as jest.Mock).mockResolvedValue({ didCancel: true });
+});
 
 test('tapping the record button starts recording', async () => {
   const { getByLabelText } = await render(<RecordScreen />);
@@ -61,13 +65,38 @@ test('while starting, the button shows busy and does not re-trigger start', asyn
 // ProcessingScreen owns all backend work). It persists a draft part under a local id and hands off.
 test('uploading a file does NOT call createSession/uploadPart, sets parts in store, and navigates to Processing', async () => {
   const { getByText } = await render(<RecordScreen />);
-  fireEvent.press(getByText('上傳音檔 / 影片'));
+  fireEvent.press(getByText('從檔案上傳音檔'));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
   expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
     parts: [{ uri: expect.stringMatching(/^haoji\/local-.*\/part-0\.m4a$/), durationMs: 0 }], // relative, persisted
   }));
+});
+
+// 圖庫 (Photos) video path: image-picker returns a readable file:// uri (no keepLocalCopy needed),
+// which we move straight into the persistent per-session dir. Still no backend call here.
+test('picking a video from the library ingests it as a part and navigates to Processing (no backend)', async () => {
+  (launchImageLibrary as jest.Mock).mockResolvedValueOnce({
+    assets: [{ uri: 'file:///tmp/movie.mov', fileName: 'movie.mov', type: 'video/quicktime' }],
+  });
+  const { getByText } = await render(<RecordScreen />);
+  fireEvent.press(getByText('從圖庫選影片'));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+  expect(api.createSession).not.toHaveBeenCalled();
+  expect(api.uploadPart).not.toHaveBeenCalled();
+  expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
+    parts: [{ uri: expect.stringMatching(/^haoji\/local-.*\/part-0\.m4a$/), durationMs: 0 }],
+  }));
+});
+
+test('cancelling the library picker is a no-op (no navigation, no error)', async () => {
+  (launchImageLibrary as jest.Mock).mockResolvedValueOnce({ didCancel: true });
+  const { getByText, queryByText } = await render(<RecordScreen />);
+  fireEvent.press(getByText('從圖庫選影片'));
+  await waitFor(() => expect(launchImageLibrary).toHaveBeenCalled());
+  expect(mockReplace).not.toHaveBeenCalled();
+  expect(queryByText('選取失敗')).toBeNull();
 });
 
 test('stopping recording persists parts and navigates to Processing with the local id', async () => {

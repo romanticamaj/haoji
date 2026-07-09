@@ -73,7 +73,7 @@ test('pressing 結束 in interruption prompt stops recording and navigates to Pr
 test('C2: pressing 上傳 copies file into the persistent per-session dir, skips backend, navigates to Processing', async () => {
   (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
   const { getByText } = await render(<RecordScreen />);
-  fireEvent.press(getByText('上傳音檔 / 影片'));
+  fireEvent.press(getByText('從檔案上傳音檔'));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ test('upload surfaces an error (not a hang) when the local copy fails', async ()
   (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
   (keepLocalCopy as jest.Mock).mockResolvedValueOnce([{ status: 'error', sourceUri: 'file:///u.m4a', copyError: 'boom' }]);
   const { getByText } = await render(<RecordScreen />);
-  fireEvent.press(getByText('上傳音檔 / 影片'));
+  fireEvent.press(getByText('從檔案上傳音檔'));
   await waitFor(() => getByText('boom'));
   expect(mockReplace).not.toHaveBeenCalled();
 });

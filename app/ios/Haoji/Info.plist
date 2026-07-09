@@ -53,7 +53,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>好記需要麥克風來錄製會議音訊。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>好記需要存取相簿，以便分享或儲存會議記錄。</string>
+	<string>好記需要存取相簿，讓您選擇要轉成逐字稿的影片或錄音，並儲存會議記錄。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>好記需要將會議記錄檔案儲存到您的相簿。</string>
 	<key>RCTNewArchEnabled</key>

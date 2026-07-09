@@ -21,4 +21,10 @@ jest.mock('react-native-fs', () => ({
   writeFile: jest.fn().mockResolvedValue(undefined),
 }));
 
+// react-native-image-picker is a native module; default to a cancelled pick. Suites that exercise
+// the 圖庫 video path (RecordScreen) override launchImageLibrary per-test.
+jest.mock('react-native-image-picker', () => ({
+  launchImageLibrary: jest.fn().mockResolvedValue({ didCancel: true }),
+}));
+
 // nitro-sound / clipboard / share / picker get per-suite mocks in their tests

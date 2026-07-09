@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { pick, keepLocalCopy, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { useRecorder } from '../hooks/useRecorder';
 import { moveToPart } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
@@ -37,7 +38,37 @@ export default function RecordScreen() {
     nav.replace('Processing', { sessionId: id });
   }
 
-  async function onUpload() {
+  // Shared ingest for both upload sources: move the (already app-local) file into the persistent
+  // per-session dir as a RELATIVE part, then hand off to ProcessingScreen. No backend call here —
+  // ProcessingScreen owns all backend work (C2). The backend re-encodes whatever we send to 16 kHz
+  // mono WAV via ffmpeg, so a video container works too (it just keeps the audio track).
+  async function ingestLocalFile(localUri: string) {
+    const id = makeLocalId();
+    const createdAt = Date.now();
+    const title = new Date().toLocaleString();
+    const rel = await moveToPart(id, 0, localUri);
+    await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: rel, durationMs: 0 }] });
+    nav.replace('Processing', { sessionId: id });
+  }
+
+  // Pick a video from the Photos library (圖庫). Videos shot on the phone live in Photos, not the
+  // Files app, so the document picker below can't see them. image-picker copies the asset into the
+  // app's tmp dir and returns a readable file:// uri, so we can move it straight in (no keepLocalCopy).
+  async function onPickVideo() {
+    let res;
+    try {
+      res = await launchImageLibrary({ mediaType: 'video', selectionLimit: 1 });
+    } catch { setErr('選取失敗'); return; }
+    if (res.didCancel) return;
+    const asset = res.assets?.[0];
+    if (!asset?.uri) { if (res.errorCode) setErr('無法讀取圖庫影片，請確認已允許「照片」權限。'); return; }
+    setBusy(true); setErr(null);
+    try { await ingestLocalFile(asset.uri); }
+    catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
+  }
+
+  // Pick an audio/video file from the Files app (iCloud Drive, On My iPhone, etc.).
+  async function onPickFile() {
     let file: { uri: string; name?: string | null } | undefined;
     try {
       [file] = await pick({ type: [types.audio, types.video] });
@@ -51,20 +82,13 @@ export default function RecordScreen() {
     try {
       // The picker hands back a security-scoped iOS uri whose access is released once we navigate
       // away — ProcessingScreen then can't read it to upload, so it hung on "上傳中…". Copy the file
-      // into the app's cache, then move it into the persistent per-session dir (same place
-      // recordings live) so it survives app restarts/updates. We persist the RELATIVE path.
-      // C2: still no backend call here — ProcessingScreen owns all backend work.
+      // into the app's cache first, then ingestLocalFile moves it into the persistent per-session dir.
       const [copied] = await keepLocalCopy({
         files: [{ uri: file.uri, fileName: file.name || `upload-${Date.now()}.m4a` }],
         destination: 'cachesDirectory',
       });
       if (copied.status !== 'success') throw new Error(copied.copyError || '檔案複製失敗，請再試一次');
-      const id = makeLocalId();
-      const createdAt = Date.now();
-      const title = new Date().toLocaleString();
-      const rel = await moveToPart(id, 0, copied.localUri);
-      await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: rel, durationMs: 0 }] });
-      nav.replace('Processing', { sessionId: id });
+      await ingestLocalFile(copied.localUri);
     } catch (e: any) { setErr(e?.message || '上傳失敗'); setBusy(false); }
   }
 
@@ -115,9 +139,14 @@ export default function RecordScreen() {
         </View>
       )}
       {rec.state === 'idle' && (
-        <Pressable style={styles.uploadBtn} onPress={onUpload} accessibilityRole="button">
-          <Text style={styles.uploadText}>上傳音檔 / 影片</Text>
-        </Pressable>
+        <View style={styles.uploadRow}>
+          <Pressable style={styles.uploadBtn} onPress={onPickVideo} accessibilityRole="button">
+            <Text style={styles.uploadText}>從圖庫選影片</Text>
+          </Pressable>
+          <Pressable style={styles.uploadBtnGhost} onPress={onPickFile} accessibilityRole="button">
+            <Text style={styles.uploadTextGhost}>從檔案上傳音檔</Text>
+          </Pressable>
+        </View>
       )}
       {err && <Text style={styles.err}>{err}</Text>}
     </View>
@@ -137,8 +166,11 @@ const styles = StyleSheet.create({
   squareIcon: { width: 34, height: 34, borderRadius: 6, backgroundColor: RED },
   secondary: { marginTop: 36, paddingVertical: 10, paddingHorizontal: 28, borderRadius: 22, backgroundColor: '#f2f2f7' },
   secondaryText: { color: '#1c1c1e', fontSize: 16, fontWeight: '600' },
-  uploadBtn: { marginTop: 48, paddingVertical: 12, paddingHorizontal: 24 },
-  uploadText: { color: RED, fontSize: 16, fontWeight: '600' },
+  uploadRow: { marginTop: 44, alignItems: 'center', gap: 6 },
+  uploadBtn: { paddingVertical: 12, paddingHorizontal: 28, borderRadius: 22, backgroundColor: RED },
+  uploadText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  uploadBtnGhost: { paddingVertical: 10, paddingHorizontal: 24 },
+  uploadTextGhost: { color: RED, fontSize: 15, fontWeight: '600' },
   err: { color: RED, marginTop: 20, textAlign: 'center', paddingHorizontal: 24 },
   recErrWrap: { alignItems: 'center', marginTop: 8 },
   settingsLink: { color: RED, fontSize: 15, fontWeight: '700', marginTop: 10, textDecorationLine: 'underline' },

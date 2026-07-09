@@ -30,8 +30,9 @@ export async function createSession(): Promise<string> {
 export async function uploadPart(id: string, file: { uri: string; name: string; mime: string }): Promise<number> {
   const form = new FormData();
   form.append('file', { uri: file.uri, name: file.name, type: file.mime } as any);
-  // Uploads carry the audio payload, so allow a long deadline for big files over Tailscale/LAN.
-  const res = await timedFetch(`${API_BASE}/api/sessions/${id}/parts`, { method: 'POST', body: form }, 180000);
+  // Uploads carry the whole payload — an audio part, or a video picked from the library whose audio
+  // the backend extracts. Videos can be hundreds of MB, so allow a long deadline over Tailscale/LAN.
+  const res = await timedFetch(`${API_BASE}/api/sessions/${id}/parts`, { method: 'POST', body: form }, 600000);
   return ((await asJson(res)) as any).count;
 }
 export async function transcribe(id: string): Promise<void> {
