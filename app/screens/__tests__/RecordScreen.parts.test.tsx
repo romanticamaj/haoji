@@ -20,7 +20,8 @@ jest.mock('@react-native-documents/picker', () => ({
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
 }));
 const mockReplace = jest.fn();
-jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ replace: mockReplace }) }));
+const mockGoBack = jest.fn();
+jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ replace: mockReplace, goBack: mockGoBack }) }));
 
 const mockStore = {
   list: jest.fn().mockResolvedValue([]),
@@ -63,7 +64,6 @@ test('pressing 繼續 in interruption prompt calls resume', async () => {
 test('pressing 結束 in interruption prompt stops recording and navigates to Processing', async () => {
   mockRecApi.wasInterrupted = true;
   const { getByText } = await render(<RecordScreen />);
-  await waitFor(() => expect(mockStore.upsert).toHaveBeenCalled()); // ensure local session created
   fireEvent.press(getByText('結束'));
   await waitFor(() => expect(mockRecApi.stop).toHaveBeenCalled());
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));

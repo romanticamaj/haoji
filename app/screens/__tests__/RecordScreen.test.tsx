@@ -20,7 +20,8 @@ jest.mock('@react-native-documents/picker', () => ({
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
 }));
 const mockReplace = jest.fn();
-jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ replace: mockReplace }) }));
+const mockGoBack = jest.fn();
+jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ replace: mockReplace, goBack: mockGoBack }) }));
 
 const mockStore = {
   list: jest.fn().mockResolvedValue([]),
@@ -105,4 +106,21 @@ test('stopping recording persists parts and navigates to Processing with the loc
   fireEvent.press(getByLabelText('停止錄音'));
   await waitFor(() => expect(mockRecApi.stop).toHaveBeenCalled());
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+});
+
+// Regression: opening the record screen and leaving without capturing anything must NOT create a
+// blank record. No session is upserted on mount; stopping with zero parts just goes back.
+test('opening the screen upserts nothing on mount (no blank record)', async () => {
+  await render(<RecordScreen />);
+  expect(mockStore.upsert).not.toHaveBeenCalled();
+});
+
+test('stopping with no recorded parts creates no session and navigates back', async () => {
+  mockRecApi.state = 'recording';
+  mockRecApi.stop.mockResolvedValueOnce([]); // nothing captured
+  const { getByLabelText } = await render(<RecordScreen />);
+  fireEvent.press(getByLabelText('停止錄音'));
+  await waitFor(() => expect(mockGoBack).toHaveBeenCalled());
+  expect(mockStore.upsert).not.toHaveBeenCalled();
+  expect(mockReplace).not.toHaveBeenCalled();
 });

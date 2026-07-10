@@ -13,6 +13,13 @@ const mockPlayer = {
 };
 jest.mock('../../hooks/usePlayer', () => ({ usePlayer: () => mockPlayer }));
 
+// Keep the real resolvePartUri; control file existence per test (default: file present).
+const mockPartExists = jest.fn().mockResolvedValue(true);
+jest.mock('../../lib/recordings', () => ({
+  ...jest.requireActual('../../lib/recordings'),
+  partExists: (...a: any[]) => mockPartExists(...a),
+}));
+
 import RecordingsList from '../RecordingsList';
 
 const parts = [
@@ -23,6 +30,7 @@ const parts = [
 beforeEach(() => {
   jest.clearAllMocks();
   mockPlayer.activeUri = null; mockPlayer.positionMs = 0; mockPlayer.durationMs = 0; mockPlayer.isPlaying = false;
+  mockPartExists.mockResolvedValue(true);
 });
 
 test('multi-part renders a labelled row per part with its duration', async () => {
@@ -83,4 +91,11 @@ test('speed button cycles 1.0× → 1.5× → 2.0× → 1.0× (per uri)', async 
 test('renders nothing when parts is empty', async () => {
   const { queryByText } = await render(<RecordingsList parts={[]} />);
   expect(queryByText('段 1')).toBeNull();
+});
+
+test('shows a clear notice when the audio file is missing (not a dead player)', async () => {
+  mockPartExists.mockResolvedValue(false);
+  const { findByText, queryByTestId } = await render(<RecordingsList parts={[parts[0]]} />);
+  await findByText('音檔不存在');
+  expect(queryByTestId('play-0')).toBeNull(); // no transport on a missing file
 });

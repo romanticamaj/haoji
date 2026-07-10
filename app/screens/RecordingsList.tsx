@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, PanResponder, LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import { usePlayer, PlayerApi } from '../hooks/usePlayer';
-import { resolvePartUri } from '../lib/recordings';
+import { resolvePartUri, partExists } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 import { colors, radius, tabularNums } from '../lib/theme';
 import {
@@ -30,17 +30,25 @@ export default function RecordingsList({ parts }: { parts: Part[] }) {
   return (
     <View style={styles.container}>
       {parts.map((part, i) => (
-        <PlayerRow key={part.uri} index={i} storedMs={part.durationMs} uri={resolvePartUri(part.uri)} multi={parts.length > 1} player={player} />
+        <PlayerRow key={part.uri} index={i} storedMs={part.durationMs} storedUri={part.uri} uri={resolvePartUri(part.uri)} multi={parts.length > 1} player={player} />
       ))}
     </View>
   );
 }
 
 function PlayerRow(
-  { index, uri, storedMs, multi, player }:
-  { index: number; uri: string; storedMs: number; multi: boolean; player: PlayerApi },
+  { index, uri, storedUri, storedMs, multi, player }:
+  { index: number; uri: string; storedUri: string; storedMs: number; multi: boolean; player: PlayerApi },
 ) {
   const active = player.activeUri === uri;
+  // Verify the audio file still exists (it can be cleared by the OS). While unknown we assume it's
+  // there; if it's gone we show a clear notice instead of a dead player. null = checking.
+  const [exists, setExists] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    partExists(storedUri).then((ok) => { if (alive) setExists(ok); });
+    return () => { alive = false; };
+  }, [storedUri]);
   const [speed, setSpeed] = useState(1);
   const [dragMs, setDragMs] = useState<number | null>(null);
   const widthRef = useRef(0);
@@ -98,6 +106,22 @@ function PlayerRow(
   );
 
   const onWaveLayout = (e: LayoutChangeEvent) => { widthRef.current = e.nativeEvent.layout.width; };
+
+  // The audio file is gone (e.g. cleared by the OS) — tell the user instead of showing a dead player.
+  if (exists === false) {
+    return (
+      <View style={[styles.card, styles.missingCard]}>
+        {multi && <Text style={styles.segLabel}>段 {index + 1}</Text>}
+        <View style={styles.missingRow}>
+          <Text style={styles.missingIcon}>⚠️</Text>
+          <View style={styles.missingTextWrap}>
+            <Text style={styles.missingTitle}>音檔不存在</Text>
+            <Text style={styles.missingHint}>這段錄音已無法播放，檔案可能已被系統清除。</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.card}>
@@ -168,6 +192,13 @@ const styles = StyleSheet.create({
   segHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   segLabel: { fontSize: 13, fontWeight: '700', color: colors.ink },
   segDur: { fontSize: 12.5, color: colors.ink3, marginLeft: 'auto' },
+
+  missingCard: { paddingVertical: 16 },
+  missingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
+  missingIcon: { fontSize: 20 },
+  missingTextWrap: { flex: 1 },
+  missingTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  missingHint: { fontSize: 12.5, color: colors.ink3, marginTop: 2, lineHeight: 17 },
 
   wave: { height: 72, marginTop: 12, marginBottom: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', position: 'relative' },
   wbar: { width: 3, borderRadius: 2, marginHorizontal: 1.25 },

@@ -38,6 +38,16 @@ export function resolvePartUri(stored: string): string {
   return `file://${RNFS.DocumentDirectoryPath}/${rel}`;
 }
 
+// Does a stored part's audio file still exist on disk? Used to warn the user when a recording can no
+// longer be played (e.g. cleared by the OS) instead of silently showing a dead player.
+export async function partExists(stored: string): Promise<boolean> {
+  try {
+    return await RNFS.exists(bare(resolvePartUri(stored)));
+  } catch {
+    return false;
+  }
+}
+
 // Permanently delete a session's audio files (its whole per-session dir).
 export async function deleteSessionFiles(sid: string): Promise<void> {
   const dir = sessionDir(sid);

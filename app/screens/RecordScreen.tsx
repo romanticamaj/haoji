@@ -23,21 +23,19 @@ export default function RecordScreen() {
   const [busyMsg, setBusyMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // Local id available immediately — recording works fully offline.
+  // Local id available immediately — recording works fully offline. NOTE: we deliberately do NOT
+  // persist a session on mount. Doing so left a blank record every time the user opened this screen
+  // (or uploaded) without recording. The session is created only when there's a real recorded part.
   const [sid] = useState(makeLocalId);
-
-  React.useEffect(() => {
-    store.upsert({ id: sid, createdAt: Date.now(), title: new Date().toLocaleString(), names: {}, unlocked: false, parts: [] });
-  }, [sid]);
 
   const rec = useRecorder(sid);
 
   async function onStop() {
     const parts = await rec.stop();
-    const id = sid!;
-    const existing = await store.get(id);
-    await store.upsert({ ...(existing as any), parts });
-    nav.replace('Processing', { sessionId: id });
+    // Nothing was captured (opened + left, or a zero-length take) → don't create an empty record.
+    if (parts.length === 0) { nav.goBack(); return; }
+    await store.upsert({ id: sid, createdAt: Date.now(), title: new Date().toLocaleString(), names: {}, unlocked: false, parts });
+    nav.replace('Processing', { sessionId: sid });
   }
 
   // Shared ingest for both upload sources: move the (already app-local) file into the persistent
