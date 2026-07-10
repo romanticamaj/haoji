@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   avatars: { flexDirection: 'row', alignItems: 'center' },
   av: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.card },
   avText: { fontSize: 11, fontWeight: '700', color: '#fff' },
-  avMore: { backgroundColor: '#D8D8DE' },
+  avMore: { backgroundColor: colors.neutralSoft },
   avMoreText: { fontSize: 11, fontWeight: '700', color: colors.ink2 },
 
   pills: { flexDirection: 'row', alignItems: 'center' },
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   pillDoneText: { fontSize: 11, fontWeight: '600', color: colors.good },
   tick: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.good, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
   tickText: { fontSize: 8, color: '#fff', fontWeight: '700', lineHeight: 10 },
-  pillTodo: { backgroundColor: '#EFEFF3' },
+  pillTodo: { backgroundColor: colors.chipBg },
   pillTodoText: { fontSize: 11, fontWeight: '600', color: colors.ink3 },
 
   fabbar: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 22 },

@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Animated, { useSharedValue, withTiming, useAnimatedStyle } from 'react-native-reanimated';
+import { colors } from '../lib/theme';
 
 const BAR_COUNT = 48;
 const BAR_WIDTH = 3;
 const BAR_GAP = 2;
 const MAX_HEIGHT = 60;
 const MIN_HEIGHT = 3;
-const RED = '#E5342B';
 const ANIM_DURATION = 120; // ms — smooth but still feels live at ~7 Hz updates
 
 /** One animated bar — manages its own reanimated shared value so hooks are at top level */
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   },
   bar: {
     width: BAR_WIDTH,
-    backgroundColor: RED,
+    backgroundColor: colors.brand,
     borderRadius: 2,
   },
 });

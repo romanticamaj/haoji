@@ -6,6 +6,7 @@ import { SavedSession } from '../lib/store';
 import TranscriptTab from './TranscriptTab';
 import AnalysisTab from './AnalysisTab';
 import RecordingsList from './RecordingsList';
+import { colors } from '../lib/theme';
 
 export default function ResultsScreen() {
   const route = useRoute<any>();
@@ -25,7 +26,7 @@ export default function ResultsScreen() {
   // transcript/backendId are preserved. ProcessingScreen persists the new ids only on success.
   const regenerate = () => nav.replace('Processing', { sessionId: id, regen: true });
 
-  if (!session) return <View style={styles.center}><ActivityIndicator color="#E5342B" /></View>;
+  if (!session) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
   return (
     <View style={styles.container}>
       <RecordingsList parts={session.parts ?? []} />
@@ -47,11 +48,11 @@ export default function ResultsScreen() {
   );
 }
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  container: { flex: 1, backgroundColor: colors.paper },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
+  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.card },
   tab: { flex: 1, paddingVertical: 13, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive: { borderBottomColor: '#E5342B' },
-  tabText: { fontSize: 15, color: '#8e8e93', fontWeight: '600' },
-  tabTextActive: { color: '#E5342B' },
+  tabActive: { borderBottomColor: colors.brand },
+  tabText: { fontSize: 15, color: colors.ink2, fontWeight: '600' },
+  tabTextActive: { color: colors.brand },
 });

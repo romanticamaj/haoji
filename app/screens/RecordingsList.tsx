@@ -136,7 +136,7 @@ function PlayerRow(
       <View style={styles.wave} onLayout={onWaveLayout} {...pan.panHandlers} accessibilityLabel="播放進度，可點擊或拖曳跳轉">
         {BARS.map((h, i) => {
           const on = barIsPlayed(i, WAVE_BARS, ratio);
-          return <View key={i} style={[styles.wbar, { height: `${h}%`, backgroundColor: on ? colors.brand : '#D6D6DD' }]} />;
+          return <View key={i} style={[styles.wbar, { height: `${h}%`, backgroundColor: on ? colors.brand : colors.neutralSoft }]} />;
         })}
         {totalKnown && (
           <View style={[styles.playhead, { left: `${ratio * 100}%` }]} pointerEvents="none">

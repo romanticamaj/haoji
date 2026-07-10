@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Animated, PanResponder, StyleSheet, Text, Pressable, View, Alert } from 'react-native';
+import { colors } from '../lib/theme';
 
 const DELETE_W = 96;
 
@@ -69,8 +70,8 @@ export default function SwipeRow({
 
 const styles = StyleSheet.create({
   wrap: { position: 'relative' },
-  deleteBg: { position: 'absolute', top: 0, right: 0, bottom: 0, width: DELETE_W, backgroundColor: '#E5342B', alignItems: 'center', justifyContent: 'center' },
+  deleteBg: { position: 'absolute', top: 0, right: 0, bottom: 0, width: DELETE_W, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
   deleteBtn: { flex: 1, width: DELETE_W, alignItems: 'center', justifyContent: 'center' },
   deleteText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  fg: { backgroundColor: '#fff' },
+  fg: { backgroundColor: colors.card },
 });

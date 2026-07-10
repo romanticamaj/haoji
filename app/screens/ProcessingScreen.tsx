@@ -4,6 +4,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { createSession, uploadPart, transcribe, getSession } from '../lib/api';
 import { resolvePartUri } from '../lib/recordings';
 import { useStore } from '../lib/store-context';
+import { colors } from '../lib/theme';
 
 export default function ProcessingScreen() {
   const nav = useNavigation<any>();
@@ -88,19 +89,19 @@ export default function ProcessingScreen() {
   );
   return (
     <View style={styles.center}>
-      <ActivityIndicator size="large" color="#E5342B" />
+      <ActivityIndicator size="large" color={colors.brand} />
       <Text style={styles.msg}>{message}</Text>
     </View>
   );
 }
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(() => r(), ms));
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 24 },
-  msg: { marginTop: 16, color: '#8e8e93', fontSize: 15 },
-  err: { color: '#E5342B', fontSize: 16, textAlign: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, padding: 24 },
+  msg: { marginTop: 16, color: colors.ink2, fontSize: 15 },
+  err: { color: colors.brand, fontSize: 16, textAlign: 'center' },
   errActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  retry: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: '#E5342B' },
+  retry: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: colors.brand },
   retryText: { color: '#fff', fontWeight: '700' },
-  back: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: '#f2f2f7' },
-  backText: { color: '#1c1c1e', fontWeight: '600' },
+  back: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: colors.chipBg },
+  backText: { color: colors.ink, fontWeight: '600' },
 });

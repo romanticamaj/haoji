@@ -8,8 +8,8 @@ import Animated, {
   cancelAnimation,
   Easing,
 } from 'react-native-reanimated';
+import { colors } from '../lib/theme';
 
-const RED = '#E5342B';
 const RING_SIZE = 200; // must match recordWrap size in RecordScreen
 const BREATH_DURATION = 1600; // ms per half-cycle
 
@@ -62,6 +62,6 @@ const styles = StyleSheet.create({
     width: RING_SIZE,
     height: RING_SIZE,
     borderRadius: RING_SIZE / 2,
-    backgroundColor: RED,
+    backgroundColor: colors.brand,
   },
 });

@@ -9,6 +9,7 @@ import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
 import Waveform from '../components/Waveform';
 import BreathingRing from '../components/BreathingRing';
+import { colors } from '../lib/theme';
 
 // Recording is local-first: the session id is generated on-device so the record button is never
 // gated on a backend round-trip (the GPU box is often unreachable from the phone unless Tailscale
@@ -107,7 +108,7 @@ export default function RecordScreen() {
   const isPaused = rec.state === 'paused';
   const isStarting = rec.state === 'starting';
 
-  if (busyMsg) return <View style={styles.center}><ActivityIndicator color="#E5342B" size="large" /><Text style={styles.hint}>{busyMsg}</Text></View>;
+  if (busyMsg) return <View style={styles.center}><ActivityIndicator color={colors.brand} size="large" /><Text style={styles.hint}>{busyMsg}</Text></View>;
 
   return (
     <View style={styles.container}>
@@ -164,7 +165,7 @@ export default function RecordScreen() {
   );
 }
 
-const RED = '#E5342B';
+const RED = colors.brand;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 24 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },

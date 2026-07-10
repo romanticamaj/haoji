@@ -23,7 +23,7 @@ function nodeText(node: any): string {
 
 // Document-quality markdown styles matching the mockup's `.doc`/`.sec` look.
 const mdStyles = StyleSheet.create({
-  body: { fontSize: 13.5, lineHeight: 22, color: '#25252B' },
+  body: { fontSize: 13.5, lineHeight: 22, color: colors.ink },
   // ## section heading → `.sec-label`: small, brand, letter-spaced, generous space above.
   heading2: {
     fontSize: 12, fontWeight: '700', letterSpacing: 1, color: colors.brand,
@@ -32,7 +32,7 @@ const mdStyles = StyleSheet.create({
   // ### sub-heading → ink, bold.
   heading3: { fontSize: 14.5, fontWeight: '700', color: colors.ink, marginTop: 14, marginBottom: 4 },
   strong: { fontWeight: '700', color: colors.ink },
-  paragraph: { marginTop: 0, marginBottom: 8, fontSize: 13.5, lineHeight: 22, color: '#25252B' },
+  paragraph: { marginTop: 0, marginBottom: 8, fontSize: 13.5, lineHeight: 22, color: colors.ink },
   bullet_list: { marginTop: 2, marginBottom: 4 },
   list_item: { marginVertical: 3 },
   bullet_list_icon: { color: colors.ink3, fontSize: 22, lineHeight: 22, marginRight: 8, marginLeft: 2 },
@@ -223,10 +223,10 @@ const styles = StyleSheet.create({
 
 const docStyles = StyleSheet.create({
   todo: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.hairline },
-  ck: { width: 19, height: 19, borderRadius: 6, borderWidth: 2, borderColor: '#D2D2DA', alignItems: 'center', justifyContent: 'center' },
+  ck: { width: 19, height: 19, borderRadius: 6, borderWidth: 2, borderColor: colors.neutralSoft, alignItems: 'center', justifyContent: 'center' },
   ckOn: { backgroundColor: colors.good, borderColor: colors.good },
   ckMark: { color: '#fff', fontSize: 11, fontWeight: '700', lineHeight: 13 },
-  tt: { flex: 1, fontSize: 13.5, color: '#25252B', lineHeight: 19 },
+  tt: { flex: 1, fontSize: 13.5, color: colors.ink, lineHeight: 19 },
   ttDone: { color: colors.ink3, textDecorationLine: 'line-through' },
   av: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   avText: { fontSize: 10, fontWeight: '700', color: '#fff' },

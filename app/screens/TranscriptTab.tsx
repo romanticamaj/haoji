@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
   turnHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
   who: { fontSize: 13.5, fontWeight: '700', color: colors.ink },
   tc: { marginLeft: 'auto', fontSize: 11.5, color: colors.ink3 },
-  body: { fontSize: 14, lineHeight: 22, color: '#25252B' },
+  body: { fontSize: 14, lineHeight: 22, color: colors.ink },
 
   av: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   avText: { fontSize: 10, fontWeight: '700', color: '#fff' },
@@ -219,11 +219,11 @@ const styles = StyleSheet.create({
   chipUnset: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
     backgroundColor: colors.brandSoft, borderWidth: 1, borderStyle: 'dashed',
-    borderColor: '#F0A79F', borderRadius: radius.pill, paddingVertical: 2, paddingLeft: 3, paddingRight: 10,
+    borderColor: colors.speakerUnset, borderRadius: radius.pill, paddingVertical: 2, paddingLeft: 3, paddingRight: 10,
   },
-  avUnset: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#F0A79F' },
+  avUnset: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.speakerUnset },
   chipUnsetText: { color: colors.brand, fontSize: 12.5, fontWeight: '600' },
-  chipUnsetHint: { color: '#D98A82', fontWeight: '500' },
+  chipUnsetHint: { color: colors.speakerUnsetText, fontWeight: '500' },
 
   // rename sheet
   sheetRoot: { flex: 1, justifyContent: 'flex-end' },
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet,
     paddingHorizontal: 22, paddingTop: 10, paddingBottom: 34,
   },
-  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: '#DADAE0', alignSelf: 'center', marginBottom: 16 },
+  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: colors.neutralSoft, alignSelf: 'center', marginBottom: 16 },
   sheetTitle: { fontSize: 16, fontWeight: '700', color: colors.ink, textAlign: 'center', marginBottom: 4 },
   sheetSub: { fontSize: 12.5, color: colors.ink2, textAlign: 'center', marginBottom: 18, lineHeight: 18 },
   sheetField: {
