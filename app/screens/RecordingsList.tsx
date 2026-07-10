@@ -1,113 +1,119 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, PanResponder, LayoutChangeEvent, GestureResponderEvent } from 'react-native';
-import { usePlayer, PlayerApi } from '../hooks/usePlayer';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import {
+  Waveform,
+  type IWaveformRef,
+  type PlaybackSpeedType,
+  FinishMode,
+  PlayerState,
+  useAudioPlayer,
+} from '@simform_solutions/react-native-audio-waveform';
 import { resolvePartUri, partExists } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 import { colors, radius, tabularNums } from '../lib/theme';
-import {
-  SKIP_BACK_MS, SKIP_FWD_MS, waveformBars, barIsPlayed, xToRatio, ratioToMs, skipTo, nextSpeed, formatSpeed,
-} from '../lib/player';
+import { SKIP_BACK_MS, SKIP_FWD_MS, clamp, skipTo, nextSpeed, formatSpeed } from '../lib/player';
 
 type Part = { uri: string; durationMs: number };
 
-const WAVE_BARS = 48;
-const BARS = waveformBars(WAVE_BARS);
-
+// The audio player is the native `react-native-audio-waveform` static Waveform: it extracts the REAL
+// waveform from each part's file, renders it full-width, and owns play/pause + drag-to-scrub seeking
+// with an accurate playhead (this replaced the hand-rolled nitro-sound player, whose fake bars never
+// lined up and whose seek jumped back to the head). Each part is one Waveform instance keyed by its
+// internal `PlayerFor${path}` key. We coordinate across rows so only one plays at a time.
 export default function RecordingsList({ parts }: { parts: Part[] }) {
-  // ONE player for the whole list (nitro-sound is a singleton). Rows share it and act on their own
-  // uri; the player tracks which uri is active so only one row ever shows a live position.
-  const player = usePlayer();
+  const rowRefs = useRef<Map<number, IWaveformRef>>(new Map());
+  const { stopAllPlayers } = useAudioPlayer();
 
-  // Reset when the session's parts change (navigating to a different meeting) so no position/waveform/
-  // playing-state carries over from another session. The signature keys on the actual part uris.
+  // Reset when the session's parts change (navigating to a different meeting) or on unmount, so no
+  // audio keeps playing from another session. The signature keys on the actual part uris.
   const sig = parts.map((p) => p.uri).join('|');
   useEffect(() => {
-    void player.reset();
+    return () => { void stopAllPlayers(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);
+
+  const register = (i: number, ref: IWaveformRef | null) => {
+    if (ref) rowRefs.current.set(i, ref); else rowRefs.current.delete(i);
+  };
+  // Before a row starts playing, stop every OTHER row (keeps this row's own prepared position intact).
+  const stopOthers = (keep: number) => {
+    rowRefs.current.forEach((ref, i) => { if (i !== keep) void ref.stopPlayer(); });
+  };
 
   if (parts.length === 0) return null;
   return (
     <View style={styles.container}>
       {parts.map((part, i) => (
-        <PlayerRow key={part.uri} index={i} storedMs={part.durationMs} storedUri={part.uri} uri={resolvePartUri(part.uri)} multi={parts.length > 1} player={player} />
+        <PlayerRow
+          key={part.uri}
+          index={i}
+          storedUri={part.uri}
+          storedMs={part.durationMs}
+          multi={parts.length > 1}
+          register={register}
+          stopOthers={stopOthers}
+        />
       ))}
     </View>
   );
 }
 
 function PlayerRow(
-  { index, uri, storedUri, storedMs, multi, player }:
-  { index: number; uri: string; storedUri: string; storedMs: number; multi: boolean; player: PlayerApi },
+  { index, storedUri, storedMs, multi, register, stopOthers }:
+  {
+    index: number; storedUri: string; storedMs: number; multi: boolean;
+    register: (i: number, ref: IWaveformRef | null) => void;
+    stopOthers: (keep: number) => void;
+  },
 ) {
-  const active = player.activeUri === uri;
-  // Verify the audio file still exists (it can be cleared by the OS). While unknown we assume it's
-  // there; if it's gone we show a clear notice instead of a dead player. null = checking.
+  const ref = useRef<IWaveformRef>(null);
+  const { seekToPlayer } = useAudioPlayer();
+  // The library wants a bare filesystem path (its iOS side does URL(string:) and fails on a file://
+  // prefix). resolvePartUri anchors the stored RELATIVE path at the current Documents dir.
+  const path = resolvePartUri(storedUri).replace(/^file:\/\//, '');
+  const playerKey = `PlayerFor${path}`;
+
+  const [state, setState] = useState<PlayerState>(PlayerState.stopped);
+  const [progressMs, setProgressMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(storedMs);
+  const [speed, setSpeed] = useState<PlaybackSpeedType>(1.0);
+
+  // Verify the audio file still exists (the OS can clear it). While unknown we hold off rendering the
+  // Waveform (extraction would error on a missing path); if it's gone we show a clear notice.
   const [exists, setExists] = useState<boolean | null>(null);
   useEffect(() => {
     let alive = true;
     partExists(storedUri).then((ok) => { if (alive) setExists(ok); });
     return () => { alive = false; };
   }, [storedUri]);
-  const [speed, setSpeed] = useState(1);
-  const [dragMs, setDragMs] = useState<number | null>(null);
-  const widthRef = useRef(0);
-  const dragRef = useRef<number | null>(null);
-  const playerRef = useRef(player);
-  playerRef.current = player;
 
-  // Prefer the live duration reported by playback; fall back to the stored part duration. Uploaded
-  // parts may have durationMs: 0, so total is only known once playback starts → render "--:--".
-  const liveDuration = active && player.durationMs > 0 ? player.durationMs : storedMs;
-  const totalMs = liveDuration;
-  const totalKnown = totalMs > 0;
-  const basePos = active ? player.positionMs : 0;
-  const positionMs = dragMs ?? basePos;               // dragMs overrides while scrubbing
-  const ratio = totalKnown ? Math.min(1, positionMs / totalMs) : 0;
-  const isPlaying = active && player.isPlaying;
-
-  const onTogglePlay = () => { void playerRef.current.toggle(uri); };
-  const onSkip = (delta: number) => {
-    const from = player.activeUri === uri ? player.positionMs : 0;
-    void playerRef.current.seek(uri, skipTo(from, delta, totalMs));
-  };
-  const onCycleSpeed = () => {
-    const next = nextSpeed(speed);
-    setSpeed(next);
-    void playerRef.current.setSpeed(uri, next);
-  };
-
-  // Tap AND drag to seek (core RN PanResponder — no gesture-handler). Drag updates the visible
-  // playhead live via dragMs; the actual audio seek is committed once on RELEASE so it stays in sync
-  // and never snaps back. A tap is a grant+release at the same x, so it seeks to that point too.
-  const commitDrag = () => {
-    const ms = dragRef.current;
-    dragRef.current = null;
-    setDragMs(null);
-    if (ms != null) void playerRef.current.seek(uri, ms);
-  };
-  const pan = useMemo(() =>
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => totalKnown,
-      onMoveShouldSetPanResponder: () => totalKnown,
-      onPanResponderGrant: (e: GestureResponderEvent) => {
-        const ms = ratioToMs(xToRatio(e.nativeEvent.locationX, widthRef.current), totalMs);
-        dragRef.current = ms; setDragMs(ms);
-      },
-      onPanResponderMove: (e: GestureResponderEvent) => {
-        const ms = ratioToMs(xToRatio(e.nativeEvent.locationX, widthRef.current), totalMs);
-        dragRef.current = ms; setDragMs(ms);
-      },
-      onPanResponderRelease: commitDrag,
-      onPanResponderTerminate: commitDrag,
-    }),
+  // Expose this row's player ref to the parent so it can stop us when another row starts.
+  useEffect(() => {
+    register(index, ref.current);
+    return () => register(index, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [totalKnown, totalMs, uri],
-  );
+  }, [index, exists]);
 
-  const onWaveLayout = (e: LayoutChangeEvent) => { widthRef.current = e.nativeEvent.layout.width; };
+  const isPlaying = state === PlayerState.playing;
+  const total = durationMs > 0 ? durationMs : storedMs;
+  const totalKnown = total > 0;
 
-  // The audio file is gone (e.g. cleared by the OS) — tell the user instead of showing a dead player.
+  const onTogglePlay = async () => {
+    if (isPlaying) { await ref.current?.pausePlayer(); return; }
+    stopOthers(index);
+    if (state === PlayerState.paused) await ref.current?.resumePlayer();
+    else await ref.current?.startPlayer({ finishMode: FinishMode.stop });
+  };
+
+  const onSkip = async (delta: number) => {
+    const target = skipTo(progressMs, delta, total);
+    setProgressMs(target); // optimistic — the native seek confirms via onCurrentProgressChange
+    try { await seekToPlayer({ playerKey, progress: target }); } catch { /* not prepared yet */ }
+  };
+
+  const onCycleSpeed = () => setSpeed((s) => nextSpeed(s) as PlaybackSpeedType);
+
+  // The audio file is gone (e.g. cleared by the OS) — tell the user instead of a dead/erroring player.
   if (exists === false) {
     return (
       <View style={[styles.card, styles.missingCard]}>
@@ -123,6 +129,8 @@ function PlayerRow(
     );
   }
 
+  const posClamped = clamp(progressMs, 0, totalKnown ? total : progressMs);
+
   return (
     <View style={styles.card}>
       {multi && (
@@ -132,23 +140,32 @@ function PlayerRow(
         </View>
       )}
 
-      {/* waveform progress bar */}
-      <View style={styles.wave} onLayout={onWaveLayout} {...pan.panHandlers} accessibilityLabel="播放進度，可點擊或拖曳跳轉">
-        {BARS.map((h, i) => {
-          const on = barIsPlayed(i, WAVE_BARS, ratio);
-          return <View key={i} style={[styles.wbar, { height: `${h}%`, backgroundColor: on ? colors.brand : colors.neutralSoft }]} />;
-        })}
-        {totalKnown && (
-          <View style={[styles.playhead, { left: `${ratio * 100}%` }]} pointerEvents="none">
-            <View style={styles.playheadKnob} />
-          </View>
-        )}
-      </View>
+      {/* Real waveform, full-width, drag anywhere to scrub. brand = played, neutral = unplayed. */}
+      {exists === true && (
+        <Waveform
+          mode="static"
+          ref={ref}
+          path={path}
+          candleSpace={2}
+          candleWidth={3}
+          candleHeightScale={5}
+          waveColor={colors.neutralSoft}
+          scrubColor={colors.brand}
+          playbackSpeed={speed}
+          containerStyle={styles.wave}
+          onPlayerStateChange={setState}
+          onCurrentProgressChange={(cur: number, dur: number) => {
+            setProgressMs(cur);
+            if (dur > 0) setDurationMs(dur);
+          }}
+          onError={() => { /* extraction/playback error — leave the card in a safe idle state */ }}
+        />
+      )}
 
       {/* live timecode */}
       <View style={styles.times}>
-        <Text style={[styles.timeText, tabularNums]}>{mmss(positionMs / 1000)}</Text>
-        <Text style={[styles.timeText, tabularNums]}>{totalKnown ? mmss(totalMs / 1000) : '--:--'}</Text>
+        <Text style={[styles.timeText, tabularNums]}>{mmss(posClamped / 1000)}</Text>
+        <Text style={[styles.timeText, tabularNums]}>{totalKnown ? mmss(total / 1000) : '--:--'}</Text>
       </View>
 
       {/* transport */}
@@ -176,7 +193,7 @@ function PlayerRow(
           <Text style={[styles.skipNum, tabularNums]}>30</Text>
         </Pressable>
 
-        {/* spacer to balance the speed button on the left, matching the mockup's transport row */}
+        {/* spacer to balance the speed button on the left */}
         <View style={styles.speedBtn} />
       </View>
     </View>
@@ -200,16 +217,13 @@ const styles = StyleSheet.create({
   missingTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   missingHint: { fontSize: 12.5, color: colors.ink3, marginTop: 2, lineHeight: 17 },
 
-  wave: { height: 72, marginTop: 12, marginBottom: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  wbar: { width: 3, borderRadius: 2, marginHorizontal: 1.25 },
-  playhead: { position: 'absolute', top: 2, bottom: 2, width: 2.5, marginLeft: -1.25, backgroundColor: colors.ink, borderRadius: 2, alignItems: 'center' },
-  playheadKnob: { position: 'absolute', top: -6, width: 11, height: 11, borderRadius: 6, backgroundColor: colors.ink },
+  wave: { height: 64, marginTop: 12, marginBottom: 6, width: '100%' },
 
   times: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
   timeText: { fontSize: 12.5, color: colors.ink2, fontWeight: '500' },
 
   transport: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 },
-  speedBtn: { width: 44, height: 34, borderRadius: 9, backgroundColor: colors.hairline, alignItems: 'center', justifyContent: 'center' },
+  speedBtn: { width: 44, height: 34, borderRadius: 9, backgroundColor: colors.chipBg, alignItems: 'center', justifyContent: 'center' },
   speedText: { fontSize: 13, fontWeight: '700', color: colors.ink2 },
   skip: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
   skipArrow: { fontSize: 40, lineHeight: 46, color: colors.ink, fontWeight: '300' },

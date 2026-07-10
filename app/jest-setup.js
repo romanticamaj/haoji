@@ -27,4 +27,37 @@ jest.mock('react-native-image-picker', () => ({
   launchImageLibrary: jest.fn().mockResolvedValue({ didCancel: true }),
 }));
 
+// react-native-audio-waveform is a native module (the audio player). Mock the Waveform component as a
+// forwardRef View whose imperative player methods drive onPlayerStateChange, plus a useAudioPlayer
+// hook exposing shared seek/stop spies. Suites can import useAudioPlayer to assert on seekToPlayer.
+jest.mock('@simform_solutions/react-native-audio-waveform', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const PlayerState = { playing: 'playing', paused: 'paused', stopped: 'stopped' };
+  const RecorderState = { recording: 'recording', paused: 'paused', stopped: 'stopped' };
+  const FinishMode = { loop: 0, pause: 1, stop: 2 };
+  const seekToPlayer = jest.fn().mockResolvedValue(true);
+  const stopAllPlayers = jest.fn().mockResolvedValue(true);
+  const Waveform = React.forwardRef((props, ref) => {
+    React.useImperativeHandle(ref, () => ({
+      startPlayer: jest.fn(async () => { props.onPlayerStateChange && props.onPlayerStateChange(PlayerState.playing); return true; }),
+      pausePlayer: jest.fn(async () => { props.onPlayerStateChange && props.onPlayerStateChange(PlayerState.paused); return true; }),
+      resumePlayer: jest.fn(async () => { props.onPlayerStateChange && props.onPlayerStateChange(PlayerState.playing); return true; }),
+      stopPlayer: jest.fn(async () => { props.onPlayerStateChange && props.onPlayerStateChange(PlayerState.stopped); return true; }),
+      currentState: PlayerState.stopped,
+      playerKey: 'PlayerFor' + props.path,
+    }));
+    return React.createElement(View, { testID: 'waveform', accessibilityLabel: 'waveform-' + props.path });
+  });
+  return {
+    Waveform,
+    FinishMode,
+    PlayerState,
+    RecorderState,
+    UpdateFrequency: {},
+    useAudioPlayer: () => ({ seekToPlayer, stopAllPlayers }),
+    useAudioPermission: () => ({}),
+  };
+});
+
 // nitro-sound / clipboard / share / picker get per-suite mocks in their tests
