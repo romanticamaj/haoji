@@ -21,6 +21,22 @@ jest.mock('react-native-fs', () => ({
   writeFile: jest.fn().mockResolvedValue(undefined),
 }));
 
+// react-native-safe-area-context needs a provider at runtime; give tests zero insets so screens
+// using useSafeAreaInsets() (e.g. RecordScreen) render without a SafeAreaProvider wrapper.
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const inset = { top: 0, right: 0, bottom: 0, left: 0 };
+  const frame = { x: 0, y: 0, width: 390, height: 844 };
+  return {
+    SafeAreaProvider: ({ children }) => children,
+    SafeAreaConsumer: ({ children }) => children(inset),
+    SafeAreaView: ({ children }) => children,
+    useSafeAreaInsets: () => inset,
+    useSafeAreaFrame: () => frame,
+    SafeAreaInsetsContext: React.createContext(inset),
+  };
+});
+
 // react-native-image-picker is a native module; default to a cancelled pick. Suites that exercise
 // the 圖庫 video path (RecordScreen) override launchImageLibrary per-test.
 jest.mock('react-native-image-picker', () => ({
