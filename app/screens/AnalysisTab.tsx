@@ -9,6 +9,7 @@ import { splitNotesForPreview } from '../lib/gating';
 import { markdownToPlainText } from '../lib/notes';
 import { notesMetaLine, parseTaskItem } from '../lib/notesDoc';
 import { speakerColor, colors, radius, tabularNums } from '../lib/theme';
+import { IconLock } from '../components/icons';
 import { SavedSession } from '../lib/store';
 
 // Pull the raw text out of a markdown-display AST node (walks descendants collecting text content).
@@ -158,7 +159,8 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
             <View style={[styles.fade, styles.fade2]} pointerEvents="none" />
             <View style={[styles.fade, styles.fade3]} pointerEvents="none" />
             <Pressable style={styles.unlock} onPress={onUnlock} accessibilityRole="button">
-              <Text style={styles.unlockText}>🔒 解鎖完整會議記錄</Text>
+              <IconLock size={16} color="#fff" />
+              <Text style={styles.unlockText}>解鎖完整會議記錄</Text>
             </Pressable>
           </View>
         </View>
@@ -213,7 +215,7 @@ const styles = StyleSheet.create({
   fade1: { top: 0, height: 120, opacity: 0.55 },
   fade2: { top: 60, height: 140, opacity: 0.8 },
   fade3: { top: 150, bottom: 0, opacity: 1 },
-  unlock: { height: 48, borderRadius: 14, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
+  unlock: { flexDirection: 'row', gap: 8, height: 48, borderRadius: 14, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
   unlockText: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 24 },

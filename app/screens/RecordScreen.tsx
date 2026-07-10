@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
-import Animated, { FadeIn, FadeInDown, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+// NOTE: only the transform-based press spring below uses reanimated. We deliberately do NOT use
+// layout animations (entering/exiting) here — they leave a ghost/afterimage during react-native-
+// screens native push/pop transitions (the exiting animation runs as the screen is removed).
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { pick, keepLocalCopy, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
@@ -11,6 +14,7 @@ import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
 import Waveform from '../components/Waveform';
 import BreathingRing from '../components/BreathingRing';
+import { IconImage } from '../components/icons';
 import { colors, radius } from '../lib/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -178,34 +182,32 @@ export default function RecordScreen() {
         )}
 
         {stopMode && !rec.wasInterrupted && (
-          <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(150)}>
-            <Pressable style={styles.secondary} onPress={isPaused ? rec.resume : rec.pause} accessibilityRole="button">
-              <Text style={styles.secondaryText}>{isPaused ? '繼續錄音' : '暫停'}</Text>
-            </Pressable>
-          </Animated.View>
+          <Pressable style={styles.secondary} onPress={isPaused ? rec.resume : rec.pause} accessibilityRole="button">
+            <Text style={styles.secondaryText}>{isPaused ? '繼續錄音' : '暫停'}</Text>
+          </Pressable>
         )}
 
         {rec.wasInterrupted && (
-          <Animated.View entering={FadeInDown.duration(280)} style={styles.resumeCard}>
+          <View style={styles.resumeCard}>
             <Text style={styles.resumeText}>錄音被中斷，要接著錄嗎？</Text>
             <View style={styles.resumeRow}>
               <Pressable style={styles.resumeBtnPrimary} onPress={rec.resume}><Text style={styles.resumeBtnPrimaryText}>繼續</Text></Pressable>
               <Pressable style={styles.resumeBtnGhost} onPress={onStop}><Text style={styles.resumeBtnGhostText}>結束</Text></Pressable>
             </View>
-          </Animated.View>
+          </View>
         )}
 
         {rec.state === 'idle' && (
-          <Animated.View entering={FadeInDown.duration(400)} style={styles.uploadRow}>
+          <View style={styles.uploadRow}>
             <Text style={styles.uploadDivider}>或匯入既有檔案</Text>
             <Pressable style={styles.uploadBtn} onPress={onPickVideo} accessibilityRole="button">
-              <Text style={styles.uploadBtnIcon}>🎞</Text>
+              <IconImage size={18} color="#fff" />
               <Text style={styles.uploadText}>從圖庫選影片</Text>
             </Pressable>
             <Pressable style={styles.uploadBtnGhost} onPress={onPickFile} accessibilityRole="button">
               <Text style={styles.uploadTextGhost}>從檔案上傳音檔</Text>
             </Pressable>
-          </Animated.View>
+          </View>
         )}
 
         {err && <Text style={styles.err}>{err}</Text>}
@@ -245,7 +247,6 @@ const styles = StyleSheet.create({
   uploadRow: { alignItems: 'center', gap: 10, alignSelf: 'stretch' },
   uploadDivider: { color: colors.ink3, fontSize: 12.5, marginBottom: 2 },
   uploadBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 28, borderRadius: radius.control, backgroundColor: colors.brand, alignSelf: 'stretch', justifyContent: 'center' },
-  uploadBtnIcon: { fontSize: 16 },
   uploadText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   uploadBtnGhost: { paddingVertical: 10, paddingHorizontal: 24 },
   uploadTextGhost: { color: colors.brand, fontSize: 15, fontWeight: '600' },

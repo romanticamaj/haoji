@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack } from './navigation';
 import { StoreProvider } from './lib/store-context';
+import { colors } from './lib/theme';
 import HomeScreen from './screens/HomeScreen';
 import RecordScreen from './screens/RecordScreen';
 import ProcessingScreen from './screens/ProcessingScreen';
@@ -13,7 +14,7 @@ export default function App() {
     <SafeAreaProvider>
       <StoreProvider>
         <NavigationContainer>
-          <Stack.Navigator screenOptions={{ headerShadowVisible: false, headerTintColor: '#E5342B', title: '好記' }}>
+          <Stack.Navigator screenOptions={{ headerShadowVisible: false, headerTintColor: colors.brand, headerStyle: { backgroundColor: colors.paper }, title: '好記' }}>
             <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Record" component={RecordScreen} options={{ title: '錄音' }} />
             <Stack.Screen name="Processing" component={ProcessingScreen} options={{ title: '分析中', headerBackVisible: false }} />

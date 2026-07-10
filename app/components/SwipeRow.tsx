@@ -30,6 +30,11 @@ export default function SwipeRow({
       onMoveShouldSetPanResponderCapture: (_e, g) => isHorizontal(g),
       onMoveShouldSetPanResponder: (_e, g) => isHorizontal(g),
       onPanResponderGrant: () => { startX.current = openRef.current ? -DELETE_W : 0; },
+      // Once WE own the horizontal drag, don't let the parent SectionList's native scroll reclaim it
+      // mid-swipe — that termination was firing onPanResponderTerminate and snapping the row shut, so
+      // the delete could never stay revealed ("一直彈回去").
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
       onPanResponderMove: (_e, g) => {
         let next = startX.current + g.dx;
         if (next > 0) next = 0;                                   // don't drag past closed

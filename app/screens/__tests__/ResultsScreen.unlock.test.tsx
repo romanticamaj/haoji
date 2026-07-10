@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 jest.mock('@react-navigation/native', () => ({
   useRoute: () => ({ params: { sessionId: 's' } }),
-  useNavigation: () => ({ navigate: jest.fn(), replace: jest.fn() }),
+  useNavigation: () => ({ navigate: jest.fn(), replace: jest.fn(), setOptions: jest.fn() }),
   useFocusEffect: (cb: any) => { const React = require('react'); React.useEffect(cb, []); },
 }));
 jest.mock('../../lib/api', () => ({ analyze: jest.fn(), getModels: jest.fn().mockResolvedValue({ ok: true, models: [], default: '' }) }));
@@ -25,8 +25,8 @@ test('tapping unlock reveals the locked detail', async () => {
   const { getByText, findByText, queryByText } = await render(
     <StoreProvider store={store}><ResultsScreen /></StoreProvider>);
   fireEvent.press(await findByText('AI 分析'));
-  await waitFor(() => expect(queryByText('🔒 解鎖完整會議記錄')).not.toBeNull());
-  fireEvent.press(await findByText('🔒 解鎖完整會議記錄'));
+  await waitFor(() => expect(queryByText('解鎖完整會議記錄')).not.toBeNull());
+  fireEvent.press(await findByText('解鎖完整會議記錄'));
   await waitFor(() => getByText('複製 Markdown'));
-  await waitFor(() => expect(queryByText('🔒 解鎖完整會議記錄')).toBeNull());
+  await waitFor(() => expect(queryByText('解鎖完整會議記錄')).toBeNull());
 });

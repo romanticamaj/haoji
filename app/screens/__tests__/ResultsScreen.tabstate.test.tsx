@@ -7,7 +7,7 @@ jest.mock('react-native-share', () => ({ open: jest.fn().mockResolvedValue({}) }
 jest.mock('react-native-fs', () => ({ DocumentDirectoryPath: '/doc', writeFile: jest.fn().mockResolvedValue(undefined), unlink: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('@react-navigation/native', () => ({
   useRoute: () => ({ params: { sessionId: 's' } }),
-  useNavigation: () => ({ navigate: jest.fn(), replace: jest.fn() }),
+  useNavigation: () => ({ navigate: jest.fn(), replace: jest.fn(), setOptions: jest.fn() }),
   useFocusEffect: (cb: any) => { const React = require('react'); React.useEffect(cb, []); },
 }));
 import ResultsScreen from '../ResultsScreen';

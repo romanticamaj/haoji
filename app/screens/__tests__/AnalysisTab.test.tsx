@@ -61,7 +61,7 @@ test('locked: shows preview and unlock CTA, hides copy action', async () => {
   const s = { ...base, notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 機密重點', unlocked: false };
   const { getByText, queryByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);
   getByText(/摘要內容/);
-  getByText('🔒 解鎖完整會議記錄');
+  getByText('解鎖完整會議記錄');
   expect(queryByText('複製 Markdown')).toBeNull();
   expect(queryByText('複製純文字')).toBeNull();
 });
