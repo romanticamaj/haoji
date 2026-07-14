@@ -30,8 +30,8 @@ type RowHandle = { stop: () => void; playFrom: (offsetMs: number) => void };
 // with an accurate playhead (this replaced the hand-rolled nitro-sound player, whose fake bars never
 // lined up and whose seek jumped back to the head). Each part is one Waveform instance keyed by its
 // internal `PlayerFor${path}` key. We coordinate across rows so only one plays at a time.
-const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[] }>(function RecordingsList(
-  { parts }, ref,
+const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?: (globalMs: number) => void }>(
+  function RecordingsList({ parts, onProgress }, ref,
 ) {
   const rowRefs = useRef<Map<number, RowHandle>>(new Map());
   // Live-measured part durations (index → ms), reported by rows as they load/play. Seeds the
@@ -57,6 +57,14 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[] }>(function 
     rowRefs.current.forEach((h, i) => { if (i !== keep) h.stop(); });
   };
   const reportDuration = (i: number, ms: number) => { if (ms > 0) liveDur.current[i] = ms; };
+  // Cumulative start (ms) of a part in the whole-meeting timeline = sum of earlier parts' durations.
+  const partStart = (i: number) => {
+    let acc = 0;
+    for (let k = 0; k < i; k++) acc += liveDur.current[k] || parts[k].durationMs || 0;
+    return acc;
+  };
+  // A playing row's local progress → global playhead (for the transcript's follow-along highlight).
+  const reportProgress = (i: number, cur: number) => { onProgress?.(partStart(i) + cur); };
 
   // Transcript tap → jump here. Translate the global meeting time to (part, offset) and drive that row.
   useImperativeHandle(ref, () => ({
@@ -80,21 +88,25 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[] }>(function 
           register={register}
           stopOthers={stopOthers}
           reportDuration={reportDuration}
+          reportProgress={reportProgress}
         />
       ))}
     </View>
   );
 });
 
-export default RecordingsList;
+// Memoised so the transcript's per-tick playhead updates (ResultsScreen re-renders) don't churn the
+// native waveform tree — parts is memoised and onProgress/ref are stable, so this genuinely skips.
+export default React.memo(RecordingsList);
 
 function PlayerRow(
-  { index, storedUri, storedMs, multi, register, stopOthers, reportDuration }:
+  { index, storedUri, storedMs, multi, register, stopOthers, reportDuration, reportProgress }:
   {
     index: number; storedUri: string; storedMs: number; multi: boolean;
     register: (i: number, handle: RowHandle | null) => void;
     stopOthers: (keep: number) => void;
     reportDuration: (i: number, ms: number) => void;
+    reportProgress: (i: number, cur: number) => void;
   },
 ) {
   const ref = useRef<IWaveformRef>(null);
@@ -218,6 +230,7 @@ function PlayerRow(
           }}
           onCurrentProgressChange={(cur: number, dur: number) => {
             setProgressMs(cur);
+            reportProgress(index, cur);
             if (dur > 0) { setDurationMs(dur); reportDuration(index, dur); }
             // Reached the end (FinishMode.stop resets the native player to 0) → reflect it in the UI.
             if (dur > 0 && cur >= dur) { startedRef.current = false; setPlaying(false); }

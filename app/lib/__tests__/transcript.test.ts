@@ -1,4 +1,18 @@
-import { mmss, nameOf, mergedParagraphs, applyTurnEdit } from '../transcript';
+import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph } from '../transcript';
+
+describe('activeParagraph', () => {
+  const starts = [0, 4, 10]; // paragraph start times in seconds
+  test('returns -1 before playback (ms<=0)', () => {
+    expect(activeParagraph(starts, 0)).toBe(-1);
+    expect(activeParagraph(starts, -5)).toBe(-1);
+  });
+  test('picks the last paragraph whose start is at or before the playhead', () => {
+    expect(activeParagraph(starts, 500)).toBe(0);    // 0.5s → paragraph 0
+    expect(activeParagraph(starts, 4000)).toBe(1);   // exactly 4s → paragraph 1
+    expect(activeParagraph(starts, 9000)).toBe(1);   // 9s → still paragraph 1
+    expect(activeParagraph(starts, 12000)).toBe(2);  // 12s → paragraph 2
+  });
+});
 
 test('mmss formats seconds', () => {
   expect(mmss(0)).toBe('00:00');

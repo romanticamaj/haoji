@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, Modal, TextInput, Animated,
   KeyboardAvoidingView, Platform,
@@ -22,6 +22,9 @@ export default function ResultsScreen() {
   const [editingTitle, setEditingTitle] = useState(false);
   // Lets a transcript tap drive the player above (seek to that moment + play).
   const playerRef = useRef<RecordingsHandle>(null);
+  // Global playhead (ms) reported by the player → drives the transcript's follow-along highlight.
+  const [playheadMs, setPlayheadMs] = useState(0);
+  const parts = useMemo(() => session?.parts ?? [], [session?.parts]);
 
   useFocusEffect(useCallback(() => { store.get(id).then(setSession); }, [id, store]));
 
@@ -49,7 +52,7 @@ export default function ResultsScreen() {
   if (!session) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
   return (
     <View style={styles.container}>
-      <RecordingsList ref={playerRef} parts={session.parts ?? []} />
+      <RecordingsList ref={playerRef} parts={parts} onProgress={setPlayheadMs} />
       <View style={styles.tabs}>
         {(['transcript', 'analysis'] as const).map((t) => (
           <Pressable key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
@@ -59,7 +62,8 @@ export default function ResultsScreen() {
       </View>
       <View style={{ flex: 1, display: tab === 'transcript' ? 'flex' : 'none' }}>
         <TranscriptTab session={session} onUpdate={update} onRegenerate={regenerate}
-          onSeek={(ms) => playerRef.current?.seekToGlobal(ms)} />
+          onSeek={(ms) => playerRef.current?.seekToGlobal(ms)}
+          activeMs={tab === 'transcript' ? playheadMs : 0} />
       </View>
       <View style={{ flex: 1, display: tab === 'analysis' ? 'flex' : 'none' }}>
         <AnalysisTab session={session} onUpdate={update} onUnlock={() => update({ ...session, unlocked: true })}

@@ -23,6 +23,18 @@ export function mergedParagraphs(segments: Segment[]): Turn[] {
   return out;
 }
 
+// Index of the paragraph being spoken at global time `ms`: the last one whose start is at or before
+// ms. Returns -1 before playback (ms<=0) or if nothing matches. Drives follow-along highlighting.
+// `startsSec` are the paragraph start times in SECONDS (turn.start), assumed non-decreasing.
+export function activeParagraph(startsSec: number[], ms: number): number {
+  if (!(ms > 0)) return -1;
+  let idx = -1;
+  for (let i = 0; i < startsSec.length; i++) {
+    if (startsSec[i] * 1000 <= ms) idx = i; else break;
+  }
+  return idx;
+}
+
 // Apply an inline transcript edit: replace the segments a paragraph covers [startIdx..endIdx] with ONE
 // corrected segment, keeping the paragraph's start (so tap-to-seek still lands right), end, and speaker.
 // Collapsing the range is intentional — the display re-merges anyway and the notes LLM only sees the

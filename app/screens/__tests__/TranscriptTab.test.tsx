@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent, act } from '@testing-library/react-native';
+import { render, fireEvent, act, within } from '@testing-library/react-native';
 import TranscriptTab from '../TranscriptTab';
 import { SavedSession } from '../../lib/store';
 
@@ -27,6 +27,18 @@ test('tapping a paragraph body seeks the player to that paragraph start (ms) via
   expect(onSeek).toHaveBeenCalledWith(0);
   await act(async () => { fireEvent.press(getByTestId('turn-body-1')); }); // SPEAKER_01 paragraph, start 4s
   expect(onSeek).toHaveBeenLastCalledWith(4000);
+});
+
+test('follow-along: activeMs highlights the paragraph being played; 0 highlights none', async () => {
+  const { getByTestId, queryByTestId, rerender } = await render(
+    <TranscriptTab session={session} onUpdate={() => {}} activeMs={0} />);
+  expect(queryByTestId('turn-active')).toBeNull(); // not playing → nothing highlighted
+  // 5s falls in the SPEAKER_01 paragraph (starts at 4s)
+  await act(async () => { rerender(<TranscriptTab session={session} onUpdate={() => {}} activeMs={5000} />); });
+  within(getByTestId('turn-active')).getByText('好');
+  // 1s falls in the first paragraph
+  await act(async () => { rerender(<TranscriptTab session={session} onUpdate={() => {}} activeMs={1000} />); });
+  within(getByTestId('turn-active')).getByText('你好今天開會');
 });
 
 test('long-pressing a paragraph inline-edits it; 完成 writes the correction back to the segments', async () => {

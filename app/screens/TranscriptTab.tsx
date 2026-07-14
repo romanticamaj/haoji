@@ -4,12 +4,15 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SavedSession } from '../lib/store';
-import { mmss, nameOf, mergedParagraphs, applyTurnEdit } from '../lib/transcript';
+import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph } from '../lib/transcript';
 import { colors, radius, tabularNums, speakerColor } from '../lib/theme';
 
 export default function TranscriptTab(
-  { session, onUpdate, onRegenerate, onSeek }:
-  { session: SavedSession; onUpdate(s: SavedSession): void; onRegenerate?(): void; onSeek?(globalMs: number): void },
+  { session, onUpdate, onRegenerate, onSeek, activeMs = 0 }:
+  {
+    session: SavedSession; onUpdate(s: SavedSession): void; onRegenerate?(): void;
+    onSeek?(globalMs: number): void; activeMs?: number;
+  },
 ) {
   const segs = session.transcript?.segments ?? [];
   const speakers = session.transcript?.speakers ?? [];
@@ -56,7 +59,9 @@ export default function TranscriptTab(
     );
   }
 
-  const turns = mergedParagraphs(segs);
+  const turns = React.useMemo(() => mergedParagraphs(segs), [segs]);
+  // Paragraph currently being spoken (for follow-along highlight); -1 when not playing.
+  const activeIdx = React.useMemo(() => activeParagraph(turns.map((t) => t.start), activeMs), [turns, activeMs]);
   // Count how many turns each speaker owns — shown in the rename sheet copy ("套用到 N 處").
   const turnCounts = React.useMemo(() => {
     const c: Record<string, number> = {};
@@ -80,8 +85,9 @@ export default function TranscriptTab(
           const named = !!session.names[p.speaker];
           const display = nameOf(p.speaker, session.names);
           const initial = named ? display.trim().charAt(0) : String(idx + 1);
+          const active = i === activeIdx;
           return (
-            <View key={i} style={styles.turn}>
+            <View key={i} style={[styles.turn, active && styles.turnActive]} testID={active ? 'turn-active' : undefined}>
               <Pressable
                 testID={`turn-head-${p.speaker}`}
                 style={styles.turnHead}
@@ -139,7 +145,7 @@ export default function TranscriptTab(
                   accessibilityRole="button"
                   accessibilityLabel={`跳到 ${mmss(p.start)} 播放，長按可修改文字`}
                 >
-                  <Text style={styles.body}>{p.text}</Text>
+                  <Text style={[styles.body, active && styles.bodyActive]}>{p.text}</Text>
                 </Pressable>
               )}
             </View>
@@ -261,10 +267,16 @@ const styles = StyleSheet.create({
 
   // turns
   turn: { paddingVertical: 12 },
+  // follow-along highlight on the paragraph currently being played
+  turnActive: {
+    backgroundColor: colors.brandSoft, borderRadius: 12,
+    marginHorizontal: -10, paddingHorizontal: 10, paddingVertical: 10,
+  },
   turnHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
   who: { fontSize: 13.5, fontWeight: '700', color: colors.ink },
   tc: { marginLeft: 'auto', fontSize: 11.5, color: colors.ink3 },
   body: { fontSize: 14, lineHeight: 22, color: colors.ink },
+  bodyActive: { color: colors.brandPress },
 
   // inline editor (long-press a paragraph)
   editBox: {
