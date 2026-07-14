@@ -54,16 +54,22 @@ export default function RecordScreen() {
     nav.replace('Processing', { sessionId: sid });
   }
 
-  // Shared ingest for both upload sources: move the (already app-local) file into the persistent
-  // per-session dir as a RELATIVE part, then hand off to ProcessingScreen. No backend call here —
-  // ProcessingScreen owns all backend work (C2). The backend re-encodes whatever we send to 16 kHz
-  // mono WAV via ffmpeg, so a video container works too (it just keeps the audio track).
-  async function ingestLocalFile(localUri: string) {
+  // Shared ingest for the upload sources: move each (already app-local) file into the persistent
+  // per-session dir as a sequential RELATIVE part, then hand off to ProcessingScreen. No backend call
+  // here — ProcessingScreen owns all backend work (C2). Multiple files become multiple PARTS of ONE
+  // session, so the backend concatenates them (part-0, part-1, …) into a single combined transcript +
+  // analysis — this is how importing several Voice Memos "依次" into one meeting works. The backend
+  // re-encodes whatever we send to 16 kHz mono WAV via ffmpeg, so a video container works too.
+  async function ingestLocalFiles(localUris: string[]) {
     const id = makeLocalId();
     const createdAt = Date.now();
     const title = new Date().toLocaleString();
-    const rel = await moveToPart(id, 0, localUri);
-    await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: [{ uri: rel, durationMs: 0 }] });
+    const parts: { uri: string; durationMs: number }[] = [];
+    for (let i = 0; i < localUris.length; i++) {
+      const rel = await moveToPart(id, i, localUris[i]);
+      parts.push({ uri: rel, durationMs: 0 });
+    }
+    await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts });
     nav.replace('Processing', { sessionId: id });
   }
 
@@ -90,32 +96,39 @@ export default function RecordScreen() {
       return;
     }
     setBusyMsg('準備中…');
-    try { await ingestLocalFile(uri); }
+    try { await ingestLocalFiles([uri]); }
     catch (e: any) { setBusyMsg(null); setErr(e?.message || '上傳失敗'); }
   }
 
-  // Pick an audio/video file from the Files app (iCloud Drive, On My iPhone, etc.).
+  // Pick one OR MORE audio/video files from the Files app (iCloud Drive, On My iPhone, and — once
+  // saved to Files — Voice Memos 語音備忘錄). Multi-selected files become sequential PARTS of one
+  // session, so they're transcribed + analysed together as a single meeting.
   async function onPickFile() {
-    let file: { uri: string; name?: string | null } | undefined;
+    let files: { uri: string; name?: string | null }[];
     try {
-      [file] = await pick({ type: [types.audio, types.video] });
+      files = await pick({ allowMultiSelection: true, type: [types.audio, types.video] });
     } catch (e) {
       if (isErrorWithCode(e) && e.code === errorCodes.OPERATION_CANCELED) return; // user dismissed picker
       setErr('選取失敗');
       return;
     }
-    if (!file) return;
-    setBusyMsg('讀取檔案中…'); setErr(null);
+    if (!files || files.length === 0) return;
+    setBusyMsg(files.length > 1 ? `讀取 ${files.length} 個檔案中…` : '讀取檔案中…'); setErr(null);
     try {
-      // The picker hands back a security-scoped iOS uri whose access is released once we navigate
-      // away — ProcessingScreen then can't read it to upload, so it hung on "上傳中…". Copy the file
-      // into the app's cache first, then ingestLocalFile moves it into the persistent per-session dir.
-      const [copied] = await keepLocalCopy({
-        files: [{ uri: file.uri, fileName: file.name || `upload-${Date.now()}.m4a` }],
+      // The picker hands back security-scoped iOS uris whose access is released once we navigate away
+      // — ProcessingScreen then can't read them to upload. Copy them all into the app's cache first,
+      // then ingestLocalFiles moves them into the persistent per-session dir as ordered parts.
+      const reqs = files.map((f, i) => ({ uri: f.uri, fileName: f.name || `upload-${Date.now()}-${i}.m4a` }));
+      const copied = await keepLocalCopy({
+        files: [reqs[0], ...reqs.slice(1)],
         destination: 'cachesDirectory',
       });
-      if (copied.status !== 'success') throw new Error(copied.copyError || '檔案複製失敗，請再試一次');
-      await ingestLocalFile(copied.localUri);
+      const localUris: string[] = [];
+      for (const c of copied) {
+        if (c.status !== 'success') throw new Error(c.copyError || '檔案複製失敗，請再試一次');
+        localUris.push(c.localUri);
+      }
+      await ingestLocalFiles(localUris);
     } catch (e: any) { setBusyMsg(null); setErr(e?.message || '上傳失敗'); }
   }
 
@@ -205,7 +218,7 @@ export default function RecordScreen() {
               <Text style={styles.uploadText}>從圖庫選影片</Text>
             </Pressable>
             <Pressable style={styles.uploadBtnGhost} onPress={onPickFile} accessibilityRole="button">
-              <Text style={styles.uploadTextGhost}>從檔案上傳音檔</Text>
+              <Text style={styles.uploadTextGhost}>匯入音檔（可多選）</Text>
             </Pressable>
           </View>
         )}

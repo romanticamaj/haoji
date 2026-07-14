@@ -66,7 +66,7 @@ test('while starting, the button shows busy and does not re-trigger start', asyn
 // ProcessingScreen owns all backend work). It persists a draft part under a local id and hands off.
 test('uploading a file does NOT call createSession/uploadPart, sets parts in store, and navigates to Processing', async () => {
   const { getByText } = await render(<RecordScreen />);
-  fireEvent.press(getByText('從檔案上傳音檔'));
+  fireEvent.press(getByText('匯入音檔（可多選）'));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();

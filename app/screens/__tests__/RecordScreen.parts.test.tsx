@@ -73,7 +73,7 @@ test('pressing 結束 in interruption prompt stops recording and navigates to Pr
 test('C2: pressing 上傳 copies file into the persistent per-session dir, skips backend, navigates to Processing', async () => {
   (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
   const { getByText } = await render(<RecordScreen />);
-  fireEvent.press(getByText('從檔案上傳音檔'));
+  fireEvent.press(getByText('匯入音檔（可多選）'));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
@@ -87,11 +87,40 @@ test('C2: pressing 上傳 copies file into the persistent per-session dir, skips
   }));
 });
 
+// Multi-select: several picked audio files (e.g. Voice Memos) become sequential PARTS of ONE session
+// so they're concatenated + analysed together as a single meeting.
+test('multi-select import creates one session with a part per file', async () => {
+  (pick as jest.Mock).mockResolvedValueOnce([
+    { uri: 'file:///a.m4a', name: 'a.m4a', type: 'audio/mp4' },
+    { uri: 'file:///b.m4a', name: 'b.m4a', type: 'audio/mp4' },
+  ]);
+  (keepLocalCopy as jest.Mock).mockResolvedValueOnce([
+    { status: 'success', sourceUri: 'file:///a.m4a', localUri: 'file:///doc/haoji/a.m4a' },
+    { status: 'success', sourceUri: 'file:///b.m4a', localUri: 'file:///doc/haoji/b.m4a' },
+  ]);
+  const { getByText } = await render(<RecordScreen />);
+  fireEvent.press(getByText('匯入音檔（可多選）'));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+  // both files copied in a single keepLocalCopy call...
+  expect(keepLocalCopy).toHaveBeenCalledWith(expect.objectContaining({
+    files: [{ uri: 'file:///a.m4a', fileName: 'a.m4a' }, { uri: 'file:///b.m4a', fileName: 'b.m4a' }],
+    destination: 'cachesDirectory',
+  }));
+  // ...and persisted as two ordered parts of ONE session
+  expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
+    parts: [
+      { uri: expect.stringMatching(/^haoji\/local-.*\/part-0\.m4a$/), durationMs: 0 },
+      { uri: expect.stringMatching(/^haoji\/local-.*\/part-1\.m4a$/), durationMs: 0 },
+    ],
+  }));
+  expect(api.createSession).not.toHaveBeenCalled();
+});
+
 test('upload surfaces an error (not a hang) when the local copy fails', async () => {
   (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
   (keepLocalCopy as jest.Mock).mockResolvedValueOnce([{ status: 'error', sourceUri: 'file:///u.m4a', copyError: 'boom' }]);
   const { getByText } = await render(<RecordScreen />);
-  fireEvent.press(getByText('從檔案上傳音檔'));
+  fireEvent.press(getByText('匯入音檔（可多選）'));
   await waitFor(() => getByText('boom'));
   expect(mockReplace).not.toHaveBeenCalled();
 });
