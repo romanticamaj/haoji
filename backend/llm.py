@@ -3,6 +3,9 @@
 import re
 import requests
 import config
+# Shared s2tw converter (also used by asr.normalize so the transcript is Traditional too). Imported
+# into this namespace so existing references (llm.to_traditional) keep working.
+from zhtw import to_traditional
 
 MEETING_NOTES_PROMPT = """你是專業的會議記錄助理。下面是一份多人對話的逐字稿(格式「[時間] 講者: 內容」)。請整理成一份**詳盡、結構完整**的繁體中文會議記錄。
 
@@ -14,17 +17,6 @@ MEETING_NOTES_PROMPT = """你是專業的會議記錄助理。下面是一份多
 - 條列盡量具體(數字、時間、服務名稱、指標都要保留)。
 
 用 Markdown 輸出,章節:會議目的 / 與會者 / 會議摘要 / 討論重點(分主題) / 決策 / 待辦事項(依負責人) / 後續安排 / 一句話結論。某節若逐字稿真的沒提到,寫「(無)」。直接輸出會議記錄,不要開場白或客套話。"""
-
-_opencc = None
-def to_traditional(text):
-    global _opencc
-    try:
-        if _opencc is None:
-            import opencc
-            _opencc = opencc.OpenCC("s2tw")
-        return _opencc.convert(text)
-    except Exception:
-        return text
 
 def llm_status():
     try:

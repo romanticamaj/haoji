@@ -11,6 +11,15 @@ def test_normalize_shapes_segments_and_speakers():
     assert out["duration"] == 5.0
     assert {s["speaker"] for s in out["stats"]} == {"SPEAKER_00", "SPEAKER_01"}
 
+def test_normalize_converts_transcript_to_traditional(monkeypatch):
+    # 好記 is Traditional-Chinese; ASR (language="zh") can emit Simplified, so normalize must run each
+    # segment through s2tw. Stub the converter (a small char map) so the test needs no opencc install.
+    monkeypatch.setattr(asr, "to_traditional",
+                        lambda t: t.translate(str.maketrans({"们": "們", "进": "進", "测": "測", "试": "試"})))
+    raw = {"segments": [{"start": 0.0, "end": 1.0, "speaker": "SPEAKER_00", "text": "我们进行测试 "}], "duration": 1.0}
+    out = asr.normalize(raw)
+    assert out["segments"][0]["text"] == "我們進行測試"
+
 def test_transcribe_diarize_posts_to_breeze(monkeypatch, tmp_path):
     wav = tmp_path / "a.wav"; wav.write_bytes(b"RIFF....")
     monkeypatch.setattr(asr, "detect_asr_base", lambda force=False: "http://127.0.0.1:8765")

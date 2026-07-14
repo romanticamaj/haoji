@@ -3,6 +3,7 @@
 import os, socket, subprocess
 import requests
 import config
+from zhtw import to_traditional
 
 _asr_cache = None
 
@@ -84,8 +85,12 @@ def speaker_stats(segs):
             for sp in sorted(talk, key=lambda x: -talk[x])]
 
 def normalize(data):
+    # Convert each segment to Traditional Chinese (s2tw). Breeze ASR is invoked with language="zh" and
+    # can emit Simplified/mixed characters; without this the 逐字稿 leaked Simplified even though the
+    # AI notes were already converted. This makes the whole pipeline Traditional (the app displays
+    # these segments AND feeds them to the notes LLM via build_transcript_text).
     segs = [{"start": float(s["start"]), "end": float(s["end"]),
-             "speaker": s["speaker"], "text": s["text"].strip()}
+             "speaker": s["speaker"], "text": to_traditional(s["text"].strip())}
             for s in data.get("segments", [])]
     return {
         "segments": segs,
