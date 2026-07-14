@@ -1,7 +1,28 @@
 import {
-  clamp, xToRatio, ratioToMs, skipTo, nextSpeed, formatSpeed, waveformBars, barIsPlayed,
+  clamp, xToRatio, ratioToMs, skipTo, nextSpeed, formatSpeed, waveformBars, barIsPlayed, locatePart,
   SKIP_BACK_MS, SKIP_FWD_MS,
 } from '../player';
+
+describe('locatePart', () => {
+  test('single part: offset equals the global time', () => {
+    expect(locatePart(12000, [61000])).toEqual({ part: 0, offsetMs: 12000 });
+  });
+  test('multi part: picks the containing part and its within-part offset', () => {
+    const durs = [60000, 120000]; // part0 [0,60s), part1 [60s,180s)
+    expect(locatePart(10000, durs)).toEqual({ part: 0, offsetMs: 10000 });
+    expect(locatePart(60000, durs)).toEqual({ part: 1, offsetMs: 0 });
+    expect(locatePart(95000, durs)).toEqual({ part: 1, offsetMs: 35000 });
+  });
+  test('a part with unknown (0) duration absorbs the remainder as best-effort', () => {
+    expect(locatePart(90000, [60000, 0])).toEqual({ part: 1, offsetMs: 30000 });
+  });
+  test('past the end clamps into the last part', () => {
+    expect(locatePart(999000, [60000, 120000])).toEqual({ part: 1, offsetMs: 939000 });
+  });
+  test('negative time floors to 0', () => {
+    expect(locatePart(-500, [60000])).toEqual({ part: 0, offsetMs: 0 });
+  });
+});
 
 describe('clamp', () => {
   test('bounds within range', () => {

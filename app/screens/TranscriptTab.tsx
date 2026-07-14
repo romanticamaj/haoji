@@ -4,12 +4,12 @@ import {
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SavedSession } from '../lib/store';
-import { mmss, nameOf, mergedParagraphs } from '../lib/transcript';
+import { mmss, nameOf, mergedParagraphs, applyTurnEdit } from '../lib/transcript';
 import { colors, radius, tabularNums, speakerColor } from '../lib/theme';
 
 export default function TranscriptTab(
-  { session, onUpdate, onRegenerate }:
-  { session: SavedSession; onUpdate(s: SavedSession): void; onRegenerate?(): void },
+  { session, onUpdate, onRegenerate, onSeek }:
+  { session: SavedSession; onUpdate(s: SavedSession): void; onRegenerate?(): void; onSeek?(globalMs: number): void },
 ) {
   const segs = session.transcript?.segments ?? [];
   const speakers = session.transcript?.speakers ?? [];
@@ -25,6 +25,17 @@ export default function TranscriptTab(
 
   // Which speaker the rename sheet is editing (null = closed).
   const [editing, setEditing] = React.useState<string | null>(null);
+  // Which paragraph is being edited INLINE (index into `turns`), plus its working draft text. Long-press
+  // a paragraph to enter; 完成 writes the correction back into the transcript segments, 取消 discards.
+  const [editIdx, setEditIdx] = React.useState<number | null>(null);
+  const [draft, setDraft] = React.useState('');
+
+  const beginEdit = (i: number, text: string) => { setDraft(text); setEditIdx(i); };
+  const commitEdit = (startIdx: number, endIdx: number) => {
+    const next = applyTurnEdit(segs, startIdx, endIdx, draft.trim());
+    onUpdate({ ...session, transcript: { ...(session.transcript!), segments: next } });
+    setEditIdx(null);
+  };
 
   // Empty transcript (e.g. the backend dropped mid-transcription and never returned one) — offer a
   // full re-run rather than leaving the user stuck. Regeneration re-uploads the on-device parts to
@@ -55,7 +66,14 @@ export default function TranscriptTab(
 
   return (
     <View style={styles.wrap}>
-      <ScrollView style={styles.scroll} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+      >
+        <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
         {turns.map((p, i) => {
           const idx = speakerIndex[p.speaker] ?? 0;
           const color = speakerColor(idx);
@@ -90,7 +108,40 @@ export default function TranscriptTab(
                 )}
                 <Text style={[styles.tc, tabularNums]}>{mmss(p.start)}</Text>
               </Pressable>
-              <Text style={styles.body}>{p.text}</Text>
+              {editIdx === i ? (
+                <View style={styles.editBox}>
+                  <TextInput
+                    testID={`edit-input-${i}`}
+                    autoFocus
+                    multiline
+                    style={styles.editInput}
+                    value={draft}
+                    onChangeText={setDraft}
+                    placeholder="修改這段文字"
+                    placeholderTextColor={colors.ink3}
+                    scrollEnabled={false}
+                  />
+                  <View style={styles.editActions}>
+                    <Pressable testID={`edit-cancel-${i}`} onPress={() => setEditIdx(null)} style={styles.editBtn} accessibilityRole="button">
+                      <Text style={styles.editCancelText}>取消</Text>
+                    </Pressable>
+                    <Pressable testID={`edit-done-${i}`} onPress={() => commitEdit(p.startIdx, p.endIdx)} style={[styles.editBtn, styles.editDone]} accessibilityRole="button">
+                      <Text style={styles.editDoneText}>完成</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable
+                  testID={`turn-body-${i}`}
+                  onPress={() => onSeek?.(Math.round(p.start * 1000))}
+                  onLongPress={() => beginEdit(i, p.text)}
+                  delayLongPress={280}
+                  accessibilityRole="button"
+                  accessibilityLabel={`跳到 ${mmss(p.start)} 播放，長按可修改文字`}
+                >
+                  <Text style={styles.body}>{p.text}</Text>
+                </Pressable>
+              )}
             </View>
           );
         })}
@@ -205,12 +256,27 @@ const styles = StyleSheet.create({
   regenFooter: { marginTop: 20, marginBottom: 8, paddingVertical: 10, alignItems: 'center' },
   regenText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
 
+  // teaches the two paragraph gestures (tap = seek, long-press = edit)
+  howto: { fontSize: 11.5, color: colors.ink3, textAlign: 'center', paddingTop: 12, paddingBottom: 2 },
+
   // turns
   turn: { paddingVertical: 12 },
   turnHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
   who: { fontSize: 13.5, fontWeight: '700', color: colors.ink },
   tc: { marginLeft: 'auto', fontSize: 11.5, color: colors.ink3 },
   body: { fontSize: 14, lineHeight: 22, color: colors.ink },
+
+  // inline editor (long-press a paragraph)
+  editBox: {
+    backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.brandSoft,
+    paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10,
+  },
+  editInput: { fontSize: 14, lineHeight: 22, color: colors.ink, padding: 0, minHeight: 44, textAlignVertical: 'top' },
+  editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 10 },
+  editBtn: { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 9 },
+  editCancelText: { fontSize: 14, fontWeight: '600', color: colors.ink2 },
+  editDone: { backgroundColor: colors.brand },
+  editDoneText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   av: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   avText: { fontSize: 10, fontWeight: '700', color: '#fff' },

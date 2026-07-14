@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { useAudioPlayer } from '@simform_solutions/react-native-audio-waveform';
 
 // The native audio-waveform module is mocked globally in jest-setup.js: the Waveform ref's
@@ -67,6 +67,16 @@ test('speed button cycles 1.0× → 1.5× → 2.0× → 1.0×', async () => {
   await waitFor(() => getByText('2.0×'));
   fireEvent.press(getByText('2.0×'));
   await waitFor(() => getByText('1.0×'));
+});
+
+test('seekToGlobal maps a global time to the right part + offset and plays it', async () => {
+  const handle = React.createRef<any>();
+  const { findByLabelText } = await render(<RecordingsList ref={handle} parts={parts} />);
+  await findByLabelText('waveform-/doc/p2'); // both rows mounted (registers their handles)
+  // part0 is 61s; global 70s falls in part1 at offset 9s. Should start part1 then seek to 9000ms.
+  await act(async () => { handle.current.seekToGlobal(70000); });
+  await waitFor(() => expect(seekToPlayer).toHaveBeenCalledWith({ playerKey: 'PlayerFor/doc/p2', progress: 9000 }));
+  await findByLabelText('暫停'); // the row flipped to playing
 });
 
 test('renders nothing when parts is empty', async () => {

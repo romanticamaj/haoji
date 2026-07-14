@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import {
   Waveform,
@@ -11,35 +11,61 @@ import {
 import { resolvePartUri, partExists } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 import { colors, radius, tabularNums } from '../lib/theme';
-import { SKIP_BACK_MS, SKIP_FWD_MS, clamp, skipTo, nextSpeed, formatSpeed } from '../lib/player';
+import { SKIP_BACK_MS, SKIP_FWD_MS, clamp, skipTo, nextSpeed, formatSpeed, locatePart } from '../lib/player';
 import { IconPlay, IconPause, IconRewind, IconForward, IconAlert } from '../components/icons';
 
 type Part = { uri: string; durationMs: number };
+
+// Imperative handle the transcript uses to jump the player: given a GLOBAL meeting time (ms), find the
+// right part + offset and play from there. Exposed via forwardRef; see ResultsScreen wiring.
+export type RecordingsHandle = { seekToGlobal(globalMs: number): void };
+
+// What each row registers with the list: stop (used when another row starts) + playFrom (seek to an
+// offset within this part and start playing). Richer than the raw waveform ref so a transcript tap can
+// drive the row through its own play logic (keeps `playing`/startedRef in sync — no state desync).
+type RowHandle = { stop: () => void; playFrom: (offsetMs: number) => void };
 
 // The audio player is the native `react-native-audio-waveform` static Waveform: it extracts the REAL
 // waveform from each part's file, renders it full-width, and owns play/pause + drag-to-scrub seeking
 // with an accurate playhead (this replaced the hand-rolled nitro-sound player, whose fake bars never
 // lined up and whose seek jumped back to the head). Each part is one Waveform instance keyed by its
 // internal `PlayerFor${path}` key. We coordinate across rows so only one plays at a time.
-export default function RecordingsList({ parts }: { parts: Part[] }) {
-  const rowRefs = useRef<Map<number, IWaveformRef>>(new Map());
+const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[] }>(function RecordingsList(
+  { parts }, ref,
+) {
+  const rowRefs = useRef<Map<number, RowHandle>>(new Map());
+  // Live-measured part durations (index → ms), reported by rows as they load/play. Seeds the
+  // global→part mapping for tap-to-seek; falls back to the stored durationMs when a part hasn't
+  // played yet. A ref (not state) so seekToGlobal reads the latest without re-rendering the list.
+  const liveDur = useRef<Record<number, number>>({});
   const { stopAllPlayers } = useAudioPlayer();
 
   // Reset when the session's parts change (navigating to a different meeting) or on unmount, so no
   // audio keeps playing from another session. The signature keys on the actual part uris.
   const sig = parts.map((p) => p.uri).join('|');
   useEffect(() => {
+    liveDur.current = {};
     return () => { void stopAllPlayers(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);
 
-  const register = (i: number, ref: IWaveformRef | null) => {
-    if (ref) rowRefs.current.set(i, ref); else rowRefs.current.delete(i);
+  const register = (i: number, handle: RowHandle | null) => {
+    if (handle) rowRefs.current.set(i, handle); else rowRefs.current.delete(i);
   };
   // Before a row starts playing, stop every OTHER row (keeps this row's own prepared position intact).
   const stopOthers = (keep: number) => {
-    rowRefs.current.forEach((ref, i) => { if (i !== keep) void ref.stopPlayer(); });
+    rowRefs.current.forEach((h, i) => { if (i !== keep) h.stop(); });
   };
+  const reportDuration = (i: number, ms: number) => { if (ms > 0) liveDur.current[i] = ms; };
+
+  // Transcript tap → jump here. Translate the global meeting time to (part, offset) and drive that row.
+  useImperativeHandle(ref, () => ({
+    seekToGlobal(globalMs: number) {
+      const durations = parts.map((p, i) => liveDur.current[i] || p.durationMs || 0);
+      const { part, offsetMs } = locatePart(globalMs, durations);
+      rowRefs.current.get(part)?.playFrom(offsetMs);
+    },
+  }), [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (parts.length === 0) return null;
   return (
@@ -53,18 +79,22 @@ export default function RecordingsList({ parts }: { parts: Part[] }) {
           multi={parts.length > 1}
           register={register}
           stopOthers={stopOthers}
+          reportDuration={reportDuration}
         />
       ))}
     </View>
   );
-}
+});
+
+export default RecordingsList;
 
 function PlayerRow(
-  { index, storedUri, storedMs, multi, register, stopOthers }:
+  { index, storedUri, storedMs, multi, register, stopOthers, reportDuration }:
   {
     index: number; storedUri: string; storedMs: number; multi: boolean;
-    register: (i: number, ref: IWaveformRef | null) => void;
+    register: (i: number, handle: RowHandle | null) => void;
     stopOthers: (keep: number) => void;
+    reportDuration: (i: number, ms: number) => void;
   },
 ) {
   const ref = useRef<IWaveformRef>(null);
@@ -95,9 +125,24 @@ function PlayerRow(
     return () => { alive = false; };
   }, [storedUri]);
 
-  // Expose this row's player ref to the parent so it can stop us when another row starts.
+  // Register this row's control handle with the list: stop() when another row starts, and playFrom()
+  // when a transcript tap jumps here. Re-registers once the waveform mounts (exists === true) so
+  // playFrom's ref.current points at a live player. playFrom goes through this row's own state
+  // (startedRef/playing) so a later tap on the play button resumes/pauses correctly (no desync).
   useEffect(() => {
-    register(index, ref.current);
+    const handle: RowHandle = {
+      stop: () => { setPlaying(false); void ref.current?.stopPlayer(); },
+      playFrom: async (offsetMs: number) => {
+        stopOthers(index);
+        const target = Math.max(0, Math.round(offsetMs));
+        startedRef.current = true;
+        setProgressMs(target);
+        setPlaying(true);
+        await ref.current?.startPlayer({ finishMode: FinishMode.stop });
+        try { await seekToPlayer({ playerKey, progress: target }); } catch { /* not prepared yet */ }
+      },
+    };
+    register(index, handle);
     return () => register(index, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index, exists]);
@@ -173,7 +218,7 @@ function PlayerRow(
           }}
           onCurrentProgressChange={(cur: number, dur: number) => {
             setProgressMs(cur);
-            if (dur > 0) setDurationMs(dur);
+            if (dur > 0) { setDurationMs(dur); reportDuration(index, dur); }
             // Reached the end (FinishMode.stop resets the native player to 0) → reflect it in the UI.
             if (dur > 0 && cur >= dur) { startedRef.current = false; setPlaying(false); }
           }}

@@ -8,7 +8,7 @@ import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
 import TranscriptTab from './TranscriptTab';
 import AnalysisTab from './AnalysisTab';
-import RecordingsList from './RecordingsList';
+import RecordingsList, { type RecordingsHandle } from './RecordingsList';
 import { IconPencil } from '../components/icons';
 import { colors, radius } from '../lib/theme';
 
@@ -20,6 +20,8 @@ export default function ResultsScreen() {
   const [session, setSession] = useState<SavedSession | null>(null);
   const [tab, setTab] = useState<'transcript' | 'analysis'>('transcript');
   const [editingTitle, setEditingTitle] = useState(false);
+  // Lets a transcript tap drive the player above (seek to that moment + play).
+  const playerRef = useRef<RecordingsHandle>(null);
 
   useFocusEffect(useCallback(() => { store.get(id).then(setSession); }, [id, store]));
 
@@ -47,7 +49,7 @@ export default function ResultsScreen() {
   if (!session) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
   return (
     <View style={styles.container}>
-      <RecordingsList parts={session.parts ?? []} />
+      <RecordingsList ref={playerRef} parts={session.parts ?? []} />
       <View style={styles.tabs}>
         {(['transcript', 'analysis'] as const).map((t) => (
           <Pressable key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
@@ -56,7 +58,8 @@ export default function ResultsScreen() {
         ))}
       </View>
       <View style={{ flex: 1, display: tab === 'transcript' ? 'flex' : 'none' }}>
-        <TranscriptTab session={session} onUpdate={update} onRegenerate={regenerate} />
+        <TranscriptTab session={session} onUpdate={update} onRegenerate={regenerate}
+          onSeek={(ms) => playerRef.current?.seekToGlobal(ms)} />
       </View>
       <View style={{ flex: 1, display: tab === 'analysis' ? 'flex' : 'none' }}>
         <AnalysisTab session={session} onUpdate={update} onUnlock={() => update({ ...session, unlocked: true })}

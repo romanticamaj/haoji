@@ -42,6 +42,25 @@ export function skipTo(positionMs: number, deltaMs: number, totalMs: number): nu
   return clamp(positionMs + deltaMs, 0, hi);
 }
 
+// Map a GLOBAL transcript time (ms, measured over the whole concatenated meeting) to a specific
+// recording part + the offset within it. The player plays parts separately, but ASR timestamps run
+// over the whole audio, so tap-to-seek must translate. Each part contributes its known duration; a
+// part whose duration is still unknown (<=0, e.g. an imported file not yet played) absorbs the
+// remainder as a best-effort landing. Single-part meetings are always exact (part 0, offset = ms).
+export function locatePart(globalMs: number, durationsMs: number[]): { part: number; offsetMs: number } {
+  const g = Math.max(0, globalMs);
+  let acc = 0;
+  for (let i = 0; i < durationsMs.length; i++) {
+    const d = durationsMs[i];
+    if (!(d > 0)) return { part: i, offsetMs: g - acc };   // unknown duration → land here
+    if (g < acc + d) return { part: i, offsetMs: g - acc };
+    acc += d;
+  }
+  const lastIdx = Math.max(0, durationsMs.length - 1);
+  const lastStart = acc - (durationsMs[lastIdx] || 0);
+  return { part: lastIdx, offsetMs: g - lastStart };        // past the end → clamp into the last part
+}
+
 // Deterministic waveform bar heights as percentages (26..100), mirroring the mockup's
 // h = 26 + 30*|sin(i*0.65)| + 22*|sin(i*0.21+1.3)|. Precomputed once — NEVER Math.random in render.
 export function waveformBars(count: number): number[] {
