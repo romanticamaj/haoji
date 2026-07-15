@@ -62,6 +62,18 @@ export default function TranscriptTab(
   const turns = React.useMemo(() => mergedParagraphs(segs), [segs]);
   // Paragraph currently being spoken (for follow-along highlight); -1 when not playing.
   const activeIdx = React.useMemo(() => activeParagraph(turns.map((t) => t.start), activeMs), [turns, activeMs]);
+
+  // Follow the player: when the active paragraph changes (playback advancing OR a waveform scrub jump),
+  // scroll it into view so the transcript tracks the audio position. Each turn reports its content-Y via
+  // onLayout; we scroll only on index change (not every progress tick) so steady playback stays gentle.
+  const scrollRef = React.useRef<ScrollView>(null);
+  const turnY = React.useRef<Record<number, number>>({});
+  React.useEffect(() => {
+    if (activeIdx < 0) return;
+    const y = turnY.current[activeIdx];
+    if (y == null) return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 88), animated: true });
+  }, [activeIdx]);
   // Count how many turns each speaker owns — shown in the rename sheet copy ("套用到 N 處").
   const turnCounts = React.useMemo(() => {
     const c: Record<string, number> = {};
@@ -72,6 +84,7 @@ export default function TranscriptTab(
   return (
     <View style={styles.wrap}>
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={{ paddingBottom: 40 }}
         keyboardShouldPersistTaps="handled"
@@ -87,7 +100,12 @@ export default function TranscriptTab(
           const initial = named ? display.trim().charAt(0) : String(idx + 1);
           const active = i === activeIdx;
           return (
-            <View key={i} style={[styles.turn, active && styles.turnActive]} testID={active ? 'turn-active' : undefined}>
+            <View
+              key={i}
+              style={[styles.turn, active && styles.turnActive]}
+              testID={active ? 'turn-active' : undefined}
+              onLayout={(e) => { turnY.current[i] = e.nativeEvent.layout.y; }}
+            >
               <Pressable
                 testID={`turn-head-${p.speaker}`}
                 style={styles.turnHead}

@@ -29,6 +29,19 @@ export default function ResultsScreen() {
   const [playheadMs, setPlayheadMs] = useState(0);
   const parts = useMemo(() => session?.parts ?? [], [session?.parts]);
 
+  // Defer the heavy content (native waveform extraction + full transcript/notes render) until the
+  // push animation finishes, so the slide-in stays smooth. Mounting all of it during the transition
+  // was the on-device '破圖' jank; we show a light loading state first, then swap in the real UI.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    // native-stack emits transitionEnd exactly when the slide completes — the ideal moment to load.
+    const sub = nav.addListener?.('transitionEnd', () => setReady(true));
+    // Safety net: a no-animation replace (Processing→Results) won't emit transitionEnd, and the test
+    // renderer's nav has no addListener. Longer than a normal push so it never preempts the animation.
+    const timer = setTimeout(() => setReady(true), 600);
+    return () => { sub?.(); clearTimeout(timer); };
+  }, [nav]);
+
   useFocusEffect(useCallback(() => {
     store.get(id).then((s) => {
       if (!s) { setSession(s); return; }
@@ -63,23 +76,29 @@ export default function ResultsScreen() {
   if (!session) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
   return (
     <View style={styles.container}>
-      <RecordingsList ref={playerRef} parts={parts} onProgress={setPlayheadMs} />
-      <View style={styles.tabs}>
-        {(['transcript', 'analysis'] as const).map((t) => (
-          <Pressable key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
-            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t === 'transcript' ? '逐字稿' : 'AI 分析'}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <View style={{ flex: 1, display: tab === 'transcript' ? 'flex' : 'none' }}>
-        <TranscriptTab session={session} onUpdate={update} onRegenerate={regenerate}
-          onSeek={(ms) => playerRef.current?.seekToGlobal(ms)}
-          activeMs={tab === 'transcript' ? playheadMs : 0} />
-      </View>
-      <View style={{ flex: 1, display: tab === 'analysis' ? 'flex' : 'none' }}>
-        <AnalysisTab session={session} onUpdate={update} onUnlock={() => update({ ...session, unlocked: true })}
-          onGoToTranscript={() => setTab('transcript')} />
-      </View>
+      {ready ? (
+        <>
+          <RecordingsList ref={playerRef} parts={parts} onProgress={setPlayheadMs} />
+          <View style={styles.tabs}>
+            {(['transcript', 'analysis'] as const).map((t) => (
+              <Pressable key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
+                <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t === 'transcript' ? '逐字稿' : 'AI 分析'}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={{ flex: 1, display: tab === 'transcript' ? 'flex' : 'none' }}>
+            <TranscriptTab session={session} onUpdate={update} onRegenerate={regenerate}
+              onSeek={(ms) => playerRef.current?.seekToGlobal(ms)}
+              activeMs={tab === 'transcript' ? playheadMs : 0} />
+          </View>
+          <View style={{ flex: 1, display: tab === 'analysis' ? 'flex' : 'none' }}>
+            <AnalysisTab session={session} onUpdate={update} onUnlock={() => update({ ...session, unlocked: true })}
+              onGoToTranscript={() => setTab('transcript')} />
+          </View>
+        </>
+      ) : (
+        <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>
+      )}
 
       {editingTitle && (
         <TitleSheet
