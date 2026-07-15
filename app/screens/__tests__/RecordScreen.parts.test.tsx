@@ -61,12 +61,12 @@ test('pressing 繼續 in interruption prompt calls resume', async () => {
   expect(mockRecApi.resume).toHaveBeenCalled();
 });
 
-test('pressing 結束 in interruption prompt stops recording and navigates to Processing', async () => {
+test('pressing 結束 in interruption prompt stops recording and navigates to Review', async () => {
   mockRecApi.wasInterrupted = true;
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('結束'));
   await waitFor(() => expect(mockRecApi.stop).toHaveBeenCalled());
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
 });
 
 // C2 + local-first: onUpload must NOT call createSession or uploadPart; ProcessingScreen owns all backend work

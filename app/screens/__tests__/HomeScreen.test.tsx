@@ -32,9 +32,21 @@ test('lists saved sessions newest-first', async () => {
   getByText('會議A');
 });
 
-test('has a 新錄音 button', async () => {
+test('has a 新會議 button', async () => {
   const { getByText } = await renderHome([]);
-  await waitFor(() => getByText('＋ 新錄音'));
+  await waitFor(() => getByText('新會議'));
+});
+
+test('search filters the list by title (case-insensitive) and shows a no-match message', async () => {
+  const { getByText, getByPlaceholderText, queryByText } = await renderHome([
+    mk('a', 1, '週會 Sprint'), mk('b', 2, '客戶訪談'),
+  ]);
+  await waitFor(() => getByText('客戶訪談'));
+  fireEvent.changeText(getByPlaceholderText('搜尋會議'), '週會');
+  await waitFor(() => expect(queryByText('客戶訪談')).toBeNull()); // filtered out
+  getByText('週會 Sprint');
+  fireEvent.changeText(getByPlaceholderText('搜尋會議'), 'zzz');
+  await waitFor(() => getByText(/找不到符合/));
 });
 
 test('swipe-delete confirms then removes the session from the list and store', async () => {

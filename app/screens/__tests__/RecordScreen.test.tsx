@@ -100,12 +100,12 @@ test('cancelling the library picker is a no-op (no navigation, no error)', async
   expect(queryByText('選取失敗')).toBeNull();
 });
 
-test('stopping recording persists parts and navigates to Processing with the local id', async () => {
+test('stopping recording persists parts and navigates to Review with the local id', async () => {
   mockRecApi.state = 'recording';
   const { getByLabelText } = await render(<RecordScreen />);
   fireEvent.press(getByLabelText('停止錄音'));
   await waitFor(() => expect(mockRecApi.stop).toHaveBeenCalled());
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
 });
 
 // Regression: opening the record screen and leaving without capturing anything must NOT create a

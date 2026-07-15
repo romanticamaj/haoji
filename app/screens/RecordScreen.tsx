@@ -14,7 +14,7 @@ import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
 import Waveform from '../components/Waveform';
 import BreathingRing from '../components/BreathingRing';
-import { IconImage } from '../components/icons';
+import { IconImage, IconFile } from '../components/icons';
 import { colors, radius } from '../lib/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -51,7 +51,9 @@ export default function RecordScreen() {
     // Nothing was captured (opened + left, or a zero-length take) → don't create an empty record.
     if (parts.length === 0) { nav.goBack(); return; }
     await store.upsert({ id: sid, createdAt: Date.now(), title: new Date().toLocaleString(), names: {}, unlocked: false, parts });
-    nav.replace('Processing', { sessionId: sid });
+    // Don't jump straight into analysis — land on Review so the user can listen back and decide
+    // whether to analyze or discard (a bad take shouldn't force a transcription round-trip).
+    nav.replace('Review', { sessionId: sid });
   }
 
   // Shared ingest for the upload sources: move each (already app-local) file into the persistent
@@ -177,7 +179,7 @@ export default function RecordScreen() {
         </View>
 
         <Text style={styles.hint}>
-          {isStarting ? '啟動麥克風中…' : isRec ? '再按一次結束錄音' : isPaused ? '' : '點一下開始錄音'}
+          {isStarting ? '啟動麥克風中…' : isRec ? '再按一次結束錄音' : ''}
         </Text>
       </View>
 
@@ -212,13 +214,13 @@ export default function RecordScreen() {
 
         {rec.state === 'idle' && (
           <View style={styles.uploadRow}>
-            <Text style={styles.uploadDivider}>或匯入既有檔案</Text>
             <Pressable style={styles.uploadBtn} onPress={onPickVideo} accessibilityRole="button">
               <IconImage size={18} color="#fff" />
               <Text style={styles.uploadText}>從圖庫選影片</Text>
             </Pressable>
-            <Pressable style={styles.uploadBtnGhost} onPress={onPickFile} accessibilityRole="button">
-              <Text style={styles.uploadTextGhost}>匯入音檔（可多選）</Text>
+            <Pressable style={styles.uploadBtn} onPress={onPickFile} accessibilityRole="button">
+              <IconFile size={18} color="#fff" />
+              <Text style={styles.uploadText}>匯入音檔（可多選）</Text>
             </Pressable>
           </View>
         )}
@@ -258,11 +260,8 @@ const styles = StyleSheet.create({
   secondaryText: { color: colors.ink, fontSize: 16, fontWeight: '600' },
 
   uploadRow: { alignItems: 'center', gap: 10, alignSelf: 'stretch' },
-  uploadDivider: { color: colors.ink3, fontSize: 12.5, marginBottom: 2 },
   uploadBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 28, borderRadius: radius.control, backgroundColor: colors.brand, alignSelf: 'stretch', justifyContent: 'center' },
   uploadText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  uploadBtnGhost: { paddingVertical: 10, paddingHorizontal: 24 },
-  uploadTextGhost: { color: colors.brand, fontSize: 15, fontWeight: '600' },
 
   err: { color: colors.brand, marginTop: 16, textAlign: 'center', paddingHorizontal: 24 },
   recErrWrap: { alignItems: 'center', marginBottom: 12 },

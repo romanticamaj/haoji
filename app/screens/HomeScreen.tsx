@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, SectionList, Pressable, StyleSheet } from 'react-native';
+import { View, Text, SectionList, Pressable, TextInput, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useStore } from '../lib/store-context';
@@ -7,6 +7,7 @@ import { SavedSession } from '../lib/store';
 import { deleteSessionFiles } from '../lib/recordings';
 import { RootStackParamList } from '../navigation';
 import SwipeRow from '../components/SwipeRow';
+import { IconSearch } from '../components/icons';
 import { colors, radius, tabularNums, cardShadow, speakerColor } from '../lib/theme';
 import {
   groupSessions, relativeDay, durationLabel, speakerCount, avatarSpec, hasTranscript, hasNotes,
@@ -17,6 +18,8 @@ export default function HomeScreen() {
   const store = useStore();
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [items, setItems] = useState<SavedSession[]>([]);
+  // Free-text filter over the meeting list (matches the title, case-insensitive).
+  const [query, setQuery] = useState('');
 
   // On load, auto-replace any still-default (timestamp) title with the AI notes' topic, then persist
   // the ones that changed (sequential writes — AsyncStorage upsert is read-modify-write of the whole
@@ -39,12 +42,19 @@ export default function HomeScreen() {
     await deleteSessionFiles(id);
   };
 
+  // Apply the search filter (title contains the query, case-insensitive) before grouping.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((s) => s.title.toLowerCase().includes(q));
+  }, [items, query]);
+
   // Bucket into 今天 / 本週 / 更早 for the section headers. `now` is captured per render; groupSessions
   // preserves the store's newest-first order within each group.
   const sections = useMemo(() => {
     const now = Date.now();
-    return groupSessions(items, now).map((g) => ({ title: g.key, data: g.items, now }));
-  }, [items]);
+    return groupSessions(filtered, now).map((g) => ({ title: g.key, data: g.items, now }));
+  }, [filtered]);
 
   return (
     <View style={styles.container}>
@@ -53,13 +63,33 @@ export default function HomeScreen() {
         {items.length > 0 && <Text style={styles.count}>{items.length} 場會議</Text>}
       </View>
 
+      {items.length > 0 && (
+        <View style={styles.searchWrap}>
+          <IconSearch size={17} color={colors.ink3} />
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="搜尋會議"
+            placeholderTextColor={colors.ink3}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            autoCorrect={false}
+          />
+        </View>
+      )}
+
       {items.length === 0 ? (
         <Text style={styles.empty} accessibilityRole="text">還沒有錄音，點下面開始第一筆。</Text>
+      ) : filtered.length === 0 ? (
+        <Text style={styles.empty} accessibilityRole="text">找不到符合「{query.trim()}」的會議。</Text>
       ) : (
         <SectionList
           sections={sections}
           keyExtractor={(s) => s.id}
           contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => (
             <Text style={styles.dayGroup}>{section.title}</Text>
@@ -84,8 +114,7 @@ export default function HomeScreen() {
 
       <View style={styles.fabbar}>
         <Pressable style={styles.primary} onPress={() => nav.navigate('Record')} accessibilityRole="button">
-          <View style={styles.recDot} />
-          <Text style={styles.primaryText}>＋ 新錄音</Text>
+          <Text style={styles.primaryText}>新會議</Text>
         </Pressable>
       </View>
     </View>
@@ -169,6 +198,14 @@ const styles = StyleSheet.create({
   count: { fontSize: 13, color: colors.ink3, fontWeight: '500' },
   empty: { color: colors.ink3, fontSize: 15, marginTop: 40, textAlign: 'center' },
 
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginHorizontal: 16, marginTop: 4, marginBottom: 4,
+    backgroundColor: colors.card, borderRadius: radius.control,
+    paddingHorizontal: 12, height: 40,
+  },
+  searchInput: { flex: 1, fontSize: 15, color: colors.ink, padding: 0 },
+
   listContent: { paddingHorizontal: 16, paddingBottom: 12 },
   dayGroup: { fontSize: 12, fontWeight: '700', letterSpacing: 0.6, color: colors.ink3, paddingHorizontal: 4, paddingTop: 12, paddingBottom: 8 },
 
@@ -199,6 +236,5 @@ const styles = StyleSheet.create({
 
   fabbar: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 22 },
   primary: { flexDirection: 'row', backgroundColor: colors.brand, borderRadius: radius.card, height: 50, alignItems: 'center', justifyContent: 'center' },
-  recDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', marginRight: 8 },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

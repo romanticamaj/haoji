@@ -5,7 +5,6 @@ import { colors } from '../lib/theme';
 
 const BAR_COUNT = 48;
 const BAR_WIDTH = 3;
-const BAR_GAP = 2;
 const MAX_HEIGHT = 60;
 const MIN_HEIGHT = 3;
 const ANIM_DURATION = 120; // ms — smooth but still feels live at ~7 Hz updates
@@ -70,9 +69,12 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Fill the full width: space-between spreads the fixed-width bars edge-to-edge instead of packing
+    // them on the left (which left the right half empty and looked broken).
+    justifyContent: 'space-between',
+    width: '100%',
     height: MAX_HEIGHT + 8,
-    gap: BAR_GAP,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
   },
   bar: {
     width: BAR_WIDTH,

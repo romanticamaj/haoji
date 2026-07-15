@@ -81,3 +81,27 @@ export const IconImage = ({ size = 24, color = '#fff', strokeWidth = 2 }: IconPr
     <Polyline points="21 15 16 10 5 21" />
   </Stroke>
 );
+
+// Document — the "匯入音檔" action.
+export const IconFile = ({ size = 24, color = '#fff', strokeWidth = 2 }: IconProps) => (
+  <Stroke size={size} color={color} strokeWidth={strokeWidth}>
+    <Path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+    <Polyline points="13 2 13 9 20 9" />
+  </Stroke>
+);
+
+// Magnifier — the Home search field.
+export const IconSearch = ({ size = 24, color = colors.ink3, strokeWidth = 2 }: IconProps) => (
+  <Stroke size={size} color={color} strokeWidth={strokeWidth}>
+    <Circle cx="11" cy="11" r="7" />
+    <Line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </Stroke>
+);
+
+// Trash — discard the just-recorded audio on the review screen.
+export const IconTrash = ({ size = 24, color = colors.brand, strokeWidth = 2 }: IconProps) => (
+  <Stroke size={size} color={color} strokeWidth={strokeWidth}>
+    <Polyline points="3 6 5 6 21 6" />
+    <Path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </Stroke>
+);
