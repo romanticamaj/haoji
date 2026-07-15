@@ -1,5 +1,39 @@
-import { notesMetaLine, parseTaskItem } from '../notesDoc';
+import { notesMetaLine, parseTaskItem, extractNotesTitle, stripLeadingH1, looksLikeAutoTitle } from '../notesDoc';
 import { SavedSession } from '../store';
+
+describe('extractNotesTitle', () => {
+  test('pulls the H1 topic and drops a 會議記錄： prefix', () => {
+    expect(extractNotesTitle('# 會議記錄：AI 系統導入探討會\n\n## 會議目的\n...')).toBe('AI 系統導入探討會');
+    expect(extractNotesTitle('#  會議紀錄: 產品週會')).toBe('產品週會');
+  });
+  test('keeps an H1 that has no prefix', () => {
+    expect(extractNotesTitle('# Q3 規劃\n內文')).toBe('Q3 規劃');
+  });
+  test('returns null when there is no H1', () => {
+    expect(extractNotesTitle('## 會議摘要\n沒有一級標題')).toBeNull();
+  });
+});
+
+describe('stripLeadingH1', () => {
+  test('removes a leading H1 and following blank lines', () => {
+    expect(stripLeadingH1('# 標題\n\n## 會議目的\n內文')).toBe('## 會議目的\n內文');
+  });
+  test('leaves body without a leading H1 unchanged', () => {
+    expect(stripLeadingH1('## 會議目的\n內文')).toBe('## 會議目的\n內文');
+  });
+});
+
+describe('looksLikeAutoTitle', () => {
+  test('true for timestamp defaults', () => {
+    expect(looksLikeAutoTitle('7/15/2026, 12:07:52 AM')).toBe(true);
+    expect(looksLikeAutoTitle('2026/7/15 上午12:07')).toBe(true);
+    expect(looksLikeAutoTitle('')).toBe(true);
+  });
+  test('false for a user-typed name', () => {
+    expect(looksLikeAutoTitle('產品週會')).toBe(false);
+    expect(looksLikeAutoTitle('AI 系統導入探討會')).toBe(false);
+  });
+});
 
 const NOW = new Date('2026-07-10T14:30:00').getTime();
 

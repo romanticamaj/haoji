@@ -16,6 +16,28 @@ export function notesMetaLine(session: SavedSession, now: number): string {
   return parts.join(' · ');
 }
 
+// The AI notes usually open with an H1 title line ("# 會議記錄：<主題>"). We promote that to the
+// meeting's own title and strip it from the rendered body so it isn't shown twice (and so the big
+// unstyled H1 stops overlapping the header). Returns the topic with a leading 會議記錄／紀錄： dropped.
+export function extractNotesTitle(notes: string): string | null {
+  const m = /^\s*#\s+(.+?)\s*$/m.exec(notes ?? '');
+  if (!m) return null;
+  const t = m[1].replace(/^會議[記紀]錄\s*[:：]\s*/, '').trim();
+  return t || null;
+}
+
+// Remove a leading H1 line (and the blank lines after it) from the notes for display.
+export function stripLeadingH1(notes: string): string {
+  return (notes ?? '').replace(/^\s*#\s+.+?(?:\r?\n)+/, '');
+}
+
+// Default meeting titles are timestamps (new Date().toLocaleString()). Only those get auto-replaced by
+// the AI title on generation — a title the user typed themselves is left alone.
+export function looksLikeAutoTitle(title: string): boolean {
+  if (!title) return true;
+  return /\d/.test(title) && /[:：]/.test(title) && /[/\-年]/.test(title);
+}
+
 export type TaskItem = { done: boolean; text: string; owner?: string };
 
 // Detect a GFM task-list item from the raw text of a list item, e.g. "[x] 整理數據 @宏" or

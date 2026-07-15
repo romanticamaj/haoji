@@ -38,6 +38,24 @@ test('generating notes calls analyze with names and saves via onUpdate', async (
   expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ notes: expect.stringContaining('會議摘要') }));
 });
 
+test('generation promotes the AI H1 to the meeting title when the title is a timestamp default', async () => {
+  const onUpdate = jest.fn();
+  mockAnalyze.mockResolvedValueOnce({ notes: '# 會議記錄：AI 導入探討會\n\n## 會議摘要\n內容', model: 'm' });
+  const s = { ...base, title: '7/15/2026, 12:07:52 AM' };
+  const { getByText } = await render(<AnalysisTab session={s} onUpdate={onUpdate} onUnlock={() => {}} />);
+  fireEvent.press(getByText('生成會議記錄'));
+  await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ title: 'AI 導入探討會' })));
+});
+
+test('generation keeps a user-typed title (does not overwrite with the AI title)', async () => {
+  const onUpdate = jest.fn();
+  mockAnalyze.mockResolvedValueOnce({ notes: '# 會議記錄：AI 導入探討會\n\n## 會議摘要\n內容', model: 'm' });
+  const s = { ...base, title: '客戶月會' };
+  const { getByText } = await render(<AnalysisTab session={s} onUpdate={onUpdate} onUnlock={() => {}} />);
+  fireEvent.press(getByText('生成會議記錄'));
+  await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ title: '客戶月會' })));
+});
+
 test('analyze targets the backend id when present (not the local id)', async () => {
   const onUpdate = jest.fn();
   const s = { ...base, id: 'local-123', backendId: 'backend-xyz' };

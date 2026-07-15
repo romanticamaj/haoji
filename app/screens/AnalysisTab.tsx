@@ -13,7 +13,7 @@ import { splitNotesForPreview } from '../lib/gating';
 import { markdownToPlainText } from '../lib/notes';
 import { cleanNotesMarkdown } from '../lib/notesClean';
 import { pushNotesVersion } from '../lib/notesEdit';
-import { notesMetaLine, parseTaskItem } from '../lib/notesDoc';
+import { notesMetaLine, parseTaskItem, extractNotesTitle, stripLeadingH1, looksLikeAutoTitle } from '../lib/notesDoc';
 import { relativeDay } from '../lib/sessionList';
 import { speakerColor, colors, radius, tabularNums } from '../lib/theme';
 import { IconLock, IconCheck, IconPencil } from '../components/icons';
@@ -32,6 +32,9 @@ function nodeText(node: any): string {
 // Document-quality markdown styles matching the mockup's `.doc`/`.sec` look.
 const mdStyles = StyleSheet.create({
   body: { fontSize: 13.5, lineHeight: 22, color: colors.ink },
+  // # title — normally stripped from the body (promoted to the meeting title), but styled defensively
+  // with a real lineHeight so a stray H1 renders cleanly instead of clipping.
+  heading1: { fontSize: 20, fontWeight: '800', color: colors.ink, lineHeight: 28, marginTop: 6, marginBottom: 10 },
   // ## section heading → `.sec-label`: small, brand, letter-spaced, generous space above.
   heading2: {
     fontSize: 12, fontWeight: '700', letterSpacing: 1, color: colors.brand,
@@ -72,7 +75,12 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
       // analyze runs against the backend draft session (holds the transcript), not the local id.
       const r = await analyze(session.backendId ?? session.id, { model, names: session.names });
       // Archive any prior notes so a regenerate is revertible from 版本紀錄.
-      onUpdate(pushNotesVersion(session, r.notes, Date.now()));
+      const withNotes = pushNotesVersion(session, r.notes, Date.now());
+      // Promote the AI's H1 title to the meeting name, but only if the user hasn't set one themselves
+      // (default names are timestamps). This replaces "7/15/2026, 12:07 AM" with the real topic.
+      const aiTitle = extractNotesTitle(r.notes);
+      const title = aiTitle && looksLikeAutoTitle(session.title) ? aiTitle : session.title;
+      onUpdate({ ...withNotes, title });
     } catch (e: any) { setErr(e?.message || '生成失敗'); }
     setBusy(false);
   }
@@ -152,7 +160,9 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
     );
   }
 
-  const { preview, locked } = splitNotesForPreview(cleaned);
+  // The stored notes keep their H1 title (so copy/export are self-contained), but the on-screen body
+  // drops it — we already show the title in the doc header above, and the raw H1 was overlapping it.
+  const { preview, locked } = splitNotesForPreview(stripLeadingH1(cleaned));
   const meta = notesMetaLine(session, Date.now());
   const historyCount = session.notesHistory?.length ?? 0;
   return (
