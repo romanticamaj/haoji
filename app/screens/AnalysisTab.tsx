@@ -7,6 +7,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import Share from 'react-native-share';
 import RNFS from 'react-native-fs';
 import Markdown from 'react-native-markdown-display';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { analyze, getModels } from '../lib/api';
 import { splitNotesForPreview } from '../lib/gating';
 import { markdownToPlainText } from '../lib/notes';
@@ -15,7 +16,7 @@ import { pushNotesVersion } from '../lib/notesEdit';
 import { notesMetaLine, parseTaskItem } from '../lib/notesDoc';
 import { relativeDay } from '../lib/sessionList';
 import { speakerColor, colors, radius, tabularNums } from '../lib/theme';
-import { IconLock, IconCheck } from '../components/icons';
+import { IconLock, IconCheck, IconPencil } from '../components/icons';
 import { SavedSession } from '../lib/store';
 
 // Pull the raw text out of a markdown-display AST node (walks descendants collecting text content).
@@ -155,36 +156,44 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
   const meta = notesMetaLine(session, Date.now());
   const historyCount = session.notesHistory?.length ?? 0;
   return (
-    <ScrollView style={styles.wrap} contentContainerStyle={{ paddingBottom: 48 }}>
-      {/* Document header */}
-      <Text style={styles.docTitle}>{session.title}</Text>
-      {!!meta && <Text style={[styles.docMeta, tabularNums]}>{meta}</Text>}
-
-      <Markdown style={mdStyles} rules={rules}>{preview}</Markdown>
-
-      {session.unlocked ? (
-        <>
-          {!!locked && <Markdown style={mdStyles} rules={rules}>{locked}</Markdown>}
-          <View style={styles.actions}>
-            <Pressable style={styles.ghost} onPress={() => setEditing(true)}><Text style={styles.ghostText}>編輯</Text></Pressable>
-            {historyCount > 0 && (
-              <Pressable style={styles.ghost} onPress={() => setHistoryOpen(true)}><Text style={styles.ghostText}>版本紀錄（{historyCount}）</Text></Pressable>
-            )}
-            <Pressable style={[styles.ghost, copied === 'md' && styles.ghostDone]} onPress={copyMarkdown}>
-              {copied === 'md'
-                ? <View style={styles.ghostRow}><IconCheck size={15} color={colors.good} /><Text style={styles.ghostDoneText}>已複製</Text></View>
-                : <Text style={styles.ghostText}>複製 Markdown</Text>}
+    <View style={styles.screen}>
+      {/* Persistent action toolbar (unlocked only) — always visible, so 編輯 isn't buried at the
+          bottom of a long note. Horizontal-scroll so it never overflows narrow screens. */}
+      {session.unlocked && (
+        <View style={styles.toolbar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarRow} keyboardShouldPersistTaps="handled">
+            <Pressable style={[styles.chip, styles.chipPrimary]} onPress={() => setEditing(true)} accessibilityRole="button" accessibilityLabel="編輯會議記錄">
+              <IconPencil size={14} color="#fff" /><Text style={styles.chipPrimaryText}>編輯</Text>
             </Pressable>
-            <Pressable style={[styles.ghost, copied === 'plain' && styles.ghostDone]} onPress={copyPlainText}>
+            <Pressable style={[styles.chip, copied === 'plain' && styles.chipDone]} onPress={copyPlainText}>
               {copied === 'plain'
-                ? <View style={styles.ghostRow}><IconCheck size={15} color={colors.good} /><Text style={styles.ghostDoneText}>已複製</Text></View>
-                : <Text style={styles.ghostText}>複製純文字</Text>}
+                ? <><IconCheck size={14} color={colors.good} /><Text style={styles.chipDoneText}>已複製</Text></>
+                : <Text style={styles.chipText}>複製純文字</Text>}
             </Pressable>
-            <Pressable style={styles.ghost} onPress={exportMd}><Text style={styles.ghostText}>匯出</Text></Pressable>
-          </View>
-        </>
-      ) : (
-        <View style={styles.lockWrap}>
+            <Pressable style={[styles.chip, copied === 'md' && styles.chipDone]} onPress={copyMarkdown}>
+              {copied === 'md'
+                ? <><IconCheck size={14} color={colors.good} /><Text style={styles.chipDoneText}>已複製</Text></>
+                : <Text style={styles.chipText}>複製 Markdown</Text>}
+            </Pressable>
+            {historyCount > 0 && (
+              <Pressable style={styles.chip} onPress={() => setHistoryOpen(true)}><Text style={styles.chipText}>版本紀錄（{historyCount}）</Text></Pressable>
+            )}
+            <Pressable style={styles.chip} onPress={exportMd}><Text style={styles.chipText}>匯出</Text></Pressable>
+          </ScrollView>
+        </View>
+      )}
+
+      <ScrollView style={styles.wrap} contentContainerStyle={{ paddingBottom: 48 }}>
+        {/* Document header */}
+        <Text style={styles.docTitle}>{session.title}</Text>
+        {!!meta && <Text style={[styles.docMeta, tabularNums]}>{meta}</Text>}
+
+        <Markdown style={mdStyles} rules={rules}>{preview}</Markdown>
+
+        {session.unlocked ? (
+          !!locked && <Markdown style={mdStyles} rules={rules}>{locked}</Markdown>
+        ) : (
+          <View style={styles.lockWrap}>
           {/* Locked content sits underneath; the gradient-fade + CTA overlay it. */}
           <View pointerEvents="none">
             {!!locked && <Markdown style={mdStyles} rules={rules}>{locked}</Markdown>}
@@ -200,7 +209,8 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
             </Pressable>
           </View>
         </View>
-      )}
+        )}
+      </ScrollView>
 
       {editing && <NotesEditor initial={cleaned} onCancel={() => setEditing(false)} onSave={saveEdit} />}
       {historyOpen && (
@@ -211,7 +221,7 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
           onRevert={revertTo}
         />
       )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -219,10 +229,12 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
 // the previous version onto history via the caller; 取消 discards.
 function NotesEditor({ initial, onCancel, onSave }: { initial: string; onCancel(): void; onSave(next: string): void }) {
   const [value, setValue] = useState(initial);
+  const insets = useSafeAreaInsets();
   return (
     <Modal visible animationType="slide" onRequestClose={onCancel}>
       <View style={editorStyles.root}>
-        <View style={editorStyles.bar}>
+        {/* pad below the status bar / Dynamic Island so 取消/儲存 don't collide with the clock+battery */}
+        <View style={[editorStyles.bar, { paddingTop: insets.top + 12 }]}>
           <Pressable onPress={onCancel} hitSlop={10}><Text style={editorStyles.cancel}>取消</Text></Pressable>
           <Text style={editorStyles.title}>編輯會議記錄</Text>
           <Pressable testID="notes-save" onPress={() => onSave(value)} hitSlop={10}><Text style={editorStyles.save}>儲存</Text></Pressable>
@@ -302,7 +314,18 @@ function defaultListItem(node: any, children: any, styles: any) {
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.paper },
   wrap: { flex: 1, backgroundColor: colors.paper, paddingHorizontal: 20, paddingTop: 14 },
+
+  // persistent action toolbar
+  toolbar: { borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.card },
+  toolbarRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.chipBg },
+  chipText: { color: colors.ink, fontWeight: '600', fontSize: 13.5 },
+  chipPrimary: { backgroundColor: colors.brand },
+  chipPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 13.5 },
+  chipDone: { backgroundColor: colors.goodSoft },
+  chipDoneText: { color: colors.good, fontWeight: '700', fontSize: 13.5 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, padding: 24 },
   hint: { color: colors.ink3, fontSize: 14, textAlign: 'center', marginBottom: 16, lineHeight: 20 },
 
@@ -325,12 +348,6 @@ const styles = StyleSheet.create({
   unlock: { flexDirection: 'row', gap: 8, height: 48, borderRadius: 14, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
   unlockText: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 24 },
-  ghost: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: radius.pill, backgroundColor: colors.chipBg },
-  ghostText: { color: colors.ink, fontWeight: '600' },
-  ghostRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  ghostDone: { backgroundColor: colors.goodSoft },
-  ghostDoneText: { color: colors.good, fontWeight: '700' },
 });
 
 const editorStyles = StyleSheet.create({
