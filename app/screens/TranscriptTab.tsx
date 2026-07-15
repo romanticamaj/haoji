@@ -5,8 +5,6 @@ import {
 } from 'react-native';
 import { SavedSession } from '../lib/store';
 import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph } from '../lib/transcript';
-import { applyRulesToSession, KeywordRule, countMatches } from '../lib/keywords';
-import KeywordSheet from '../components/KeywordSheet';
 import { colors, radius, tabularNums, speakerColor } from '../lib/theme';
 
 export default function TranscriptTab(
@@ -34,29 +32,8 @@ export default function TranscriptTab(
   // a paragraph to enter; 完成 writes the correction back into the transcript segments, 取消 discards.
   const [editIdx, setEditIdx] = React.useState<number | null>(null);
   const [draft, setDraft] = React.useState('');
-  // Selection within the inline editor (for "取代所有「X」"). Collapsed (start===end) means no selection.
-  const [sel, setSel] = React.useState<{ start: number; end: number }>({ start: 0, end: 0 });
-  const [kwOpen, setKwOpen] = React.useState(false);
-  const [kwInitialFrom, setKwInitialFrom] = React.useState('');
-  const [toast, setToast] = React.useState<string | null>(null);
-  const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  React.useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
-  const flashToast = (m: string) => {
-    setToast(m);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2000);
-  };
-  const applyKeywords = (rules: KeywordRule[]) => {
-    const n = countMatches(session, rules);
-    onUpdate(applyRulesToSession(session, rules, Date.now()));
-    closeKeywords();
-    flashToast(`已取代 ${n} 處`);
-  };
 
-  const beginEdit = (i: number, text: string) => { setDraft(text); setSel({ start: 0, end: 0 }); setEditIdx(i); };
-  const openKeywords = (from: string) => { setKwInitialFrom(from); setEditIdx(null); setKwOpen(true); };
-  const closeKeywords = () => { setKwOpen(false); setKwInitialFrom(''); };
-  const selectedWord = editIdx != null ? draft.slice(sel.start, sel.end).trim() : '';
+  const beginEdit = (i: number, text: string) => { setDraft(text); setEditIdx(i); };
   const commitEdit = (startIdx: number, endIdx: number) => {
     const next = applyTurnEdit(segs, startIdx, endIdx, draft.trim());
     onUpdate({ ...session, transcript: { ...(session.transcript!), segments: next } });
@@ -101,12 +78,7 @@ export default function TranscriptTab(
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >
-        <View style={styles.toolbar}>
-          <Text style={styles.howto}>點段落跳播放 · 長按改字</Text>
-          <Pressable style={styles.kwBtn} onPress={() => openKeywords('')} accessibilityRole="button">
-            <Text style={styles.kwBtnText}>修正關鍵字</Text>
-          </Pressable>
-        </View>
+        <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
         {turns.map((p, i) => {
           const idx = speakerIndex[p.speaker] ?? 0;
           const color = speakerColor(idx);
@@ -151,16 +123,10 @@ export default function TranscriptTab(
                     style={styles.editInput}
                     value={draft}
                     onChangeText={setDraft}
-                    onSelectionChange={(e) => setSel(e.nativeEvent.selection)}
-                    placeholder="修改這段文字，或選取要修正的關鍵字"
+                    placeholder="修改這段文字"
                     placeholderTextColor={colors.ink3}
                     scrollEnabled={false}
                   />
-                  {selectedWord.length > 0 && (
-                    <Pressable testID={`edit-replace-${i}`} onPress={() => openKeywords(selectedWord)} style={styles.replaceSel} accessibilityRole="button">
-                      <Text style={styles.replaceSelText} numberOfLines={1}>取代所有「{selectedWord}」…</Text>
-                    </Pressable>
-                  )}
                   <View style={styles.editActions}>
                     <Pressable testID={`edit-cancel-${i}`} onPress={() => setEditIdx(null)} style={styles.editBtn} accessibilityRole="button">
                       <Text style={styles.editCancelText}>取消</Text>
@@ -204,14 +170,6 @@ export default function TranscriptTab(
             setEditing(null);
           }}
         />
-      )}
-
-      {kwOpen && <KeywordSheet session={session} initialFrom={kwInitialFrom} onClose={closeKeywords} onApply={applyKeywords} />}
-
-      {toast && (
-        <View style={styles.toast} pointerEvents="none">
-          <Text style={styles.toastText}>{toast}</Text>
-        </View>
       )}
     </View>
   );
@@ -304,17 +262,8 @@ const styles = StyleSheet.create({
   regenFooter: { marginTop: 20, marginBottom: 8, paddingVertical: 10, alignItems: 'center' },
   regenText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
 
-  // header row: gesture hint on the left, keyword-fix action on the right
-  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, paddingBottom: 4 },
-  howto: { fontSize: 11.5, color: colors.ink3, flexShrink: 1 },
-  kwBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.chipBg },
-  kwBtnText: { fontSize: 12.5, color: colors.brand, fontWeight: '700' },
-
-  toast: { position: 'absolute', left: 0, right: 0, bottom: 28, alignItems: 'center' },
-  toastText: {
-    backgroundColor: colors.ink, color: '#fff', fontSize: 13.5, fontWeight: '600',
-    paddingVertical: 9, paddingHorizontal: 18, borderRadius: radius.pill, overflow: 'hidden',
-  },
+  // teaches the two paragraph gestures (tap = seek, long-press = edit)
+  howto: { fontSize: 11.5, color: colors.ink3, textAlign: 'center', paddingTop: 12, paddingBottom: 2 },
 
   // turns
   turn: { paddingVertical: 12 },
@@ -335,8 +284,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10,
   },
   editInput: { fontSize: 14, lineHeight: 22, color: colors.ink, padding: 0, minHeight: 44, textAlignVertical: 'top' },
-  replaceSel: { marginTop: 10, backgroundColor: colors.brandSoft, borderRadius: 9, paddingVertical: 9, paddingHorizontal: 12, alignSelf: 'flex-start', maxWidth: '100%' },
-  replaceSelText: { color: colors.brand, fontWeight: '700', fontSize: 13.5 },
   editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 10 },
   editBtn: { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 9 },
   editCancelText: { fontSize: 14, fontWeight: '600', color: colors.ink2 },
