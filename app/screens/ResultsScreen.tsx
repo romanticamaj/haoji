@@ -36,7 +36,7 @@ export default function ResultsScreen() {
       title: session?.title ?? '結果',
       headerRight: () =>
         session ? (
-          <Pressable onPress={() => setEditingTitle(true)} hitSlop={12} accessibilityRole="button" accessibilityLabel="重新命名會議">
+          <Pressable onPress={() => setEditingTitle(true)} hitSlop={8} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="重新命名會議">
             <IconPencil size={19} color={colors.brand} />
           </Pressable>
         ) : undefined,
@@ -117,6 +117,8 @@ function TitleSheet({ current, onClose, onCommit }: { current: string; onClose()
 }
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.paper },
+  // Center the header pencil vertically in the bar and give it a proper tap target + right margin.
+  headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.card },
   tab: { flex: 1, paddingVertical: 13, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },

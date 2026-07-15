@@ -5,6 +5,9 @@ export type SavedSession = {
   id: string; createdAt: number; title: string;
   transcript?: Transcript; names: Record<string, string>;
   notes?: string; unlocked: boolean;
+  // Previous versions of `notes`, newest first, pushed each time the user edits/reverts/regenerates.
+  // Powers the notes editor's 版本紀錄 (revert). Capped when written (see lib/notesEdit).
+  notesHistory?: { notes: string; at: number }[];
   parts: { uri: string; durationMs: number }[];
   // Backend draft-session id, created lazily in ProcessingScreen at upload time. `id` is a
   // local, device-generated id so recording never depends on backend reachability; `backendId`

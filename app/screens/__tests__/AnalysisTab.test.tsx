@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 
 const mockAnalyze = jest.fn();
 jest.mock('../../lib/api', () => ({
@@ -92,6 +92,36 @@ test('匯出 writes temp .md and shares via file:// URI (no availability gate)',
   expect(Share.open as jest.Mock).toHaveBeenCalledWith(
     expect.objectContaining({ url: expect.stringMatching(/^file:\/\/.*會議記錄\.md$/) }),
   );
+});
+
+test('unlocked: 複製 shows a ✓ 已複製 confirmation (was silent before)', async () => {
+  const s = { ...base, notes: '## 會議摘要\n摘要內容', unlocked: true };
+  const { getByText, queryByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);
+  expect(queryByText('已複製')).toBeNull();
+  await act(async () => { fireEvent.press(getByText('複製 Markdown')); });
+  getByText('已複製');
+});
+
+test('editing the notes saves via onUpdate and archives the prior version', async () => {
+  const onUpdate = jest.fn();
+  const s = { ...base, notes: '## 會議摘要\n舊內容', unlocked: true };
+  const { getByText, getByTestId } = await render(<AnalysisTab session={s} onUpdate={onUpdate} onUnlock={() => {}} />);
+  await act(async () => { fireEvent.press(getByText('編輯')); });
+  await act(async () => { fireEvent.changeText(getByTestId('notes-editor-input'), '## 會議摘要\n新內容'); });
+  await act(async () => { fireEvent.press(getByTestId('notes-save')); });
+  expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
+    notes: '## 會議摘要\n新內容',
+    notesHistory: [expect.objectContaining({ notes: '## 會議摘要\n舊內容' })],
+  }));
+});
+
+test('leaked LaTeX arrows ($lrightarrow$) are cleaned before copy', async () => {
+  const s = { ...base, notes: '## 摘要\n篩選$lrightarrow$撰寫', unlocked: true };
+  const { getByText } = await render(<AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />);
+  fireEvent.press(getByText('複製 Markdown'));
+  const arg = (Clipboard.setString as jest.Mock).mock.calls[0][0] as string;
+  expect(arg).toContain('→');
+  expect(arg).not.toContain('lrightarrow');
 });
 
 test('進階 model list: selecting a model passes it to analyze', async () => {

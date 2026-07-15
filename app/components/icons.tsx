@@ -58,6 +58,13 @@ export const IconPencil = ({ size = 24, color = colors.ink, strokeWidth = 2 }: I
   </Stroke>
 );
 
+// Check — copy-success / confirmation feedback.
+export const IconCheck = ({ size = 24, color = colors.good, strokeWidth = 2.4 }: IconProps) => (
+  <Stroke size={size} color={color} strokeWidth={strokeWidth}>
+    <Polyline points="20 6 9 17 4 12" />
+  </Stroke>
+);
+
 // Padlock — the IAP paywall.
 export const IconLock = ({ size = 24, color = colors.brand, strokeWidth = 2 }: IconProps) => (
   <Stroke size={size} color={color} strokeWidth={strokeWidth}>

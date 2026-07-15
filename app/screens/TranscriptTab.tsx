@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { SavedSession } from '../lib/store';
 import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph } from '../lib/transcript';
+import { applyRulesToSession, KeywordRule, countMatches } from '../lib/keywords';
+import KeywordSheet from '../components/KeywordSheet';
 import { colors, radius, tabularNums, speakerColor } from '../lib/theme';
 
 export default function TranscriptTab(
@@ -32,6 +34,21 @@ export default function TranscriptTab(
   // a paragraph to enter; 完成 writes the correction back into the transcript segments, 取消 discards.
   const [editIdx, setEditIdx] = React.useState<number | null>(null);
   const [draft, setDraft] = React.useState('');
+  const [kwOpen, setKwOpen] = React.useState(false);
+  const [toast, setToast] = React.useState<string | null>(null);
+  const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+  const flashToast = (m: string) => {
+    setToast(m);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2000);
+  };
+  const applyKeywords = (rules: KeywordRule[]) => {
+    const n = countMatches(session, rules);
+    onUpdate(applyRulesToSession(session, rules, Date.now()));
+    setKwOpen(false);
+    flashToast(`已取代 ${n} 處`);
+  };
 
   const beginEdit = (i: number, text: string) => { setDraft(text); setEditIdx(i); };
   const commitEdit = (startIdx: number, endIdx: number) => {
@@ -78,7 +95,12 @@ export default function TranscriptTab(
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >
-        <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
+        <View style={styles.toolbar}>
+          <Text style={styles.howto}>點段落跳播放 · 長按改字</Text>
+          <Pressable style={styles.kwBtn} onPress={() => setKwOpen(true)} accessibilityRole="button">
+            <Text style={styles.kwBtnText}>修正關鍵字</Text>
+          </Pressable>
+        </View>
         {turns.map((p, i) => {
           const idx = speakerIndex[p.speaker] ?? 0;
           const color = speakerColor(idx);
@@ -171,6 +193,14 @@ export default function TranscriptTab(
           }}
         />
       )}
+
+      {kwOpen && <KeywordSheet session={session} onClose={() => setKwOpen(false)} onApply={applyKeywords} />}
+
+      {toast && (
+        <View style={styles.toast} pointerEvents="none">
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -262,8 +292,17 @@ const styles = StyleSheet.create({
   regenFooter: { marginTop: 20, marginBottom: 8, paddingVertical: 10, alignItems: 'center' },
   regenText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
 
-  // teaches the two paragraph gestures (tap = seek, long-press = edit)
-  howto: { fontSize: 11.5, color: colors.ink3, textAlign: 'center', paddingTop: 12, paddingBottom: 2 },
+  // header row: gesture hint on the left, keyword-fix action on the right
+  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, paddingBottom: 4 },
+  howto: { fontSize: 11.5, color: colors.ink3, flexShrink: 1 },
+  kwBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.chipBg },
+  kwBtnText: { fontSize: 12.5, color: colors.brand, fontWeight: '700' },
+
+  toast: { position: 'absolute', left: 0, right: 0, bottom: 28, alignItems: 'center' },
+  toastText: {
+    backgroundColor: colors.ink, color: '#fff', fontSize: 13.5, fontWeight: '600',
+    paddingVertical: 9, paddingHorizontal: 18, borderRadius: radius.pill, overflow: 'hidden',
+  },
 
   // turns
   turn: { paddingVertical: 12 },

@@ -1,5 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View, Text, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ScrollView, View, Text, Pressable, ActivityIndicator, StyleSheet, TextInput, Modal,
+  KeyboardAvoidingView, Platform,
+} from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Share from 'react-native-share';
 import RNFS from 'react-native-fs';
@@ -7,9 +10,12 @@ import Markdown from 'react-native-markdown-display';
 import { analyze, getModels } from '../lib/api';
 import { splitNotesForPreview } from '../lib/gating';
 import { markdownToPlainText } from '../lib/notes';
+import { cleanNotesMarkdown } from '../lib/notesClean';
+import { pushNotesVersion } from '../lib/notesEdit';
 import { notesMetaLine, parseTaskItem } from '../lib/notesDoc';
+import { relativeDay } from '../lib/sessionList';
 import { speakerColor, colors, radius, tabularNums } from '../lib/theme';
-import { IconLock } from '../components/icons';
+import { IconLock, IconCheck } from '../components/icons';
 import { SavedSession } from '../lib/store';
 
 // Pull the raw text out of a markdown-display AST node (walks descendants collecting text content).
@@ -47,24 +53,39 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
   const [showAdv, setShowAdv] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [model, setModel] = useState<string | undefined>(undefined);
+  // Copy feedback ('md' | 'plain' | null): flips the tapped button to a green ✓ 已複製 for ~1.6s.
+  const [copied, setCopied] = useState<null | 'md' | 'plain'>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [editing, setEditing] = useState(false);   // full-note editor open
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => { if (showAdv && models.length === 0) getModels().then((r) => setModels(r.models)).catch(() => {}); }, [showAdv]);
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+
+  // The LLM output, normalised (LaTeX arrows → symbols, heading spacing) for display/copy/export/edit.
+  const cleaned = useMemo(() => cleanNotesMarkdown(session.notes ?? ''), [session.notes]);
 
   async function generate() {
     setBusy(true); setErr(null);
     try {
       // analyze runs against the backend draft session (holds the transcript), not the local id.
       const r = await analyze(session.backendId ?? session.id, { model, names: session.names });
-      onUpdate({ ...session, notes: r.notes });
+      // Archive any prior notes so a regenerate is revertible from 版本紀錄.
+      onUpdate(pushNotesVersion(session, r.notes, Date.now()));
     } catch (e: any) { setErr(e?.message || '生成失敗'); }
     setBusy(false);
   }
-  function copyMarkdown() { Clipboard.setString(session.notes ?? ''); }
-  function copyPlainText() { Clipboard.setString(markdownToPlainText(session.notes ?? '')); }
+  function flashCopied(which: 'md' | 'plain') {
+    setCopied(which);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(null), 1600);
+  }
+  function copyMarkdown() { Clipboard.setString(cleaned); flashCopied('md'); }
+  function copyPlainText() { Clipboard.setString(markdownToPlainText(cleaned)); flashCopied('plain'); }
   async function exportMd() {
     const path = `${RNFS.DocumentDirectoryPath}/會議記錄.md`;
     try {
-      await RNFS.writeFile(path, session.notes ?? '', 'utf8');
+      await RNFS.writeFile(path, cleaned, 'utf8');
       await Share.open({ url: `file://${path}`, type: 'text/markdown', filename: '會議記錄.md' });
     } catch (e) {
       // Share.open rejects when the user dismisses the sheet — not an error; do not crash.
@@ -72,6 +93,8 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
       try { await RNFS.unlink(path); } catch {}
     }
   }
+  function saveEdit(next: string) { onUpdate(pushNotesVersion(session, next, Date.now())); setEditing(false); }
+  function revertTo(version: string) { onUpdate(pushNotesVersion(session, version, Date.now())); setHistoryOpen(false); }
 
   // Custom render rules: turn GFM task-list items ("- [ ]"/"- [x]") into checklist rows.
   const rules = useMemo(() => ({
@@ -128,8 +151,9 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
     );
   }
 
-  const { preview, locked } = splitNotesForPreview(session.notes);
+  const { preview, locked } = splitNotesForPreview(cleaned);
   const meta = notesMetaLine(session, Date.now());
+  const historyCount = session.notesHistory?.length ?? 0;
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={{ paddingBottom: 48 }}>
       {/* Document header */}
@@ -142,8 +166,20 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
         <>
           {!!locked && <Markdown style={mdStyles} rules={rules}>{locked}</Markdown>}
           <View style={styles.actions}>
-            <Pressable style={styles.ghost} onPress={copyMarkdown}><Text style={styles.ghostText}>複製 Markdown</Text></Pressable>
-            <Pressable style={styles.ghost} onPress={copyPlainText}><Text style={styles.ghostText}>複製純文字</Text></Pressable>
+            <Pressable style={styles.ghost} onPress={() => setEditing(true)}><Text style={styles.ghostText}>編輯</Text></Pressable>
+            {historyCount > 0 && (
+              <Pressable style={styles.ghost} onPress={() => setHistoryOpen(true)}><Text style={styles.ghostText}>版本紀錄（{historyCount}）</Text></Pressable>
+            )}
+            <Pressable style={[styles.ghost, copied === 'md' && styles.ghostDone]} onPress={copyMarkdown}>
+              {copied === 'md'
+                ? <View style={styles.ghostRow}><IconCheck size={15} color={colors.good} /><Text style={styles.ghostDoneText}>已複製</Text></View>
+                : <Text style={styles.ghostText}>複製 Markdown</Text>}
+            </Pressable>
+            <Pressable style={[styles.ghost, copied === 'plain' && styles.ghostDone]} onPress={copyPlainText}>
+              {copied === 'plain'
+                ? <View style={styles.ghostRow}><IconCheck size={15} color={colors.good} /><Text style={styles.ghostDoneText}>已複製</Text></View>
+                : <Text style={styles.ghostText}>複製純文字</Text>}
+            </Pressable>
             <Pressable style={styles.ghost} onPress={exportMd}><Text style={styles.ghostText}>匯出</Text></Pressable>
           </View>
         </>
@@ -165,7 +201,78 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
           </View>
         </View>
       )}
+
+      {editing && <NotesEditor initial={cleaned} onCancel={() => setEditing(false)} onSave={saveEdit} />}
+      {historyOpen && (
+        <NotesHistory
+          history={session.notesHistory ?? []}
+          now={Date.now()}
+          onClose={() => setHistoryOpen(false)}
+          onRevert={revertTo}
+        />
+      )}
     </ScrollView>
+  );
+}
+
+// Full-screen editor for the whole note (raw Markdown so headings/bullets/tasks survive). 儲存 pushes
+// the previous version onto history via the caller; 取消 discards.
+function NotesEditor({ initial, onCancel, onSave }: { initial: string; onCancel(): void; onSave(next: string): void }) {
+  const [value, setValue] = useState(initial);
+  return (
+    <Modal visible animationType="slide" onRequestClose={onCancel}>
+      <View style={editorStyles.root}>
+        <View style={editorStyles.bar}>
+          <Pressable onPress={onCancel} hitSlop={10}><Text style={editorStyles.cancel}>取消</Text></Pressable>
+          <Text style={editorStyles.title}>編輯會議記錄</Text>
+          <Pressable testID="notes-save" onPress={() => onSave(value)} hitSlop={10}><Text style={editorStyles.save}>儲存</Text></Pressable>
+        </View>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TextInput
+            testID="notes-editor-input"
+            style={editorStyles.input}
+            value={value}
+            onChangeText={setValue}
+            multiline
+            autoFocus
+            textAlignVertical="top"
+            placeholder="會議記錄內容（Markdown）"
+            placeholderTextColor={colors.ink3}
+          />
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
+  );
+}
+
+// 版本紀錄: prior note versions, newest first. Tapping 復原 restores one (the caller archives the
+// current version first, so a revert is itself undoable).
+function NotesHistory(
+  { history, now, onClose, onRevert }:
+  { history: { notes: string; at: number }[]; now: number; onClose(): void; onRevert(v: string): void },
+) {
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={histStyles.root}>
+        <Pressable style={histStyles.scrim} onPress={onClose} accessibilityLabel="關閉" />
+        <View style={histStyles.sheet}>
+          <View style={histStyles.grab} />
+          <Text style={histStyles.title}>版本紀錄</Text>
+          <Text style={histStyles.sub}>還原到先前的版本（目前版本會先被保留）</Text>
+          <ScrollView style={{ maxHeight: 360 }}>
+            {history.map((v, i) => (
+              <View key={i} style={histStyles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[histStyles.when, tabularNums]}>{relativeDay(v.at, now)}</Text>
+                  <Text style={histStyles.snippet} numberOfLines={2}>{markdownToPlainText(v.notes).replace(/\n+/g, ' ') || '（空白）'}</Text>
+                </View>
+                <Pressable style={histStyles.revert} onPress={() => onRevert(v.notes)}><Text style={histStyles.revertText}>復原</Text></Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -218,9 +325,42 @@ const styles = StyleSheet.create({
   unlock: { flexDirection: 'row', gap: 8, height: 48, borderRadius: 14, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
   unlockText: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 24 },
-  ghost: { paddingVertical: 10, paddingHorizontal: 22, borderRadius: radius.pill, backgroundColor: colors.chipBg },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 24 },
+  ghost: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: radius.pill, backgroundColor: colors.chipBg },
   ghostText: { color: colors.ink, fontWeight: '600' },
+  ghostRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ghostDone: { backgroundColor: colors.goodSoft },
+  ghostDoneText: { color: colors.good, fontWeight: '700' },
+});
+
+const editorStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.paper },
+  bar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 18, paddingTop: 14, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.card,
+  },
+  cancel: { fontSize: 16, color: colors.ink2, fontWeight: '600' },
+  title: { fontSize: 16, fontWeight: '700', color: colors.ink },
+  save: { fontSize: 16, color: colors.brand, fontWeight: '800' },
+  input: { flex: 1, fontSize: 14.5, lineHeight: 23, color: colors.ink, padding: 18 },
+});
+
+const histStyles = StyleSheet.create({
+  root: { flex: 1, justifyContent: 'flex-end' },
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(20,16,14,0.35)' },
+  sheet: {
+    backgroundColor: colors.card, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet,
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 30,
+  },
+  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: colors.neutralSoft, alignSelf: 'center', marginBottom: 14 },
+  title: { fontSize: 17, fontWeight: '700', color: colors.ink, marginBottom: 3 },
+  sub: { fontSize: 12.5, color: colors.ink2, marginBottom: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderTopWidth: 1, borderTopColor: colors.hairline },
+  when: { fontSize: 12.5, color: colors.ink2, fontWeight: '600', marginBottom: 3 },
+  snippet: { fontSize: 13, color: colors.ink3, lineHeight: 18 },
+  revert: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: radius.pill, backgroundColor: colors.brandSoft },
+  revertText: { color: colors.brand, fontWeight: '700', fontSize: 13.5 },
 });
 
 const docStyles = StyleSheet.create({
