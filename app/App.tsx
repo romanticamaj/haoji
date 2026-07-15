@@ -41,7 +41,15 @@ export default function App() {
               title: '好記',
             }}
           >
-            <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+            {/* Home keeps its custom in-body title, but we give it an invisible (transparent, empty)
+                native header so the header is PRESENT on every screen. Popping from a screen with a
+                header to one without forced react-native-screens to animate the header away, which is
+                when the back button + pencil flashed dark during the swipe. Symmetric headers = no flash. */}
+            <Stack.Screen
+              name="Home"
+              component={HomeScreen}
+              options={{ headerTransparent: true, headerTitle: '', headerStyle: { backgroundColor: 'transparent' } }}
+            />
             <Stack.Screen name="Record" component={RecordScreen} options={{ title: '錄音' }} />
             <Stack.Screen name="Review" component={ReviewScreen} options={{ title: '錄音檢視', headerBackVisible: false }} />
             <Stack.Screen name="Processing" component={ProcessingScreen} options={{ title: '分析中', headerBackVisible: false }} />

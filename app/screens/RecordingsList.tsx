@@ -306,6 +306,8 @@ const styles = StyleSheet.create({
   skipNum: { fontSize: 11, fontWeight: '700', color: colors.ink },
   play: {
     width: 66, height: 66, borderRadius: 33, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center',
-    shadowColor: colors.brand, shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 4,
+    // No colored drop shadow: on iOS a tinted shadow rasterizes as a solid black block for a few
+    // frames during the native screen transition (the "按鈕變黑" flash). The brand fill reads fine
+    // without it.
   },
 });
