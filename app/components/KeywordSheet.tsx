@@ -11,10 +11,13 @@ import { colors, radius } from '../lib/theme';
 // user lists wrong→right pairs here and taps 全部取代 to replace every occurrence across the transcript
 // AND the notes at once. Bottom sheet on core RN (Modal + Animated), matching the rename/title sheets.
 export default function KeywordSheet(
-  { session, onClose, onApply }:
-  { session: SavedSession; onClose(): void; onApply(rules: KeywordRule[]): void },
+  { session, onClose, onApply, initialFrom }:
+  { session: SavedSession; onClose(): void; onApply(rules: KeywordRule[]): void; initialFrom?: string },
 ) {
-  const [rules, setRules] = React.useState<KeywordRule[]>([{ from: '', to: '' }, { from: '', to: '' }]);
+  // When opened from a text selection, seed the first row's "wrong" word so the user only types the fix.
+  const [rules, setRules] = React.useState<KeywordRule[]>(
+    initialFrom ? [{ from: initialFrom, to: '' }] : [{ from: '', to: '' }, { from: '', to: '' }],
+  );
   const [msg, setMsg] = React.useState<string | null>(null);
   const anim = React.useRef(new Animated.Value(0)).current;
   React.useEffect(() => { Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: true }).start(); }, [anim]);
@@ -64,6 +67,7 @@ export default function KeywordSheet(
                     placeholder="正確字"
                     placeholderTextColor={colors.ink3}
                     autoCapitalize="none"
+                    autoFocus={!!initialFrom && i === 0}
                   />
                   <Pressable onPress={() => removeRow(i)} hitSlop={8} style={styles.remove} accessibilityLabel="移除這組">
                     <Text style={styles.removeText}>×</Text>

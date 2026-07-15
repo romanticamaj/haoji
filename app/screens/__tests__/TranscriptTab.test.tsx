@@ -90,6 +90,28 @@ test('修正關鍵字 sheet replaces all occurrences across transcript + notes v
   }));
 });
 
+test('selecting a word in the inline editor opens the keyword sheet pre-filled with that word', async () => {
+  const onUpdate = jest.fn();
+  const s: SavedSession = {
+    id: 's', createdAt: 1, title: 't', unlocked: false, names: {},
+    transcript: { speakers: ['A'], segments: [{ start: 0, end: 1, speaker: 'A', text: '我們用 Claude 服務' }] },
+    notes: '採用 Claude', parts: [],
+  };
+  const { getByText, getByTestId } = await render(<TranscriptTab session={s} onUpdate={onUpdate} />);
+  await act(async () => { fireEvent(getByTestId('turn-body-0'), 'longPress'); }); // enter inline edit
+  // select "Claude" (indices 4..10 of "我們用 Claude 服務")
+  await act(async () => { fireEvent(getByTestId('edit-input-0'), 'selectionChange', { nativeEvent: { selection: { start: 4, end: 10 } } }); });
+  await act(async () => { fireEvent.press(getByText('取代所有「Claude」…')); });
+  // keyword sheet is open with the wrong-word pre-filled
+  expect(getByTestId('kw-from-0').props.value).toBe('Claude');
+  await act(async () => { fireEvent.changeText(getByTestId('kw-to-0'), 'cloud'); });
+  await act(async () => { fireEvent.press(getByTestId('kw-apply')); });
+  expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
+    transcript: expect.objectContaining({ segments: [expect.objectContaining({ text: '我們用 cloud 服務' })] }),
+    notes: '採用 cloud',
+  }));
+});
+
 test('tapping a turn header opens the rename sheet; 完成 commits via onUpdate', async () => {
   const onUpdate = jest.fn();
   const { getByTestId, queryByTestId } = await render(
