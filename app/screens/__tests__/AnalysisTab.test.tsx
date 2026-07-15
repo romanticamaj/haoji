@@ -142,6 +142,23 @@ test('leaked LaTeX arrows ($lrightarrow$) are cleaned before copy', async () => 
   expect(arg).not.toContain('lrightarrow');
 });
 
+test('修正關鍵字 from the notes page replaces across notes + transcript via onUpdate', async () => {
+  const onUpdate = jest.fn();
+  const s = {
+    ...base, unlocked: true, notes: '## 摘要\n決定採用 Claude',
+    transcript: { speakers: ['A'], segments: [{ start: 0, end: 1, speaker: 'A', text: '用 Claude' }] },
+  };
+  const { getByText, getByTestId } = await render(<AnalysisTab session={s} onUpdate={onUpdate} onUnlock={() => {}} />);
+  await act(async () => { fireEvent.press(getByText('修正關鍵字')); });
+  await act(async () => { fireEvent.changeText(getByTestId('kw-from-0'), 'Claude'); });
+  await act(async () => { fireEvent.changeText(getByTestId('kw-to-0'), 'cloud'); });
+  await act(async () => { fireEvent.press(getByTestId('kw-apply')); });
+  expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({
+    notes: '## 摘要\n決定採用 cloud',
+    transcript: expect.objectContaining({ segments: [expect.objectContaining({ text: '用 cloud' })] }),
+  }));
+});
+
 test('進階 model list: selecting a model passes it to analyze', async () => {
   const { getModels } = require('../../lib/api');
   (getModels as jest.Mock).mockResolvedValueOnce({ ok: true, models: ['gemma4:e4b-it-qat', 'phi4:mini'], default: 'gemma4:e4b-it-qat' });

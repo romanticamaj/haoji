@@ -14,6 +14,8 @@ import { markdownToPlainText } from '../lib/notes';
 import { cleanNotesMarkdown } from '../lib/notesClean';
 import { pushNotesVersion } from '../lib/notesEdit';
 import { notesMetaLine, parseTaskItem, extractNotesTitle, stripLeadingH1, looksLikeAutoTitle } from '../lib/notesDoc';
+import { applyRulesToSession, countMatches, KeywordRule } from '../lib/keywords';
+import KeywordSheet from '../components/KeywordSheet';
 import { relativeDay } from '../lib/sessionList';
 import { speakerColor, colors, radius, tabularNums } from '../lib/theme';
 import { IconLock, IconCheck, IconPencil } from '../components/icons';
@@ -62,9 +64,24 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editing, setEditing] = useState(false);   // full-note editor open
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [kwOpen, setKwOpen] = useState(false);      // 修正關鍵字 sheet open
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { if (showAdv && models.length === 0) getModels().then((r) => setModels(r.models)).catch(() => {}); }, [showAdv]);
-  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+
+  function flashToast(m: string) {
+    setToast(m);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2000);
+  }
+  function applyKeywords(rules: KeywordRule[]) {
+    const n = countMatches(session, rules);
+    onUpdate(applyRulesToSession(session, rules, Date.now())); // rewrites transcript + notes (archived)
+    setKwOpen(false);
+    flashToast(`已取代 ${n} 處`);
+  }
 
   // The LLM output, normalised (LaTeX arrows → symbols, heading spacing) for display/copy/export/edit.
   const cleaned = useMemo(() => cleanNotesMarkdown(session.notes ?? ''), [session.notes]);
@@ -175,6 +192,7 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
             <Pressable style={[styles.chip, styles.chipPrimary]} onPress={() => setEditing(true)} accessibilityRole="button" accessibilityLabel="編輯會議記錄">
               <IconPencil size={14} color="#fff" /><Text style={styles.chipPrimaryText}>編輯</Text>
             </Pressable>
+            <Pressable style={styles.chip} onPress={() => setKwOpen(true)}><Text style={styles.chipText}>修正關鍵字</Text></Pressable>
             <Pressable style={[styles.chip, copied === 'plain' && styles.chipDone]} onPress={copyPlainText}>
               {copied === 'plain'
                 ? <><IconCheck size={14} color={colors.good} /><Text style={styles.chipDoneText}>已複製</Text></>
@@ -230,6 +248,13 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
           onClose={() => setHistoryOpen(false)}
           onRevert={revertTo}
         />
+      )}
+      {kwOpen && <KeywordSheet session={session} onClose={() => setKwOpen(false)} onApply={applyKeywords} />}
+
+      {toast && (
+        <View style={styles.toast} pointerEvents="none">
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
       )}
     </View>
   );
@@ -336,6 +361,12 @@ const styles = StyleSheet.create({
   chipPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 13.5 },
   chipDone: { backgroundColor: colors.goodSoft },
   chipDoneText: { color: colors.good, fontWeight: '700', fontSize: 13.5 },
+
+  toast: { position: 'absolute', left: 0, right: 0, bottom: 28, alignItems: 'center' },
+  toastText: {
+    backgroundColor: colors.ink, color: '#fff', fontSize: 13.5, fontWeight: '600',
+    paddingVertical: 9, paddingHorizontal: 18, borderRadius: radius.pill, overflow: 'hidden',
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, padding: 24 },
   hint: { color: colors.ink3, fontSize: 14, textAlign: 'center', marginBottom: 16, lineHeight: 20 },
 
