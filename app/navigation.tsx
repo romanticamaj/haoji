@@ -1,10 +1,13 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SavedSession } from './lib/store';
 
 export type RootStackParamList = {
   Home: undefined;
   Record: undefined;
   Processing: { sessionId: string; regen?: boolean };
-  Results: { sessionId: string };
+  // `session` is an optional preloaded snapshot (the Home list already has it) so Results can render
+  // fully during the push animation instead of flashing an empty loading state while it reads storage.
+  Results: { sessionId: string; session?: SavedSession };
 };
 
 export const Stack = createNativeStackNavigator<RootStackParamList>();

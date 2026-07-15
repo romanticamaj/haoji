@@ -58,14 +58,15 @@ export default function ProcessingScreen() {
         setMessage(s.message || s.status);
         if (s.status === 'done') {
           const existing = await store.get(sessionId);
-          await store.upsert({
+          const saved = {
             id: sessionId, createdAt: existing?.createdAt ?? Date.now(),
             title: existing?.title ?? new Date().toLocaleString(),
             transcript: s.transcript, names: existing?.names ?? {},
             notes: existing?.notes, unlocked: existing?.unlocked ?? false,
             parts: existing?.parts ?? [], backendId,
-          });
-          nav.replace('Results', { sessionId });
+          };
+          await store.upsert(saved);
+          nav.replace('Results', { sessionId, session: saved }); // preload so Results renders instantly
           return;
         }
         if (s.status === 'error') { setError(s.error || s.message || '辨識失敗'); return; }

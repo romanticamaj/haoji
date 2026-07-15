@@ -18,7 +18,9 @@ export default function ResultsScreen() {
   const nav = useNavigation<any>();
   const store = useStore();
   const id: string = route.params.sessionId;
-  const [session, setSession] = useState<SavedSession | null>(null);
+  // Seed from the snapshot Home passed (if any) so the screen is fully rendered during the push
+  // animation — the useFocusEffect below still refreshes from storage for the latest data.
+  const [session, setSession] = useState<SavedSession | null>(route.params.session ?? null);
   const [tab, setTab] = useState<'transcript' | 'analysis'>('transcript');
   const [editingTitle, setEditingTitle] = useState(false);
   // Lets a transcript tap drive the player above (seek to that moment + play).

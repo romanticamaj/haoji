@@ -73,7 +73,9 @@ export default function HomeScreen() {
               <SessionCard
                 session={item}
                 now={section.now}
-                onPress={() => nav.navigate('Results', { sessionId: item.id })}
+                // Pass the already-loaded session so Results renders instantly during the push (no
+                // empty-loading flash mid-transition on device).
+                onPress={() => nav.navigate('Results', { sessionId: item.id, session: item })}
               />
             </SwipeRow>
           )}

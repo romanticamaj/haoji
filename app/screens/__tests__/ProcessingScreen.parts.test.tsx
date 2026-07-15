@@ -45,7 +45,8 @@ test('uploads both parts in order, transcribes, polls until done, preserves part
   await render(<StoreProvider store={store}><ProcessingScreen /></StoreProvider>);
 
   await waitFor(
-    () => expect(mockReplace).toHaveBeenCalledWith('Results', { sessionId: 'sess-parts' }),
+    () => expect(mockReplace).toHaveBeenCalledWith('Results',
+      expect.objectContaining({ sessionId: 'sess-parts', session: expect.objectContaining({ id: 'sess-parts' }) })),
     { timeout: 12000 },
   );
 

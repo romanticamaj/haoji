@@ -31,7 +31,8 @@ test('polls until done, saves session, navigates to Results', async () => {
       transcript: { segments: [{ start: 0, end: 1, speaker: 'SPEAKER_00', text: '你好' }], speakers: ['SPEAKER_00'] } });
   const store = createMemoryStore();
   await render(<StoreProvider store={store}><ProcessingScreen /></StoreProvider>);
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Results', { sessionId: 'sess123' }), { timeout: 8000 });
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Results',
+    expect.objectContaining({ sessionId: 'sess123', session: expect.objectContaining({ id: 'sess123' }) })), { timeout: 8000 });
   // Backend calls use the lazily-created backend id, not the local route id.
   expect(mockCreateSession).toHaveBeenCalled();
   expect(mockTranscribe).toHaveBeenCalledWith('backend-abc');
