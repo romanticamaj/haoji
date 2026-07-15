@@ -12,11 +12,23 @@ FastAPI service: record **parts** upload → ffmpeg concat → diarized transcri
 - **Tailscale** running (so the Mac/phone reach this box anywhere)
 
 ## Run
+Just double-click **`start.bat`** (→ `start.ps1`). It brings the whole backend up in order:
+1. **AI Service Manager** (`:8760`) — starts it if not already running
+2. **Breeze ASR** (`:8765`) via the manager — the GPU is mutually exclusive (one `gpu:true`
+   service at a time), so if another model (e.g. Flamingo Suite) owns it, the script **asks
+   before stopping it**, then starts ASR and waits until it's healthy
+3. **Ollama** (`:11434`) — best-effort auto-start (only needed at `/analyze`)
+4. **好記 backend** (`:8780`) — `python app.py`
+
+Flags: `-Force` (stop the GPU owner without asking), `-NoStop` (abort if GPU is busy),
+`-RestartBackend` (kill + relaunch an already-running `:8780`).
+
+Manual equivalent, if you prefer:
 ```
 pip install -r requirements.txt
+# open http://127.0.0.1:8760 → stop whatever owns the GPU → start "Breeze ASR"
 python app.py            # serves on http://0.0.0.0:8780
 ```
-…or just double-click **`start.bat`** (checks Ollama/ASR are up, then launches).
 
 App reaches it at `http://100.106.118.45:8780` (Tailscale) or `http://192.168.100.10:8780` (same-WiFi LAN). Keep this machine on.
 
