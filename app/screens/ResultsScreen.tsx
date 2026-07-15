@@ -10,6 +10,7 @@ import TranscriptTab from './TranscriptTab';
 import AnalysisTab from './AnalysisTab';
 import RecordingsList, { type RecordingsHandle } from './RecordingsList';
 import { IconPencil } from '../components/icons';
+import { promoteTitleFromNotes } from '../lib/notesDoc';
 import { colors, radius } from '../lib/theme';
 
 export default function ResultsScreen() {
@@ -26,7 +27,15 @@ export default function ResultsScreen() {
   const [playheadMs, setPlayheadMs] = useState(0);
   const parts = useMemo(() => session?.parts ?? [], [session?.parts]);
 
-  useFocusEffect(useCallback(() => { store.get(id).then(setSession); }, [id, store]));
+  useFocusEffect(useCallback(() => {
+    store.get(id).then((s) => {
+      if (!s) { setSession(s); return; }
+      // Auto-replace a still-default (timestamp) title with the AI notes' topic, and persist it.
+      const promoted = promoteTitleFromNotes(s);
+      if (promoted !== s) store.upsert(promoted);
+      setSession(promoted);
+    });
+  }, [id, store]));
 
   const update = async (s: SavedSession) => { setSession(s); await store.upsert(s); };
 

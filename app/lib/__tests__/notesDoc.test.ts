@@ -1,5 +1,22 @@
-import { notesMetaLine, parseTaskItem, extractNotesTitle, stripLeadingH1, looksLikeAutoTitle } from '../notesDoc';
+import { notesMetaLine, parseTaskItem, extractNotesTitle, stripLeadingH1, looksLikeAutoTitle, promoteTitleFromNotes } from '../notesDoc';
 import { SavedSession } from '../store';
+
+describe('promoteTitleFromNotes', () => {
+  const mk = (over: Partial<SavedSession>): SavedSession =>
+    ({ id: 's', createdAt: 1, title: 't', unlocked: false, names: {}, parts: [], ...over });
+  test('replaces a timestamp title with the AI H1 topic', () => {
+    const s = mk({ title: '7/15/2026, 12:07:52 AM', notes: '# 會議記錄：AI 導入探討會\n\n## 目的\n內文' });
+    expect(promoteTitleFromNotes(s).title).toBe('AI 導入探討會');
+  });
+  test('keeps a user-typed title untouched (same reference)', () => {
+    const s = mk({ title: '客戶月會', notes: '# 會議記錄：AI 導入探討會' });
+    expect(promoteTitleFromNotes(s)).toBe(s);
+  });
+  test('no-op when there are no notes yet', () => {
+    const s = mk({ title: '7/15/2026, 12:07 AM' });
+    expect(promoteTitleFromNotes(s)).toBe(s);
+  });
+});
 
 describe('extractNotesTitle', () => {
   test('pulls the H1 topic and drops a 會議記錄： prefix', () => {

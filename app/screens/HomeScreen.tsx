@@ -11,13 +11,25 @@ import { colors, radius, tabularNums, cardShadow, speakerColor } from '../lib/th
 import {
   groupSessions, relativeDay, durationLabel, speakerCount, avatarSpec, hasTranscript, hasNotes,
 } from '../lib/sessionList';
+import { promoteTitleFromNotes } from '../lib/notesDoc';
 
 export default function HomeScreen() {
   const store = useStore();
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [items, setItems] = useState<SavedSession[]>([]);
 
-  useFocusEffect(useCallback(() => { store.list().then(setItems); }, [store]));
+  // On load, auto-replace any still-default (timestamp) title with the AI notes' topic, then persist
+  // the ones that changed (sequential writes — AsyncStorage upsert is read-modify-write of the whole
+  // map, so parallel writes would clobber each other).
+  useFocusEffect(useCallback(() => {
+    store.list().then(async (list) => {
+      const promoted = list.map(promoteTitleFromNotes);
+      setItems(promoted);
+      for (let i = 0; i < list.length; i++) {
+        if (promoted[i] !== list[i]) await store.upsert(promoted[i]);
+      }
+    });
+  }, [store]));
 
   // Permanently remove a recording: drop it from the list immediately, then delete its audio files
   // and the stored entry. The device is the source of truth, so this frees the on-device storage.

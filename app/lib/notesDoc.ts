@@ -32,10 +32,19 @@ export function stripLeadingH1(notes: string): string {
 }
 
 // Default meeting titles are timestamps (new Date().toLocaleString()). Only those get auto-replaced by
-// the AI title on generation — a title the user typed themselves is left alone.
+// the AI title — a title the user typed themselves is left alone.
 export function looksLikeAutoTitle(title: string): boolean {
   if (!title) return true;
   return /\d/.test(title) && /[:：]/.test(title) && /[/\-年]/.test(title);
+}
+
+// Backfill the meeting title from the AI notes' H1 topic when the title is still a timestamp default.
+// Returns the SAME reference when nothing changes, so callers (Home list / Results open) can cheaply
+// skip a store write. This retitles meetings generated before the feature existed, without regenerating.
+export function promoteTitleFromNotes(session: SavedSession): SavedSession {
+  if (!session.notes || !looksLikeAutoTitle(session.title)) return session;
+  const title = extractNotesTitle(session.notes);
+  return title ? { ...session, title } : session;
 }
 
 export type TaskItem = { done: boolean; text: string; owner?: string };
