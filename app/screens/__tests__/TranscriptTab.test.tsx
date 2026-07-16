@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, fireEvent, act, within } from '@testing-library/react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import TranscriptTab from '../TranscriptTab';
 import { SavedSession } from '../../lib/store';
 
@@ -17,6 +18,12 @@ test('renders merged paragraphs with timestamps', async () => {
   const { getByText } = await render(<TranscriptTab session={session} onUpdate={() => {}} />);
   getByText('你好今天開會');
   getByText('00:00');
+});
+
+test('複製 copies the formatted transcript to the clipboard', async () => {
+  const { getByTestId } = await render(<TranscriptTab session={session} onUpdate={() => {}} />);
+  await act(async () => { fireEvent.press(getByTestId('copy-transcript')); });
+  expect(Clipboard.setString).toHaveBeenCalledWith('[00:00] SPEAKER_00\n你好今天開會\n\n[00:04] SPEAKER_01\n好');
 });
 
 test('tapping a paragraph body seeks the player to that paragraph start (ms) via onSeek', async () => {

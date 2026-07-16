@@ -76,4 +76,10 @@ jest.mock('@simform_solutions/react-native-audio-waveform', () => {
   };
 });
 
-// nitro-sound / clipboard / share / picker get per-suite mocks in their tests
+// Clipboard + Share are native modules used by several screens (transcript/notes copy, recording
+// export). Mock them globally so any suite that renders those screens works; suites that assert on
+// the calls declare their own jest.mock and win.
+jest.mock('@react-native-clipboard/clipboard', () => ({ setString: jest.fn(), getString: jest.fn() }));
+jest.mock('react-native-share', () => ({ open: jest.fn().mockResolvedValue({}) }));
+
+// nitro-sound / picker get per-suite mocks in their tests

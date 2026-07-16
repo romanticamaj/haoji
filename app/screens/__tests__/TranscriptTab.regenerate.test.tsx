@@ -8,13 +8,13 @@ const withParts = (transcript: SavedSession['transcript']): SavedSession => ({
   transcript, parts: [{ uri: 'file:///p/part-0.m4a', durationMs: 1000 }],
 });
 
-test('empty transcript: shows regenerate CTA and fires onRegenerate', async () => {
+test('empty transcript: shows generate CTA and fires onRegenerate', async () => {
   const onRegenerate = jest.fn();
   const s = withParts({ speakers: [], segments: [] });
   const { getByText, queryByText } = await render(
     <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
   getByText('還沒有逐字稿');
-  fireEvent.press(getByText('重新生成逐字稿'));
+  fireEvent.press(getByText('生成逐字稿')); // draft/never-transcribed → "generate" (footer re-run stays "重新生成")
   expect(onRegenerate).toHaveBeenCalled();
   // no transcript paragraphs to show
   expect(queryByText('00:00')).toBeNull();

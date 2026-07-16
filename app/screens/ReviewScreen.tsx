@@ -31,7 +31,11 @@ export default function ReviewScreen() {
     return () => { sub?.(); clearTimeout(timer); };
   }, [nav]);
 
-  const analyze = () => nav.replace('Processing', { sessionId: id });
+  // Generate now → run the transcription pipeline.
+  const generate = () => nav.replace('Processing', { sessionId: id });
+  // Save as a draft and leave: the recording is already persisted (RecordScreen upserts it on stop),
+  // so we just go Home. The user can open it later and tap 生成逐字稿 — the work is fully interruptible.
+  const saveDraft = () => nav.navigate('Home');
 
   const discard = () => {
     Alert.alert('捨棄這段錄音？', '刪除後無法復原。', [
@@ -53,7 +57,7 @@ export default function ReviewScreen() {
     <View style={styles.container}>
       <View style={styles.head}>
         <Text style={styles.title}>錄好了，先聽聽看</Text>
-        <Text style={styles.sub}>確認沒問題再開始分析，或直接捨棄重錄。</Text>
+        <Text style={styles.sub}>確認沒問題就生成逐字稿；也可以先存起來稍後再生成，或直接捨棄重錄。</Text>
       </View>
 
       <View style={styles.player}>
@@ -65,13 +69,18 @@ export default function ReviewScreen() {
       </View>
 
       <View style={styles.actions}>
-        <Pressable style={styles.primary} onPress={analyze} accessibilityRole="button">
-          <Text style={styles.primaryText}>開始分析</Text>
+        <Pressable style={styles.primary} onPress={generate} accessibilityRole="button">
+          <Text style={styles.primaryText}>生成逐字稿</Text>
         </Pressable>
-        <Pressable style={styles.discard} onPress={discard} accessibilityRole="button">
-          <IconTrash size={18} color={colors.brand} />
-          <Text style={styles.discardText}>捨棄錄音</Text>
-        </Pressable>
+        <View style={styles.secondaryRow}>
+          <Pressable style={styles.later} onPress={saveDraft} accessibilityRole="button">
+            <Text style={styles.laterText}>稍後再說</Text>
+          </Pressable>
+          <Pressable style={styles.discard} onPress={discard} accessibilityRole="button">
+            <IconTrash size={17} color={colors.brand} />
+            <Text style={styles.discardText}>捨棄</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -86,9 +95,12 @@ const styles = StyleSheet.create({
 
   player: { flex: 1, justifyContent: 'center' },
 
-  actions: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 28, gap: 12 },
+  actions: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 28, gap: 8 },
   primary: { backgroundColor: colors.brand, borderRadius: radius.card, height: 52, alignItems: 'center', justifyContent: 'center' },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  discard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 46 },
+  secondaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  later: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 46, paddingHorizontal: 20 },
+  laterText: { color: colors.ink2, fontSize: 15, fontWeight: '600' },
+  discard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 46, paddingHorizontal: 20 },
   discardText: { color: colors.brand, fontSize: 15, fontWeight: '600' },
 });

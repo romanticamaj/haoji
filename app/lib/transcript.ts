@@ -23,6 +23,14 @@ export function mergedParagraphs(segments: Segment[]): Turn[] {
   return out;
 }
 
+// Plain-text rendering of the transcript for copy/share: one paragraph per turn as
+// `[mm:ss] Name\ntext`, blank line between turns. Speaker codes are resolved through `names`.
+export function transcriptPlainText(segments: Segment[], names: Record<string, string>): string {
+  return mergedParagraphs(segments)
+    .map((t) => `[${mmss(t.start)}] ${nameOf(t.speaker, names)}\n${t.text}`)
+    .join('\n\n');
+}
+
 // Index of the paragraph being spoken at global time `ms`: the last one whose start is at or before
 // ms. Returns -1 before playback (ms<=0) or if nothing matches. Drives follow-along highlighting.
 // `startsSec` are the paragraph start times in SECONDS (turn.start), assumed non-decreasing.

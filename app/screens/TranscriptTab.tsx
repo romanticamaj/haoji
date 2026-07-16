@@ -3,8 +3,10 @@ import {
   ScrollView, View, Text, TextInput, Pressable, Modal, Animated, StyleSheet,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { SavedSession } from '../lib/store';
-import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph } from '../lib/transcript';
+import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText } from '../lib/transcript';
+import { IconCheck, IconCopy } from '../components/icons';
 import { colors, radius, tabularNums, speakerColor } from '../lib/theme';
 
 export default function TranscriptTab(
@@ -32,6 +34,16 @@ export default function TranscriptTab(
   // a paragraph to enter; 完成 writes the correction back into the transcript segments, 取消 discards.
   const [editIdx, setEditIdx] = React.useState<number | null>(null);
   const [draft, setDraft] = React.useState('');
+  // Copy feedback: flips the copy button to a green ✓ 已複製 for ~1.6s after a tap.
+  const [copied, setCopied] = React.useState(false);
+  const copyTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+  const copyTranscript = () => {
+    Clipboard.setString(transcriptPlainText(segs, session.names));
+    setCopied(true);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 1600);
+  };
 
   const beginEdit = (i: number, text: string) => { setDraft(text); setEditIdx(i); };
   const commitEdit = (startIdx: number, endIdx: number) => {
@@ -40,19 +52,19 @@ export default function TranscriptTab(
     setEditIdx(null);
   };
 
-  // Empty transcript (e.g. the backend dropped mid-transcription and never returned one) — offer a
-  // full re-run rather than leaving the user stuck. Regeneration re-uploads the on-device parts to
-  // a fresh backend session (the old one's parts are deleted after each attempt).
+  // No transcript yet — either a saved draft the user hasn't generated, or a run that dropped
+  // mid-transcription. Either way, offer to generate: it uploads the on-device parts to a fresh
+  // backend session and runs the pipeline (interruptible — the recording stays saved until then).
   if (segs.length === 0) {
     return (
       <View style={styles.emptyWrap}>
         <Text style={styles.emptyTitle}>還沒有逐字稿</Text>
         <Text style={styles.emptyHint}>
-          {hasParts ? '這次辨識沒有完成（後端可能中斷）。可以重新生成逐字稿再試一次。' : '找不到可辨識的錄音檔。'}
+          {hasParts ? '這段錄音還沒有生成逐字稿。準備好了就點下面開始。' : '找不到可辨識的錄音檔。'}
         </Text>
         {hasParts && onRegenerate && (
           <Pressable style={styles.primary} onPress={onRegenerate} accessibilityRole="button">
-            <Text style={styles.primaryText}>重新生成逐字稿</Text>
+            <Text style={styles.primaryText}>生成逐字稿</Text>
           </Pressable>
         )}
       </View>
@@ -91,7 +103,20 @@ export default function TranscriptTab(
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >
-        <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
+        <View style={styles.toolbar}>
+          <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
+          <Pressable
+            testID="copy-transcript"
+            style={[styles.copyChip, copied && styles.copyChipDone]}
+            onPress={copyTranscript}
+            accessibilityRole="button"
+            accessibilityLabel="複製逐字稿"
+          >
+            {copied
+              ? <><IconCheck size={14} color={colors.good} /><Text style={styles.copyChipDoneText}>已複製</Text></>
+              : <><IconCopy size={14} color={colors.brand} /><Text style={styles.copyChipText}>複製</Text></>}
+          </Pressable>
+        </View>
         {turns.map((p, i) => {
           const idx = speakerIndex[p.speaker] ?? 0;
           const color = speakerColor(idx);
@@ -280,8 +305,14 @@ const styles = StyleSheet.create({
   regenFooter: { marginTop: 20, marginBottom: 8, paddingVertical: 10, alignItems: 'center' },
   regenText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
 
+  // header row: gesture hint on the left, copy button on the right
+  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, paddingBottom: 2, gap: 8 },
   // teaches the two paragraph gestures (tap = seek, long-press = edit)
-  howto: { fontSize: 11.5, color: colors.ink3, textAlign: 'center', paddingTop: 12, paddingBottom: 2 },
+  howto: { flex: 1, fontSize: 11.5, color: colors.ink3 },
+  copyChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.brandSoft },
+  copyChipText: { fontSize: 13, fontWeight: '600', color: colors.brand },
+  copyChipDone: { backgroundColor: colors.goodSoft },
+  copyChipDoneText: { fontSize: 13, fontWeight: '600', color: colors.good },
 
   // turns
   turn: { paddingVertical: 12 },

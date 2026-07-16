@@ -1,4 +1,20 @@
-import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph } from '../transcript';
+import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText } from '../transcript';
+
+describe('transcriptPlainText', () => {
+  const segs = [
+    { start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' },
+    { start: 2, end: 4, speaker: 'SPEAKER_00', text: '今天開會' },
+    { start: 65, end: 68, speaker: 'SPEAKER_01', text: '好' },
+  ];
+  test('merges same-speaker turns and labels each with [mm:ss] + resolved name', () => {
+    expect(transcriptPlainText(segs, { SPEAKER_00: 'Gary' })).toBe(
+      '[00:00] Gary\n你好今天開會\n\n[01:05] SPEAKER_01\n好',
+    );
+  });
+  test('empty transcript → empty string', () => {
+    expect(transcriptPlainText([], {})).toBe('');
+  });
+});
 
 describe('activeParagraph', () => {
   const starts = [0, 4, 10]; // paragraph start times in seconds

@@ -8,11 +8,12 @@ import {
   PlayerState,
   useAudioPlayer,
 } from '@simform_solutions/react-native-audio-waveform';
+import Share from 'react-native-share';
 import { resolvePartUri, partExists } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 import { colors, radius, tabularNums } from '../lib/theme';
 import { SKIP_BACK_MS, SKIP_FWD_MS, clamp, skipTo, nextSpeed, formatSpeed, locatePart } from '../lib/player';
-import { IconPlay, IconPause, IconRewind, IconForward, IconAlert } from '../components/icons';
+import { IconPlay, IconPause, IconRewind, IconForward, IconAlert, IconShare } from '../components/icons';
 
 type Part = { uri: string; durationMs: number };
 
@@ -75,6 +76,15 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
     },
   }), [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Export the raw recording out to another app (Files, AirDrop, Messages…). Each part is shared as a
+  // file:// url the OS share sheet can read; several parts of one meeting go out together.
+  const onExport = async () => {
+    const urls = parts.map((p) => resolvePartUri(p.uri));
+    try {
+      await Share.open({ urls, type: 'audio/m4a', failOnCancel: false });
+    } catch { /* user dismissed the share sheet — not an error */ }
+  };
+
   if (parts.length === 0) return null;
   return (
     <View style={styles.container}>
@@ -91,6 +101,10 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
           reportProgress={reportProgress}
         />
       ))}
+      <Pressable style={styles.exportBtn} onPress={onExport} accessibilityRole="button" accessibilityLabel="匯出錄音">
+        <IconShare size={16} color={colors.brand} />
+        <Text style={styles.exportText}>匯出錄音</Text>
+      </Pressable>
     </View>
   );
 });
@@ -278,6 +292,8 @@ function PlayerRow(
 
 const styles = StyleSheet.create({
   container: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, backgroundColor: colors.paper },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16, marginTop: 2 },
+  exportText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
   card: {
     backgroundColor: colors.card, borderRadius: radius.card, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 16,
     marginBottom: 10,

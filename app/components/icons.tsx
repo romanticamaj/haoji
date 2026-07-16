@@ -58,6 +58,23 @@ export const IconPencil = ({ size = 24, color = colors.ink, strokeWidth = 2 }: I
   </Stroke>
 );
 
+// Two overlapping sheets — the copy action.
+export const IconCopy = ({ size = 24, color = colors.brand, strokeWidth = 2 }: IconProps) => (
+  <Stroke size={size} color={color} strokeWidth={strokeWidth}>
+    <Rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <Path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </Stroke>
+);
+
+// Share — export/send the recording out to another app.
+export const IconShare = ({ size = 24, color = colors.brand, strokeWidth = 2 }: IconProps) => (
+  <Stroke size={size} color={color} strokeWidth={strokeWidth}>
+    <Path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+    <Polyline points="16 6 12 2 8 6" />
+    <Line x1="12" y1="2" x2="12" y2="15" />
+  </Stroke>
+);
+
 // Check — copy-success / confirmation feedback.
 export const IconCheck = ({ size = 24, color = colors.good, strokeWidth = 2.4 }: IconProps) => (
   <Stroke size={size} color={color} strokeWidth={strokeWidth}>
