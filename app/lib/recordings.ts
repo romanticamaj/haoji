@@ -1,4 +1,5 @@
 import RNFS from 'react-native-fs';
+import type { SavedSession } from './store';
 
 // RNFS wants bare POSIX paths; the rest of the app wants file:// URIs. Convert at the edges.
 const bare = (p: string) => p.replace(/^file:\/\//, '');
@@ -46,6 +47,54 @@ export async function partExists(stored: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+const partIndex = (name: string) => Number(/part-(\d+)\.m4a$/.exec(name)?.[1] ?? 0);
+
+// A recording in progress writes to Caches as `rec-<sid>-<index>.m4a` and is moved into the per-
+// session dir only when the part is finalized. A crash mid-recording (e.g. an incoming call) can
+// leave that temp file behind. Fold any such leftovers into their session dir as part-<index>.m4a so
+// the recovery scan below picks them up. Best-effort: a 0-byte temp is an aborted start — drop it.
+export async function scavengeTempParts(): Promise<void> {
+  let entries: RNFS.ReadDirItem[];
+  try { entries = await RNFS.readDir(RNFS.CachesDirectoryPath); } catch { return; }
+  for (const e of entries) {
+    const m = /^rec-(.+)-(\d+)\.m4a$/.exec(e.name);
+    if (!m) continue;
+    try {
+      if ((e.size ?? 0) <= 0) { await RNFS.unlink(e.path).catch(() => {}); continue; }
+      await moveToPart(m[1], Number(m[2]), e.path);
+    } catch { /* leave it for next time — best-effort */ }
+  }
+}
+
+// Rebuild draft sessions for recordings whose audio files exist on disk but have no store entry —
+// e.g. the app crashed mid-recording before the session was ever saved. Returns the recovered draft
+// sessions (parts reference the REAL on-disk filenames, robust to any index gap); the caller upserts
+// them so the recording reappears in the list instead of being silently lost.
+export async function recoverOrphanedRecordings(knownIds: Set<string>): Promise<SavedSession[]> {
+  await scavengeTempParts(); // fold crash-time temp parts into their session dirs first
+  const base = `${RNFS.DocumentDirectoryPath}/haoji`;
+  let dirs: RNFS.ReadDirItem[];
+  try {
+    if (!(await RNFS.exists(base))) return [];
+    dirs = await RNFS.readDir(base);
+  } catch { return []; }
+
+  const out: SavedSession[] = [];
+  for (const d of dirs) {
+    if (!d.isDirectory() || knownIds.has(d.name)) continue;
+    let files: RNFS.ReadDirItem[];
+    try { files = await RNFS.readDir(d.path); } catch { continue; }
+    const partFiles = files
+      .filter((f) => /^part-\d+\.m4a$/.test(f.name) && (f.size ?? 1) > 0)
+      .sort((a, b) => partIndex(a.name) - partIndex(b.name));
+    if (partFiles.length === 0) continue;
+    const parts = partFiles.map((f) => ({ uri: `haoji/${d.name}/${f.name}`, durationMs: 0 }));
+    const at = partFiles[0].mtime instanceof Date ? partFiles[0].mtime.getTime() : Date.now();
+    out.push({ id: d.name, createdAt: at, title: `已復原的錄音（${new Date(at).toLocaleString()}）`, names: {}, unlocked: false, parts });
+  }
+  return out;
 }
 
 // Permanently delete a session's audio files (its whole per-session dir).

@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
-import { deleteSessionFiles } from '../lib/recordings';
+import { deleteSessionFiles, recoverOrphanedRecordings } from '../lib/recordings';
 import { RootStackParamList } from '../navigation';
 import SwipeRow from '../components/SwipeRow';
 import { IconSearch } from '../components/icons';
@@ -25,13 +25,19 @@ export default function HomeScreen() {
   // the ones that changed (sequential writes — AsyncStorage upsert is read-modify-write of the whole
   // map, so parallel writes would clobber each other).
   useFocusEffect(useCallback(() => {
-    store.list().then(async (list) => {
-      const promoted = list.map(promoteTitleFromNotes);
+    (async () => {
+      const list = await store.list();
+      // Recover any on-disk recordings with no store entry (e.g. the app crashed mid-recording before
+      // the session was saved) so they reappear as drafts instead of being silently lost.
+      const recovered = await recoverOrphanedRecordings(new Set(list.map((s) => s.id)));
+      for (const r of recovered) await store.upsert(r);
+      const full = recovered.length ? await store.list() : list;
+      const promoted = full.map(promoteTitleFromNotes);
       setItems(promoted);
-      for (let i = 0; i < list.length; i++) {
-        if (promoted[i] !== list[i]) await store.upsert(promoted[i]);
+      for (let i = 0; i < full.length; i++) {
+        if (promoted[i] !== full[i]) await store.upsert(promoted[i]);
       }
-    });
+    })();
   }, [store]));
 
   // Permanently remove a recording: drop it from the list immediately, then delete its audio files

@@ -19,6 +19,7 @@ jest.mock('react-native-fs', () => ({
   moveFile: jest.fn().mockResolvedValue(undefined),
   unlink: jest.fn().mockResolvedValue(undefined),
   writeFile: jest.fn().mockResolvedValue(undefined),
+  readDir: jest.fn().mockResolvedValue([]),
 }));
 
 // react-native-safe-area-context needs a provider at runtime; give tests zero insets so screens

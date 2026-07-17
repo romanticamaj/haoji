@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 // NOTE: only the transform-based press spring below uses reanimated. We deliberately do NOT use
 // layout animations (entering/exiting) here — they leave a ghost/afterimage during react-native-
@@ -40,6 +40,18 @@ export default function RecordScreen() {
   const rec = useRecorder(sid);
   const insets = useSafeAreaInsets();
 
+  // Stable session metadata so the incremental saves and the final save all agree on id/date/title.
+  const [meta] = useState(() => ({ createdAt: Date.now(), title: new Date().toLocaleString() }));
+  const persist = useCallback(
+    (parts: { uri: string; durationMs: number }[]) =>
+      store.upsert({ id: sid, createdAt: meta.createdAt, title: meta.title, names: {}, unlocked: false, parts }),
+    [sid, meta, store],
+  );
+  // Save the session the moment a part is finalized (a pause, or an OS interruption like an incoming
+  // call). This means a crash can never lose the audio — the recording is already a draft on Home,
+  // and the launch-time recovery scan backfills anything that wasn't stored yet.
+  useEffect(() => { if (rec.parts.length > 0) void persist(rec.parts); }, [rec.parts, persist]);
+
   // Spring press-feedback for the record button (motion, no new deps — reanimated is already here).
   const pressScale = useSharedValue(1);
   const btnAnim = useAnimatedStyle(() => ({ transform: [{ scale: pressScale.value }] }));
@@ -50,7 +62,7 @@ export default function RecordScreen() {
     const parts = await rec.stop();
     // Nothing was captured (opened + left, or a zero-length take) → don't create an empty record.
     if (parts.length === 0) { nav.goBack(); return; }
-    await store.upsert({ id: sid, createdAt: Date.now(), title: new Date().toLocaleString(), names: {}, unlocked: false, parts });
+    await persist(parts);
     // Don't jump straight into analysis — land on Review so the user can listen back and decide
     // whether to analyze or discard (a bad take shouldn't force a transcription round-trip).
     nav.replace('Review', { sessionId: sid });
