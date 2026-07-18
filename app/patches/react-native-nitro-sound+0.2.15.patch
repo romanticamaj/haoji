@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-nitro-sound/ios/Sound.swift b/node_modules/react-native-nitro-sound/ios/Sound.swift
-index 65cd4df..97d7f8d 100644
+index 65cd4df..bb1a272 100644
 --- a/node_modules/react-native-nitro-sound/ios/Sound.swift
 +++ b/node_modules/react-native-nitro-sound/ios/Sound.swift
 @@ -135,7 +135,11 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
@@ -34,7 +34,7 @@ index 65cd4df..97d7f8d 100644
                          // Deactivate audio session
                          try? self.recordingSession?.setActive(false)
                          self.recordingSession = nil
-@@ -771,6 +780,20 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -771,6 +780,35 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
              }
          }
  
@@ -50,6 +50,21 @@ index 65cd4df..97d7f8d 100644
 +            // sane integer value, keep it
 +        } else {
 +            settings[AVSampleRateKey] = 44100.0
++        }
++
++        // HAOJI_FIX: when recording LinearPCM (WAV) — which the app uses so that a crash mid-recording
++        // still leaves a readable file (unlike AAC, whose moov index is only written on a clean stop,
++        // making a crashed .m4a unplayable) — getAudioSettings above never maps the PCM-specific keys,
++        // and the NitroModules interop can drop/corrupt the ones passed from JS. Force sane 16-bit
++        // little-endian integer PCM so prepareToRecord() succeeds deterministically, and drop the AAC-
++        // only keys that don't apply to PCM.
++        if (settings[AVFormatIDKey] as? Int) == Int(kAudioFormatLinearPCM) {
++            settings[AVLinearPCMBitDepthKey] = 16
++            settings[AVLinearPCMIsFloatKey] = false
++            settings[AVLinearPCMIsBigEndianKey] = false
++            settings[AVLinearPCMIsNonInterleaved] = false
++            settings.removeValue(forKey: AVEncoderBitRateKey)
++            settings.removeValue(forKey: AVEncoderAudioQualityKey)
 +        }
 +
          return settings

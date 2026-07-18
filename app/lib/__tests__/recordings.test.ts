@@ -30,6 +30,13 @@ test('moveToPart moves with bare paths and returns a RELATIVE path (no container
   expect(out).toBe('haoji/abc/part-1.m4a');
 });
 
+test('moveToPart with ext=wav writes and returns a .wav part path (live recordings)', async () => {
+  const fs = require('react-native-fs');
+  const out = await rec.moveToPart('abc', 0, 'file:///cache/rec-abc-0.wav', 'wav');
+  expect(fs.moveFile).toHaveBeenCalledWith('/cache/rec-abc-0.wav', '/doc/haoji/abc/part-0.wav');
+  expect(out).toBe('haoji/abc/part-0.wav');
+});
+
 test('resolvePartUri anchors a relative path to the current Documents dir', () => {
   expect(rec.resolvePartUri('haoji/abc/part-0.m4a')).toBe('file:///doc/haoji/abc/part-0.m4a');
 });
@@ -58,6 +65,15 @@ test('scavengeTempParts folds a crash-time Caches temp part into its session dir
   fs.exists.mockResolvedValue(false); // dest doesn't exist yet
   await rec.scavengeTempParts();
   expect(fs.moveFile).toHaveBeenCalledWith('/cache/rec-sess9-0.m4a', '/doc/haoji/sess9/part-0.m4a');
+});
+
+test('scavengeTempParts recovers a .wav temp keeping its extension', async () => {
+  const fs = require('react-native-fs');
+  fs.readDir.mockImplementation((p: string) =>
+    p === '/cache' ? Promise.resolve([file('rec-s2-1.wav', '/cache/rec-s2-1.wav', 300)]) : Promise.resolve([]));
+  fs.exists.mockResolvedValue(false);
+  await rec.scavengeTempParts();
+  expect(fs.moveFile).toHaveBeenCalledWith('/cache/rec-s2-1.wav', '/doc/haoji/s2/part-1.wav');
 });
 
 test('recoverOrphanedRecordings rebuilds a draft for an on-disk session with no store entry', async () => {

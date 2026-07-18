@@ -3,11 +3,11 @@ import { Platform, PermissionsAndroid } from 'react-native';
 import RNFS from 'react-native-fs';
 import Sound, {
   AudioSet,
-  AVEncoderAudioQualityIOSType,
   AudioEncoderAndroidType,
   OutputFormatAndroidType,
   AudioSourceAndroidType,
 } from 'react-native-nitro-sound';
+import type { AVLinearPCMBitDepthKeyIOSType } from 'react-native-nitro-sound';
 import { moveToPart } from '../lib/recordings';
 import { onAudioInterruption } from '../lib/audioInterruption';
 
@@ -30,21 +30,25 @@ export function recorderErrorMessage(e: unknown): string {
   return raw ? `無法開始錄音：${raw}` : '無法開始錄音，請重試。';
 }
 
-// AAC capture settings. IMPORTANT: the NitroModules C++ interop currently corrupts the numeric
-// AudioSet fields (sample rate, channels, quality) between JS and Swift — they arrive as finite
-// garbage (e.g. a sample rate of ~3.99e252), which passed AVAudioRecorder init but made
-// prepareToRecord() return false ("Failed to prepare recorder") on every device and the simulator.
-// That was the real cause of "recording doesn't work" (NOT the audio session, file path, or the
-// exact bitrate we chased earlier). The fix lives natively in the vendored nitro-sound Swift
-// (patches/react-native-nitro-sound+0.2.15.patch → getAudioSettings clamps AVSampleRateKey to a
-// sane range and drops the garbage). The native layer therefore ignores these JS values and uses
-// its own 48kHz/AAC defaults; we still pass a valid dict for the day the interop bug is fixed
-// upstream. Mono/rate don't matter downstream — the backend downsamples to 16kHz mono WAV.
+// LinearPCM (WAV) capture at 16 kHz mono. We record WAV — NOT AAC/m4a — on purpose: an AAC .m4a only
+// gets its index (moov atom) written on a clean stop, so a crash mid-recording leaves an UNPLAYABLE,
+// unrecoverable file. A WAV/PCM file is readable up to the exact byte the crash truncated it at, so a
+// crashed recording is always recoverable (the launch recovery scan even repairs it). 16 kHz mono is
+// exactly what the backend transcribes at, so nothing is lost and no transcode is needed.
+//
+// IMPORTANT: the NitroModules C++ interop corrupts numeric AudioSet fields between JS and Swift (a
+// sample rate arrives as ~3.99e252), and getAudioSettings never maps the PCM-specific keys at all.
+// So the native layer is the source of truth: patches/react-native-nitro-sound+0.2.15.patch clamps
+// the sample rate AND forces sane 16-bit little-endian integer PCM when the format is LinearPCM. We
+// still pass a valid dict here for the day the interop bug is fixed upstream.
 const AUDIO_SET: AudioSet = {
-  AVFormatIDKeyIOS: 'aac',
+  AVFormatIDKeyIOS: 'lpcm',
   AVNumberOfChannelsKeyIOS: 1,
-  AVSampleRateKeyIOS: 44100,
-  AVEncoderAudioQualityKeyIOS: AVEncoderAudioQualityIOSType.medium,
+  AVSampleRateKeyIOS: 16000,
+  AVLinearPCMBitDepthKeyIOS: 16 as AVLinearPCMBitDepthKeyIOSType, // enum value is 16; cast avoids a runtime enum dep (mocks)
+  AVLinearPCMIsBigEndianKeyIOS: false,
+  AVLinearPCMIsFloatKeyIOS: false,
+  // Android (not the current shipping target) can't write WAV via MediaRecorder — keep it on AAC.
   AudioSourceAndroid: AudioSourceAndroidType.MIC,
   OutputFormatAndroid: OutputFormatAndroidType.MPEG_4,
   AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
@@ -67,7 +71,7 @@ export function useRecorder(sessionId: string): RecorderApi {
 
   async function beginPart() {
     const idx = partsRef.current.length;
-    const tmp = `${RNFS.CachesDirectoryPath}/rec-${sessionId}-${idx}.m4a`;
+    const tmp = `${RNFS.CachesDirectoryPath}/rec-${sessionId}-${idx}.wav`;
     tmpPathRef.current = tmp;
     // meteringEnabled (3rd arg) MUST be true or currentMetering is undefined and the waveform stays flat
     await Sound.startRecorder(tmp, AUDIO_SET, true);
@@ -85,7 +89,7 @@ export function useRecorder(sessionId: string): RecorderApi {
     Sound.removeRecordBackListener();
     const src = uri || tmpPathRef.current;
     tmpPathRef.current = null;
-    const moved = await moveToPart(sessionId, partsRef.current.length, src); // persist out of cache
+    const moved = await moveToPart(sessionId, partsRef.current.length, src, 'wav'); // persist out of cache
     const part = { uri: moved, durationMs };
     partsRef.current = [...partsRef.current, part]; setParts(partsRef.current);
     return part;

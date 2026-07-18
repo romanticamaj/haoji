@@ -9,9 +9,12 @@ const bare = (p: string) => p.replace(/^file:\/\//, '');
 // (/var/mobile/Containers/Data/Application/<UUID>/Documents/...) changes on every app update, so a
 // stored absolute uri goes stale after installing a new build and the recording can no longer be
 // played. Store relative; resolve against the CURRENT Documents dir at read time.
-export const relPart = (sid: string, i: number) => `haoji/${sid}/part-${i}.m4a`;
+// `ext` is the part's file extension. Live recordings are now 'wav' (LinearPCM — a crash mid-record
+// still leaves a readable file), while imports keep the historical 'm4a' name. Old recordings stored
+// their own `part-N.m4a` path string, so they keep resolving regardless of this default.
+export const relPart = (sid: string, i: number, ext = 'm4a') => `haoji/${sid}/part-${i}.${ext}`;
 const sessionDir = (sid: string) => `${RNFS.DocumentDirectoryPath}/haoji/${sid}`;
-export const partPath = (sid: string, i: number) => `file://${RNFS.DocumentDirectoryPath}/${relPart(sid, i)}`;
+export const partPath = (sid: string, i: number, ext = 'm4a') => `file://${RNFS.DocumentDirectoryPath}/${relPart(sid, i, ext)}`;
 
 export async function ensureDir(sid: string) {
   await RNFS.mkdir(sessionDir(sid));
@@ -20,12 +23,12 @@ export async function ensureDir(sid: string) {
 // Move a just-finished recording (or an imported file) out of its temp/cache location into the
 // persistent per-session document dir so raw parts survive app restarts AND updates. Returns the
 // RELATIVE path to persist in the store.
-export async function moveToPart(sid: string, index: number, fromUri: string): Promise<string> {
+export async function moveToPart(sid: string, index: number, fromUri: string, ext = 'm4a'): Promise<string> {
   await ensureDir(sid);
-  const destBare = bare(partPath(sid, index));
+  const destBare = bare(partPath(sid, index, ext));
   if (await RNFS.exists(destBare)) await RNFS.unlink(destBare);
   await RNFS.moveFile(bare(fromUri), destBare);
-  return relPart(sid, index);
+  return relPart(sid, index, ext);
 }
 
 // Turn a stored part uri (new relative, or a legacy absolute path saved before this change) into an
@@ -49,7 +52,8 @@ export async function partExists(stored: string): Promise<boolean> {
   }
 }
 
-const partIndex = (name: string) => Number(/part-(\d+)\.m4a$/.exec(name)?.[1] ?? 0);
+const partIndex = (name: string) => Number(/part-(\d+)\./.exec(name)?.[1] ?? 0);
+const PART_FILE = /^part-\d+\.(m4a|wav)$/;
 
 // A recording in progress writes to Caches as `rec-<sid>-<index>.m4a` and is moved into the per-
 // session dir only when the part is finalized. A crash mid-recording (e.g. an incoming call) can
@@ -59,11 +63,11 @@ export async function scavengeTempParts(): Promise<void> {
   let entries: RNFS.ReadDirItem[];
   try { entries = await RNFS.readDir(RNFS.CachesDirectoryPath); } catch { return; }
   for (const e of entries) {
-    const m = /^rec-(.+)-(\d+)\.m4a$/.exec(e.name);
+    const m = /^rec-(.+)-(\d+)\.(m4a|wav)$/.exec(e.name);
     if (!m) continue;
     try {
       if ((e.size ?? 0) <= 0) { await RNFS.unlink(e.path).catch(() => {}); continue; }
-      await moveToPart(m[1], Number(m[2]), e.path);
+      await moveToPart(m[1], Number(m[2]), e.path, m[3]);
     } catch { /* leave it for next time — best-effort */ }
   }
 }
@@ -87,7 +91,7 @@ export async function recoverOrphanedRecordings(knownIds: Set<string>): Promise<
     let files: RNFS.ReadDirItem[];
     try { files = await RNFS.readDir(d.path); } catch { continue; }
     const partFiles = files
-      .filter((f) => /^part-\d+\.m4a$/.test(f.name) && (f.size ?? 1) > 0)
+      .filter((f) => PART_FILE.test(f.name) && (f.size ?? 1) > 0)
       .sort((a, b) => partIndex(a.name) - partIndex(b.name));
     if (partFiles.length === 0) continue;
     const parts = partFiles.map((f) => ({ uri: `haoji/${d.name}/${f.name}`, durationMs: 0 }));

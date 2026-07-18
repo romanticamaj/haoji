@@ -80,8 +80,9 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
   // file:// url the OS share sheet can read; several parts of one meeting go out together.
   const onExport = async () => {
     const urls = parts.map((p) => resolvePartUri(p.uri));
+    const type = parts.every((p) => p.uri.endsWith('.wav')) ? 'audio/wav' : 'audio/m4a';
     try {
-      await Share.open({ urls, type: 'audio/m4a', failOnCancel: false });
+      await Share.open({ urls, type, failOnCancel: false });
     } catch { /* user dismissed the share sheet — not an error */ }
   };
 
