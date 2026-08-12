@@ -27,3 +27,15 @@ From the final whole-branch review of `feat/backend-api` (2026-06-28). None are 
 - **K1 (backend)**: `/api/sessions/{id}/parts` has no bad-ext/write-failure/404 tests (old single-file tests deleted); `add_part` leaves an orphan file on write failure. Add tests + cleanup.
 - **K3 (app)**: there is no session-deletion UI yet; `haoji/<sid>/` part dirs grow unbounded. When delete is added, it must `deleteAsync(haoji/<sid>)` too.
 - **M3 (app)**: part `durationMs` read from state can lag the final status tick (cosmetic — only the 段 N label).
+
+## Backend uptime (recurring "後端又停掉了")
+- **`run-forever.bat`** (new) auto-restarts `app.py` on exit + logs to `logs\backend.log`. Use it instead
+  of `start.bat` (which runs once). Requires the console window to stay open / user logged in.
+- **Durable upgrade — run as a Windows service (NSSM)** so it survives reboots + logoff and starts on
+  boot: `choco install nssm` (or download), then
+  `nssm install HaojiBackend "C:\path\to\python.exe" "C:\...\backend\app.py"`,
+  set AppDirectory to the backend dir and `AppEnvironmentExtra PYTHONIOENCODING=utf-8`, then
+  `nssm start HaojiBackend`. NSSM restarts the process automatically on crash. Do the same for the
+  Breeze ASR (:8765) and confirm Ollama runs as a service, so a reboot brings the whole stack up.
+- **Next crash → check `backend\logs\backend.log`** for the traceback; that tells us WHY it keeps
+  stopping (vs. just papering over it with restarts).
