@@ -124,6 +124,10 @@ App 端：`Config.API_BASE` 從 Tailscale IP 改指到部署機的 `:8780`（app
 - **VRAM**：建議 **≥16GB**（Breeze ~5GB + gemma4 ~4GB + pyannote ~2GB 同時載）。
 - Docker + Docker Compose v2。
 
+> **軟體/硬體分工**：交付物（image）內含 CUDA toolkit + 模型 + 程式碼；**GPU 硬體與驅動由部署主機提供**，執行時由 NVIDIA Container Toolkit 接起來。所以 image 不綁特定 GPU 或特定機器——換任一張夠力的 NVIDIA GPU 皆可，不需要複製原開發機的環境。
+>
+> **常見故障**：若 `breeze-asr` / `ollama` 容器起得來但偵測不到 GPU，最常見原因是主機**沒裝 NVIDIA Container Toolkit**或**驅動過舊**——更新後即可（不是 image 的問題）。
+
 ## 10. 授權交付清單（商用散佈前確認）
 | 元件 | 授權 | 商用/散佈 | 備註 |
 |---|---|---|---|
