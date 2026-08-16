@@ -10,23 +10,17 @@ import os
 import time
 import torch
 import librosa
-import numpy as np
 import tempfile
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Query
-from fastapi.responses import JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 MODEL_PATH = os.environ.get("BREEZE_MODEL_PATH", "/models/breeze-asr")
 BREEZE_MODEL_ID = os.environ.get("BREEZE_MODEL_ID", "MediaTek-Research/Breeze-ASR-25")
 DIARIZE_MODEL = "pyannote/speaker-diarization-3.1"
-STATIC_DIR = Path(__file__).parent / "static"
 app = FastAPI(title="Breeze ASR 25", version="1.1")
-
-@app.get("/")
-async def index():
-    return FileResponse(STATIC_DIR / "index.html")
+# (the dev box's web UI / static dir is not shipped in this image — API only)
 
 # Global model holders
 processor = None
@@ -137,16 +131,11 @@ async def transcribe(
         audio, sr = librosa.load(tmp_path, sr=16000, mono=True)
         duration = len(audio) / sr
 
-        # Split on silence for finer segments, each capped at 30s
+        # Split on silence for finer segments, each capped at max_samples (10s)
         max_samples = 10 * sr
         intervals = librosa.effects.split(audio, top_db=25, frame_length=2048, hop_length=512)
 
-        # Debug: show what librosa detected
-        print(f"[DEBUG] total intervals from split: {len(intervals)}")
-        for idx, iv in enumerate(intervals):
-            print(f"  interval {idx}: {iv[0]/sr:.2f}s - {iv[1]/sr:.2f}s (len={((iv[1]-iv[0])/sr):.2f}s)")
-
-        # Group speech intervals into chunks ≤ 30s
+        # Group speech intervals into chunks ≤ max_samples
         chunk_list = []  # (audio_array, offset_seconds)
         if len(intervals) == 0:
             chunk_list = [(audio, 0.0)]
@@ -271,7 +260,7 @@ async def transcribe_diarize(
             else:
                 merged.append(dict(seg))
 
-        print(f"[DEBUG] diarization: {len(raw_segments)} raw segments, {len(merged)} after merge")
+        print(f"[diarize] {len(raw_segments)} raw segments -> {len(merged)} after merge")
 
         # Language prompt for Whisper
         forced_decoder_ids = None

@@ -22,16 +22,30 @@
 
 ## 2. 啟動步驟
 
+有兩種角色，走不同路：
+
+**A. 拿到已建好 image 的部署方（一般情況，不需要任何 token）：**
+
 ```bash
+docker load -i haoji-breeze-asr.tar   # 交付附帶的 image 檔
 cd deploy
-cp .env.example .env        # 需要 build breeze-asr image 時，填入 HF_TOKEN（僅 build 用）
-docker compose up -d --build
+cp .env.example .env                  # HF_TOKEN 留空即可
+docker compose up -d                  # 不要加 --build
 ```
 
-- **HF_TOKEN 只在 build `breeze-asr` image 時需要**（pyannote 權重預烤，經 BuildKit secret
-  傳入，不會留在 image 裡）。拿到**已建好的 image** 的部署方完全不需要 token。
+**B. 自行 build image 者（需要 HuggingFace token，僅 build 時用）：**
+
+```bash
+cd deploy
+cp .env.example .env                  # 填入 HF_TOKEN（pyannote 權重預烤用）
+docker compose build                  # HF_TOKEN 經 BuildKit secret 傳入，不留在 image
+docker compose up -d
+# 交付給別人： docker save haoji-breeze-asr:latest -o haoji-breeze-asr.tar
+```
+
 - 首次啟動會自動下載模型到 volume（Breeze ~3GB、gemma4 ~1GB），依網速需 5–20 分鐘；
-  之後啟動為秒級。
+  之後啟動為秒級。`haoji-backend` 會等 `breeze-asr` healthy 才起（healthcheck 已涵蓋
+  首次下載的等待期）。
 
 ### 驗證
 

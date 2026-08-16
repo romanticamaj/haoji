@@ -13,11 +13,17 @@ services:
     volumes:
       - data:/data
     depends_on:
-      - ollama
-      - breeze-asr
+      ollama:
+        condition: service_started
+      breeze-asr:
+        condition: service_healthy
     restart: unless-stopped
 
   breeze-asr:
+    # Deployers who received a pre-built image just `docker load` it and run
+    # `docker compose up -d` (NO --build) — no HF token needed. Only image
+    # BUILDERS need HF_TOKEN in .env (pyannote pre-bake), via `docker compose build`.
+    image: haoji-breeze-asr:latest
     build:
       context: ./breeze-asr
       secrets:
@@ -26,6 +32,13 @@ services:
       BREEZE_MODEL_PATH: /models/breeze-asr
     volumes:
       - models-breeze:/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8765/health',timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # first boot may download ~3GB of weights before /health answers
+      start_period: 30m
     deploy:
       resources:
         reservations:

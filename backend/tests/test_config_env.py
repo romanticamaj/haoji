@@ -12,6 +12,10 @@ import config as config_module
 def reload_config(monkeypatch):
     """Yield a fn that sets env vars then reloads config; always restore after."""
     def _reload(**env):
+        # start from a clean slate so vars legitimately set in the surrounding
+        # environment (e.g. inside the container) don't leak into the test
+        for k in ("ASR_BASE_URL", "OLLAMA_BASE_URL", "LLM_MODEL", "WEB_PORT", "DATA_DIR", "DB_PATH"):
+            monkeypatch.delenv(k, raising=False)
         for k, v in env.items():
             monkeypatch.setenv(k, v)
         return importlib.reload(config_module)

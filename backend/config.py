@@ -13,7 +13,7 @@ UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 DB_PATH = os.environ.get("DB_PATH") or os.path.join(DATA_DIR, "haoji.db")
 
 WEB_HOST = "0.0.0.0"
-WEB_PORT = int(os.environ.get("WEB_PORT", "8780"))
+WEB_PORT = int(os.environ.get("WEB_PORT") or "8780")  # `or` tolerates WEB_PORT= (blank)
 
 # Breeze ASR + diarization backend.
 # ASR_BASE_URL set (e.g. http://breeze-asr:8765 in compose) -> use it directly;

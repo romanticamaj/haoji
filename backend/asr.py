@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
 """Breeze ASR detection, audio extraction, diarized transcription, normalization."""
-import os, socket, subprocess
+import os, socket, subprocess, time
 import requests
 import config
 from zhtw import to_traditional
+
+# Bounded retry when a fixed ASR_BASE_URL is configured: one failed 2s probe
+# must not permanently fail a transcribe job (and thereby delete the uploaded
+# parts) just because the ASR container is mid-restart or briefly unreachable.
+ASR_URL_RETRIES = 3
+ASR_URL_RETRY_WAIT = 5
 
 _asr_cache = None
 
@@ -32,9 +38,12 @@ def detect_asr_base(force=False):
     global _asr_cache
     # Explicit base URL (compose / any remote deploy) wins over auto-detection.
     if config.ASR_BASE_URL:
-        if _is_breeze(config.ASR_BASE_URL):
-            _asr_cache = config.ASR_BASE_URL
-            return _asr_cache
+        for attempt in range(ASR_URL_RETRIES):
+            if _is_breeze(config.ASR_BASE_URL):
+                _asr_cache = config.ASR_BASE_URL
+                return _asr_cache
+            if attempt < ASR_URL_RETRIES - 1:
+                time.sleep(ASR_URL_RETRY_WAIT)
         _asr_cache = None
         return None
     if _asr_cache and not force and _is_breeze(_asr_cache):
