@@ -14,6 +14,25 @@ services:
       - data:/data
     depends_on:
       - ollama
+      - breeze-asr
+    restart: unless-stopped
+
+  breeze-asr:
+    build:
+      context: ./breeze-asr
+      secrets:
+        - hf_token
+    environment:
+      BREEZE_MODEL_PATH: /models/breeze-asr
+    volumes:
+      - models-breeze:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     restart: unless-stopped
 
   ollama:
@@ -36,3 +55,12 @@ services:
 volumes:
   data:
   models-ollama:
+  models-breeze:
+    # Pre-seeded on the build box; on a fresh machine the first boot downloads
+    # Breeze into it automatically (resumable).
+    name: haoji-models-breeze
+    external: false
+
+secrets:
+  hf_token:
+    environment: HF_TOKEN

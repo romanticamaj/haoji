@@ -1,5 +1,7 @@
 transformers==4.48.3
-pyannote.audio==3.3.2
+# 4.x required with torch>=2.6 (weights_only default flip breaks 3.x checkpoints' load);
+# mirrors the working native install on the dev box.
+pyannote.audio==4.0.4
 librosa==0.10.2.post1
 fastapi==0.135.2
 uvicorn==0.34.0

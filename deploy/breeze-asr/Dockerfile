@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1
-FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
+# CUDA 12.8 build — required for Blackwell GPUs (sm_120, e.g. RTX 50-series);
+# older cu121 wheels top out at sm_90 and fail at inference with
+# "no kernel image is available".
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libsndfile1 ffmpeg \
@@ -7,7 +10,12 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# pyannote 4.x's deps upgrade torch past the base image's pin; the base image's
+# torchvision then no longer matches and breaks lightning's import. Nothing in
+# this service needs torchvision (the reference native install runs without it)
+# — remove it after the upgrade.
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y torchvision
 
 # --- Pre-bake pyannote weights (gated on HF; MIT-licensed so redistribution in
 # --- this image is fine). The HF token is supplied as a BuildKit SECRET so it
