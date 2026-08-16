@@ -30,6 +30,13 @@ def _is_breeze(url):
 
 def detect_asr_base(force=False):
     global _asr_cache
+    # Explicit base URL (compose / any remote deploy) wins over auto-detection.
+    if config.ASR_BASE_URL:
+        if _is_breeze(config.ASR_BASE_URL):
+            _asr_cache = config.ASR_BASE_URL
+            return _asr_cache
+        _asr_cache = None
+        return None
     if _asr_cache and not force and _is_breeze(_asr_cache):
         return _asr_cache
     for ip in ["127.0.0.1"] + _local_ips():
