@@ -38,9 +38,15 @@ device = "cuda"
 async def load_model():
     global processor, model
     from transformers import WhisperProcessor, WhisperForConditionalGeneration
-    if not os.path.isdir(MODEL_PATH) or not os.listdir(MODEL_PATH):
+    # A weights file must actually exist — a directory left half-full by an
+    # interrupted first download must NOT skip the (resumable) download.
+    import glob as _glob
+    def _weights_present(p):
+        return bool(_glob.glob(os.path.join(p, "*.safetensors"))
+                    or _glob.glob(os.path.join(p, "pytorch_model*.bin")))
+    if not _weights_present(MODEL_PATH):
         from huggingface_hub import snapshot_download
-        print(f"[Download] {BREEZE_MODEL_ID} -> {MODEL_PATH} (first boot only)...")
+        print(f"[Download] {BREEZE_MODEL_ID} -> {MODEL_PATH} (first boot only, resumable)...")
         snapshot_download(BREEZE_MODEL_ID, local_dir=MODEL_PATH)
     print(f"[Loading] Breeze ASR 25 from {MODEL_PATH}...")
     start = time.time()
