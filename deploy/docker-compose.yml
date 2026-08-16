@@ -1,0 +1,38 @@
+name: haoji
+
+services:
+  haoji-backend:
+    build: ../backend
+    ports:
+      - "${WEB_PORT:-8780}:8780"
+    environment:
+      ASR_BASE_URL: http://breeze-asr:8765
+      OLLAMA_BASE_URL: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-gemma4:e4b-it-qat}
+      DATA_DIR: /data
+    volumes:
+      - data:/data
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    entrypoint: ["/entrypoint.sh"]
+    environment:
+      LLM_MODEL: ${LLM_MODEL:-gemma4:e4b-it-qat}
+    volumes:
+      - models-ollama:/root/.ollama
+      - ./ollama/entrypoint.sh:/entrypoint.sh:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  data:
+  models-ollama:

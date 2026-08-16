@@ -36,3 +36,4 @@ __pycache__/
 backend/data/
 *.db
 *.p8
+deploy/.env
