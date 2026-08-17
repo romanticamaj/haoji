@@ -28,7 +28,7 @@
 
 ```bash
 docker load -i haoji-breeze-asr.tar   # 交付附帶的 image 檔
-cd deploy
+cd backend/deploy
 cp .env.example .env                  # HF_TOKEN 留空即可
 docker compose up -d                  # 不要加 --build
 ```
@@ -36,7 +36,7 @@ docker compose up -d                  # 不要加 --build
 **B. 自行 build image 者（需要 HuggingFace token，僅 build 時用）：**
 
 ```bash
-cd deploy
+cd backend/deploy
 cp .env.example .env                  # 填入 HF_TOKEN（pyannote 權重預烤用）
 docker compose build                  # HF_TOKEN 經 BuildKit secret 傳入，不留在 image
 docker compose up -d

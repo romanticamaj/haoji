@@ -26,12 +26,12 @@
 4. `git clone` 本 repo，checkout 本分支/版本；確認 `deploy/` 齊全。
 5. 二選一：
    - **拿到交付 image**：`docker load -i haoji-breeze-asr.tar` → `.env` 的 HF_TOKEN **留空**。
-   - **自行 build**：`.env` 填 HF_TOKEN → `cd deploy && docker compose build`（預期 log 出現 `pyannote pre-baked`）。
+   - **自行 build**：`.env` 填 HF_TOKEN → `cd backend/deploy && docker compose build`（預期 log 出現 `pyannote pre-baked`）。
 
 ## Phase 2 — 啟動
 
 6. ```bash
-   cd deploy && cp .env.example .env   # 按 Phase 1 決定 HF_TOKEN 填/不填
+   cd backend/deploy && cp .env.example .env   # 按 Phase 1 決定 HF_TOKEN 填/不填
    docker compose up -d                # 用交付 image 時「不要」加 --build
    ```
 7. 首次啟動等模型下載（Breeze ~3GB、gemma4 ~1GB，5–20 分鐘）。觀察：

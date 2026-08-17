@@ -2,7 +2,7 @@ name: haoji
 
 services:
   haoji-backend:
-    build: ../backend
+    build: ..
     ports:
       - "${WEB_PORT:-8780}:8780"
     environment:
