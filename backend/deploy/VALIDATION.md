@@ -44,11 +44,11 @@
 ## Phase 3 — 健康檢查
 
 8. ```bash
-   curl -s http://127.0.0.1:8780/health
+   curl -s http://127.0.0.1:7780/health
    #  {"status":"ok","service":"haoji-backend"}
-   curl -s http://127.0.0.1:8780/api/llm/models
+   curl -s http://127.0.0.1:7780/api/llm/models
    #  {"ok":true,"models":["gemma4:e4b-it-qat"],...}   （首次需等 pull 完）
-   docker exec haoji-breeze-asr-1 python -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8765/health').read().decode())"
+   docker exec haoji-breeze-asr-1 python -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:7765/health').read().decode())"
    #  {"status":"ok","model":"breeze-asr-25","device":"cuda",...,"hf_token_set":false}
    ```
    關鍵確認：`device` 必須是 **cuda**（不是 cpu）；`hf_token_set:false` 仍能運作（權重預烤成功）。
@@ -57,11 +57,11 @@
 
 9. ```bash
    ffmpeg -y -f lavfi -i "sine=frequency=440:duration=3" -c:a aac /tmp/tone.m4a
-   SID=$(curl -s -X POST http://127.0.0.1:8780/api/sessions -H "Content-Type: application/json" \
+   SID=$(curl -s -X POST http://127.0.0.1:7780/api/sessions -H "Content-Type: application/json" \
          -d '{"client_id":"validation-smoke"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['session_id'])")
-   curl -s -X POST "http://127.0.0.1:8780/api/sessions/$SID/parts" -F "file=@/tmp/tone.m4a"
-   curl -s -X POST "http://127.0.0.1:8780/api/sessions/$SID/transcribe"
-   sleep 40 && curl -s "http://127.0.0.1:8780/api/sessions/$SID"
+   curl -s -X POST "http://127.0.0.1:7780/api/sessions/$SID/parts" -F "file=@/tmp/tone.m4a"
+   curl -s -X POST "http://127.0.0.1:7780/api/sessions/$SID/transcribe"
+   sleep 40 && curl -s "http://127.0.0.1:7780/api/sessions/$SID"
    ```
    預期：`"status":"done"`（純音無語音 → `segments` 為空是正確的；**不得是 error**）。
 
@@ -74,7 +74,7 @@
     - 總耗時（音檔長度 vs 處理時間）
 12. `analyze` 生會議記錄：
     ```bash
-    curl -s -X POST "http://127.0.0.1:8780/api/sessions/$SID/analyze" -H "Content-Type: application/json" -d '{}'
+    curl -s -X POST "http://127.0.0.1:7780/api/sessions/$SID/analyze" -H "Content-Type: application/json" -d '{}'
     ```
     預期：回繁中 Markdown 記錄；講者代號未被擅自替換成人名。
 13. 與開發機（原生版）同音檔結果對照，差異在可接受範圍。
@@ -82,7 +82,7 @@
 
 ## Phase 6 — App 實機
 
-14. App 的 `Config.API_BASE` 指到 `http://<驗證機>:8780`（iOS ATS / Android network config 同步）。
+14. App 的 `Config.API_BASE` 指到 `http://<驗證機>:7780`（iOS ATS / Android network config 同步）。
 15. 實機：錄音（含暫停/續錄多 part）→ 上傳 → 轉錄 → 講者改名 → 生成記錄 → 解鎖預覽。全流程通。
 
 ## Phase 7 — 韌性與隱私

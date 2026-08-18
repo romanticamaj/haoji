@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Two independently-deployed pieces, in one repo:
 
 - `app/` — bare React Native client (`@react-native-community/cli`, **not Expo**), native iOS + Android. Developed on Mac, shipped to TestFlight via fastlane.
-- `backend/` — FastAPI service. **Runs only on the GPU Windows box** (Breeze ASR + Ollama need the GPU). The app reaches it over Tailscale (`http://100.106.118.45:8780`) or same-WiFi LAN (`http://192.168.100.10:8780`). Do not run the backend on the Mac.
+- `backend/` — FastAPI service. **Runs only on the GPU Windows box** (Breeze ASR + Ollama need the GPU). The app reaches it over Tailscale (`http://100.106.118.45:7780`) or same-WiFi LAN (`http://192.168.100.10:7780`). Do not run the backend on the Mac.
 
 ## Bare React Native discipline
 
@@ -32,7 +32,7 @@ cd ios && fastlane beta                  # archive + sign + upload to TestFlight
 Backend (`cd backend`, on the GPU machine):
 ```
 pip install -r requirements.txt
-python app.py            # serves on 0.0.0.0:8780 (start.bat also pre-checks Ollama/ASR)
+python app.py            # serves on 0.0.0.0:7780 (start.bat also pre-checks Ollama/ASR)
 python -m pytest -q
 python -m pytest tests/test_parts.py -q  # single file
 ```

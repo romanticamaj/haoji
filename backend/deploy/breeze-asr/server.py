@@ -337,4 +337,4 @@ async def transcribe_diarize(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8765, workers=1)
+    uvicorn.run(app, host="0.0.0.0", port=7765, workers=1)

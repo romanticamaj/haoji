@@ -50,27 +50,27 @@ docker compose up -d
 ### 驗證
 
 ```bash
-curl -s http://127.0.0.1:8780/health          # {"status":"ok","service":"haoji-backend"}
-curl -s http://127.0.0.1:8780/api/llm/models  # {"ok":true,"models":["gemma4:e4b-it-qat"],...}
-curl -s http://127.0.0.1:8765/health          # 由容器網路內部可及；對外僅開 8780
+curl -s http://127.0.0.1:7780/health          # {"status":"ok","service":"haoji-backend"}
+curl -s http://127.0.0.1:7780/api/llm/models  # {"ok":true,"models":["gemma4:e4b-it-qat"],...}
+curl -s http://127.0.0.1:7765/health          # 由容器網路內部可及；對外僅開 7780
 ```
 
 端到端冒煙（合成音檔，驗流程通）：
 
 ```bash
 ffmpeg -y -f lavfi -i "sine=frequency=440:duration=3" -c:a aac /tmp/tone.m4a
-SID=$(curl -s -X POST http://127.0.0.1:8780/api/sessions -H "Content-Type: application/json" \
+SID=$(curl -s -X POST http://127.0.0.1:7780/api/sessions -H "Content-Type: application/json" \
       -d '{"client_id":"deploy-smoke-1"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['session_id'])")
-curl -s -X POST "http://127.0.0.1:8780/api/sessions/$SID/parts" -F "file=@/tmp/tone.m4a"
-curl -s -X POST "http://127.0.0.1:8780/api/sessions/$SID/transcribe"
+curl -s -X POST "http://127.0.0.1:7780/api/sessions/$SID/parts" -F "file=@/tmp/tone.m4a"
+curl -s -X POST "http://127.0.0.1:7780/api/sessions/$SID/transcribe"
 sleep 30
-curl -s "http://127.0.0.1:8780/api/sessions/$SID"    # 期望 "status":"done"（純音無語音，segments 可為空）
+curl -s "http://127.0.0.1:7780/api/sessions/$SID"    # 期望 "status":"done"（純音無語音，segments 可為空）
 ```
 
 ## 3. App 指向
 
 把 App 的 `Config.API_BASE`（`app/lib/config.ts` / `.env` 的 `API_BASE`）指到
-`http://<部署機>:8780`，並同步 iOS ATS 例外（`ios/Haoji/Info.plist`）與 Android
+`http://<部署機>:7780`，並同步 iOS ATS 例外（`ios/Haoji/Info.plist`）與 Android
 `network_security_config.xml` 的位址。
 
 ## 4. 資料與隱私

@@ -35,5 +35,5 @@ ENV BREEZE_MODEL_PATH=/models/breeze-asr \
     BREEZE_MODEL_ID=MediaTek-Research/Breeze-ASR-25 \
     PYTHONUNBUFFERED=1
 VOLUME ["/models"]
-EXPOSE 8765
+EXPOSE 7765
 CMD ["python", "server.py"]

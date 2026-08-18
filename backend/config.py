@@ -13,13 +13,13 @@ UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 DB_PATH = os.environ.get("DB_PATH") or os.path.join(DATA_DIR, "haoji.db")
 
 WEB_HOST = "0.0.0.0"
-WEB_PORT = int(os.environ.get("WEB_PORT") or "8780")  # `or` tolerates WEB_PORT= (blank)
+WEB_PORT = int(os.environ.get("WEB_PORT") or "7780")  # `or` tolerates WEB_PORT= (blank)
 
 # Breeze ASR + diarization backend.
-# ASR_BASE_URL set (e.g. http://breeze-asr:8765 in compose) -> use it directly;
+# ASR_BASE_URL set (e.g. http://breeze-asr:7765 in compose) -> use it directly;
 # empty -> legacy auto-detect across local IPs (dev box behaviour).
 ASR_BASE_URL = os.environ.get("ASR_BASE_URL", "")
-ASR_PORT = 8765
+ASR_PORT = 7765
 ASR_HEALTH = "/health"
 ASR_DIARIZE = "/transcribe_diarize"
 ASR_TIMEOUT = 7200

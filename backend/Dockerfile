@@ -14,6 +14,6 @@ COPY . .
 ENV DATA_DIR=/data \
     PYTHONUNBUFFERED=1
 VOLUME ["/data"]
-EXPOSE 8780
+EXPOSE 7780
 
 CMD ["python", "app.py"]

@@ -4,9 +4,9 @@ services:
   haoji-backend:
     build: ..
     ports:
-      - "${WEB_PORT:-8780}:8780"
+      - "${WEB_PORT:-7780}:7780"
     environment:
-      ASR_BASE_URL: http://breeze-asr:8765
+      ASR_BASE_URL: http://breeze-asr:7765
       OLLAMA_BASE_URL: http://ollama:11434
       LLM_MODEL: ${LLM_MODEL:-gemma4:e4b-it-qat}
       DATA_DIR: /data
@@ -33,7 +33,7 @@ services:
     volumes:
       - models-breeze:/models
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8765/health',timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:7765/health',timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 3

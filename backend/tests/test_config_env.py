@@ -28,7 +28,7 @@ def reload_config(monkeypatch):
 
 def test_defaults_unchanged_without_env(reload_config):
     cfg = reload_config()
-    assert cfg.WEB_PORT == 8780
+    assert cfg.WEB_PORT == 7780
     assert cfg.OLLAMA_BASE == "http://127.0.0.1:11434"
     assert cfg.LLM_MODEL == "gemma4:e4b-it-qat"
     assert cfg.ASR_BASE_URL == ""          # empty = autodetect
@@ -37,13 +37,13 @@ def test_defaults_unchanged_without_env(reload_config):
 
 def test_env_overrides(reload_config, tmp_path):
     cfg = reload_config(
-        ASR_BASE_URL="http://breeze-asr:8765",
+        ASR_BASE_URL="http://breeze-asr:7765",
         OLLAMA_BASE_URL="http://ollama:11434",
         LLM_MODEL="test-model",
         WEB_PORT="9999",
         DATA_DIR=str(tmp_path / "d"),
     )
-    assert cfg.ASR_BASE_URL == "http://breeze-asr:8765"
+    assert cfg.ASR_BASE_URL == "http://breeze-asr:7765"
     assert cfg.OLLAMA_BASE == "http://ollama:11434"
     assert cfg.LLM_MODEL == "test-model"
     assert cfg.WEB_PORT == 9999
