@@ -113,14 +113,17 @@ def _segments_to_srt(segments):
     return "\n".join(lines)
 
 @app.post("/transcribe")
-async def transcribe(
+def transcribe(
     file: UploadFile = File(...),
     language: str = Query("zh", description="Language code: zh, en, auto")
 ):
+    # Deliberately a plain (sync) def: FastAPI runs it in a worker thread, so the
+    # minutes-long GPU inference can't freeze the event loop — /health and the
+    # docker healthcheck keep answering during long jobs.
     # Save uploaded file to temp
     suffix = Path(file.filename).suffix or ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
+        content = file.file.read()
         tmp.write(content)
         tmp_path = tmp.name
 
@@ -197,7 +200,7 @@ async def transcribe(
 
 
 @app.post("/transcribe_diarize")
-async def transcribe_diarize(
+def transcribe_diarize(
     file: UploadFile = File(...),
     language: str = Query("zh", description="Language code: zh, en, auto"),
     num_speakers: Optional[int] = Query(None, description="Exact speaker count (recommended if known, e.g. 2 for 2-host podcast)"),
@@ -207,7 +210,11 @@ async def transcribe_diarize(
     merge_gap: float = Query(0.5, description="Merge consecutive same-speaker segments closer than this (seconds)"),
     min_segment: float = Query(0.3, description="Skip diarization segments shorter than this (seconds)"),
 ):
-    """Speaker-diarized transcription. Pyannote splits speakers, then each segment goes through Breeze ASR."""
+    """Speaker-diarized transcription. Pyannote splits speakers, then each segment goes through Breeze ASR.
+
+    Sync def on purpose (see transcribe): runs in FastAPI's threadpool so long
+    GPU jobs don't block /health.
+    """
     try:
         pipeline = _get_diarize_pipeline()
     except RuntimeError as e:
@@ -215,7 +222,7 @@ async def transcribe_diarize(
 
     suffix = Path(file.filename).suffix or ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
+        content = file.file.read()
         tmp.write(content)
         tmp_path = tmp.name
 

@@ -53,6 +53,9 @@
    ```
    關鍵確認：`device` 必須是 **cuda**（不是 cpu）；`hf_token_set:false` 仍能運作（權重預烤成功）。
 
+> 💡 Phase 4–6 也可以不用 curl：瀏覽器開 `backend/deploy/test-ui.html`（file:// 直開即可），
+> 它會跑完整 pipeline（上傳 → 轉錄進度 → 講者逐字稿 → 生成會議記錄）。
+
 ## Phase 4 — 端到端冒煙（合成音檔）
 
 9. ```bash
