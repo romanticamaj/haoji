@@ -38,3 +38,4 @@ backend/data/
 *.p8
 backend/deploy/.env
 backend/deploy/docker-compose.override.yml
+.playwright-mcp/
