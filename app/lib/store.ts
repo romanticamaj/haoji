@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transcript } from './types';
 import type { Job } from './job';
+import type { NotesJob } from './notesJob';
 
 export type SavedSession = {
   id: string; createdAt: number; title: string;
@@ -17,6 +18,8 @@ export type SavedSession = {
   // Durable transcription job state (see lib/job.ts). Persisted so a backgrounded, crashed or
   // force-quit app can resume the upload / keep fetching progress instead of losing the work.
   job?: Job;
+  // Durable AI-notes generation state (see lib/notesJob.ts) — same idea as `job`, for the LLM step.
+  notesJob?: NotesJob;
 };
 
 export interface SessionStore {

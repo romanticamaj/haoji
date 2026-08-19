@@ -8,7 +8,7 @@ import Share from 'react-native-share';
 import RNFS from 'react-native-fs';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { analyze, getModels } from '../lib/api';
+import { getModels } from '../lib/api';
 import { splitNotesForPreview } from '../lib/gating';
 import { markdownToPlainText } from '../lib/notes';
 import { cleanNotesMarkdown } from '../lib/notesClean';
@@ -20,6 +20,9 @@ import { relativeDay } from '../lib/sessionList';
 import { speakerColor, colors, radius, tabularNums } from '../lib/theme';
 import { IconLock, IconCheck, IconPencil } from '../components/icons';
 import { SavedSession } from '../lib/store';
+import { useStore } from '../lib/store-context';
+import { ensureNotesJob, restartNotesJob } from '../lib/jobRunner';
+import { isNotesActive } from '../lib/notesJob';
 
 // Pull the raw text out of a markdown-display AST node (walks descendants collecting text content).
 // Used to detect GFM task-list items, which markdown-it 10 leaves as literal "[ ]"/"[x]" text
@@ -54,8 +57,11 @@ const mdStyles = StyleSheet.create({
 export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscript }:
   { session: SavedSession; onUpdate(s: SavedSession): void; onUnlock(): void; onGoToTranscript?(): void }) {
   const hasTranscript = (session.transcript?.segments?.length ?? 0) > 0;
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const store = useStore();
+  // Generation state lives on the session (lib/notesJob.ts), not in local state: the LLM run happens
+  // on the backend, so it must survive leaving this screen, backgrounding, and being killed.
+  const busy = isNotesActive(session.notesJob);
+  const err = session.notesJob?.stage === 'error' ? session.notesJob.error ?? null : null;
   const [showAdv, setShowAdv] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [model, setModel] = useState<string | undefined>(undefined);
@@ -86,21 +92,16 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
   // The LLM output, normalised (LaTeX arrows → symbols, heading spacing) for display/copy/export/edit.
   const cleaned = useMemo(() => cleanNotesMarkdown(session.notes ?? ''), [session.notes]);
 
-  async function generate() {
-    setBusy(true); setErr(null);
-    try {
-      // analyze runs against the backend draft session (holds the transcript), not the local id.
-      const r = await analyze(session.backendId ?? session.id, { model, names: session.names });
-      // Archive any prior notes so a regenerate is revertible from 版本紀錄.
-      const withNotes = pushNotesVersion(session, r.notes, Date.now());
-      // Promote the AI's H1 title to the meeting name, but only if the user hasn't set one themselves
-      // (default names are timestamps). This replaces "7/15/2026, 12:07 AM" with the real topic.
-      const aiTitle = extractNotesTitle(r.notes);
-      const title = aiTitle && looksLikeAutoTitle(session.title) ? aiTitle : session.title;
-      onUpdate({ ...withNotes, title });
-    } catch (e: any) { setErr(e?.message || '生成失敗'); }
-    setBusy(false);
-  }
+  // Queue generation on the backend and let the job own it. The notes, their version history and the
+  // title promotion are applied by lib/notesJob.ts when the result lands — including when that only
+  // happens on a later launch because the app was closed while the LLM was running.
+  function generate() { void restartNotesJob(session.id, store, { model }); }
+
+  // Reattach to a generation that was still running when this screen mounted (e.g. after relaunch),
+  // so the spinner reflects real state instead of sitting there forever.
+  useEffect(() => {
+    if (isNotesActive(session.notesJob)) void ensureNotesJob(session.id, store, { model });
+  }, [session.id, session.notesJob?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
   function flashCopied(which: 'md' | 'plain') {
     setCopied(which);
     if (copyTimer.current) clearTimeout(copyTimer.current);
@@ -157,7 +158,7 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
     }
     return (
       <View style={styles.center}>
-        {busy ? <><ActivityIndicator color={colors.brand} /><Text style={styles.hint}>本機 LLM 生成中…</Text></>
+        {busy ? <><ActivityIndicator color={colors.brand} /><Text style={styles.hint}>{session.notesJob?.message || '本機 LLM 生成中…'}</Text><Text style={styles.hintSmall}>離開 App 也會繼續，完成後回來就看得到。</Text></>
           : <>
               <Text style={styles.hint}>把逐字稿整理成會議記錄（摘要 / 重點 / 決議 / 待辦）。</Text>
               <Pressable style={styles.primary} onPress={generate}><Text style={styles.primaryText}>生成會議記錄</Text></Pressable>
@@ -378,6 +379,7 @@ const styles = StyleSheet.create({
   adv: { color: colors.ink3, marginTop: 16, fontSize: 13 },
   advList: { color: colors.ink, marginTop: 8, fontSize: 13 },
   err: { color: colors.brand, marginTop: 14 },
+  hintSmall: { color: colors.ink3, fontSize: 12, marginTop: 8, textAlign: 'center' },
 
   lockWrap: { marginTop: 8, position: 'relative' },
   // Gradient-fade paywall: absolutely positioned over the top of the locked content.

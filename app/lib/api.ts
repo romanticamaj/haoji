@@ -25,11 +25,16 @@ async function asJson(res: Response) {
 
 // clientId is an idempotency/task key (the local session id). Passing it lets the backend return the
 // SAME server session if the pipeline is (re)tried, so a duplicated upload can't spawn extra sessions.
-export async function createSession(clientId?: string): Promise<string> {
+export async function createSession(clientId?: string, expectedParts?: number): Promise<string> {
+  // expectedParts tells the backend how many parts to wait for: once they have all arrived it starts
+  // transcription ITSELF, so an upload finished by the OS with the app closed still gets processed.
   const res = await timedFetch(`${API_BASE}/api/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(clientId ? { client_id: clientId } : {}),
+    body: JSON.stringify({
+      ...(clientId ? { client_id: clientId } : {}),
+      ...(expectedParts ? { expected_parts: expectedParts } : {}),
+    }),
   }, 20000);
   return ((await asJson(res)) as any).session_id;
 }
@@ -63,6 +68,19 @@ export async function analyze(
     body: JSON.stringify(opts),
   }, 300000); // local LLM generation can be slow
   return (await asJson(res)) as { notes: string; model: string };
+}
+
+// Queue notes generation and return at once. The backend stores the notes when it finishes, so the
+// result survives the app being backgrounded or killed — poll getSession() for notes_status/notes.
+export async function analyzeInBackground(
+  id: string,
+  opts: { model?: string; names?: Record<string, string> },
+): Promise<void> {
+  await asJson(await timedFetch(`${API_BASE}/api/sessions/${id}/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...opts, background: true }),
+  }, 20000));
 }
 
 export async function getModels(): Promise<{ ok: boolean; models: string[]; default: string }> {

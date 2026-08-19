@@ -15,16 +15,25 @@ def init_db():
             id TEXT PRIMARY KEY, filename TEXT, status TEXT, pct REAL,
             message TEXT, transcript TEXT, notes TEXT, error TEXT, created REAL,
             parts TEXT, client_id TEXT)""")
-        # Migrate DBs created before client_id existed (idempotency key for dedup).
+        # Migrate older DBs. client_id = idempotency key for dedup; notes_status/notes_error track
+        # the BACKGROUND notes job (so a client that disappears mid-generation can collect the result
+        # later); expected_parts lets the server start transcription itself once every part has
+        # landed — which is what makes a background/OS-driven upload work without the app running.
         cols = [r[1] for r in c.execute("PRAGMA table_info(sessions)").fetchall()]
-        if "client_id" not in cols:
-            c.execute("ALTER TABLE sessions ADD COLUMN client_id TEXT")
+        for col, decl in (("client_id", "TEXT"), ("notes_status", "TEXT"),
+                          ("notes_error", "TEXT"), ("expected_parts", "INTEGER")):
+            if col not in cols:
+                c.execute(f"ALTER TABLE sessions ADD COLUMN {col} {decl}")
 
-def create_session(filename, client_id=None):
+def create_session(filename, client_id=None, expected_parts=None):
+    """expected_parts: how many parts the client intends to upload. When set, the server starts
+    transcription by itself as soon as all of them have arrived (see app.add_part) — the client does
+    not have to still be alive to call /transcribe."""
     sid = uuid.uuid4().hex[:12]
     with _conn() as c:
-        c.execute("INSERT INTO sessions(id,filename,status,pct,message,created,client_id) VALUES(?,?,?,?,?,?,?)",
-                  (sid, filename, "queued", 0.0, "排隊中…", time.time(), client_id))
+        c.execute("INSERT INTO sessions(id,filename,status,pct,message,created,client_id,expected_parts)"
+                  " VALUES(?,?,?,?,?,?,?,?)",
+                  (sid, filename, "queued", 0.0, "排隊中…", time.time(), client_id, expected_parts))
     return sid
 
 def get_session(sid):
@@ -86,3 +95,17 @@ def build_transcript_text(segments, names=None):
     if cur: out.append(cur)
     return "\n\n".join(f"[{_mmss(p['start'])}] {names.get(p['sp'], p['sp'])}: {p['text'].strip()}"
                        for p in out)
+
+
+def parts_complete(sid):
+    """True when every expected part slot is filled. Used to auto-start transcription so an upload
+    finished by the OS (background URLSession) still gets processed with the app closed."""
+    s = get_session(sid)
+    if not s:
+        return False
+    expected = s.get("expected_parts")
+    if not expected:
+        return False
+    parts = get_parts(sid)
+    filled = sum(1 for p in parts[:expected] if p)
+    return filled >= expected

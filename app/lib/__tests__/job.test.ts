@@ -38,7 +38,7 @@ test('fresh job: creates the backend session, uploads every part, submits, polls
   ]);
   await runJob('local-1', h.deps);
 
-  expect(h.deps.createSession).toHaveBeenCalledWith('local-1');   // idempotency key = local id
+  expect(h.deps.createSession).toHaveBeenCalledWith('local-1', 3); // idempotency key + expected part count
   expect(h.uploads).toEqual([0, 1, 2]);
   expect(h.deps.transcribe).toHaveBeenCalledWith('backend-1');
   expect(h.session.job?.stage).toBe('done');

@@ -80,12 +80,19 @@ async def create_session(req: Request):
     except Exception:
         body = {}
     client_id = body.get("client_id") if isinstance(body, dict) else None
+    # expected_parts lets the server finish the job on its own: once this many parts have arrived it
+    # starts transcription itself, so an upload completed by the OS (background URLSession, app
+    # closed) is still processed without the client calling /transcribe.
+    expected = body.get("expected_parts") if isinstance(body, dict) else None
     if client_id:
         existing = sessions.get_session_by_client(client_id)
         if existing:
+            if expected and not existing.get("expected_parts"):
+                sessions.update_session(existing["id"], expected_parts=int(expected))
             log.info("[%s] session reused (client_id)", existing["id"])
             return {"session_id": existing["id"], "reused": True}
-    sid = sessions.create_session("recording", client_id=client_id)
+    sid = sessions.create_session("recording", client_id=client_id,
+                                  expected_parts=int(expected) if expected else None)
     log.info("[%s] session created", sid)
     return {"session_id": sid}
 
@@ -106,7 +113,53 @@ async def add_part(sid: str, index: Optional[int] = None, file: UploadFile = Fil
     await file.close()
     count = sessions.set_part(sid, idx, dest)
     log.info("[%s] part idx %s received (%.1f KB, %d total)", sid, idx, nbytes / 1024, count)
-    return {"count": count}
+    # All expected parts in → start transcription ourselves. This is what lets a background/OS-driven
+    # upload complete the whole pipeline with the app closed.
+    started = False
+    if sessions.parts_complete(sid):
+        started = _submit_transcribe(sid)
+        if started:
+            log.info("[%s] all %s parts in — transcription auto-started", sid, count)
+    return {"count": count, "transcribe_started": started}
+
+# Sessions with a notes generation in flight (guards a duplicate submit from launching a second,
+# expensive LLM run for the same transcript).
+_analyzing = {}
+_analyze_lock = threading.Lock()
+
+
+def _run_analyze(sid, text, model_arg, model_label):
+    """Background notes generation. Writes the result (or the error) to the session so the client can
+    pick it up later — the whole point of background mode."""
+    t0 = time.time()
+    try:
+        notes = llm.get_provider("ollama").generate_meeting_notes(text, model=model_arg)
+        sessions.update_session(sid, notes=notes, notes_status="done", notes_error=None)
+        log.info("[%s] analyze(bg) done: %d chars notes, took %.0fs", sid, len(notes), time.time() - t0)
+    except Exception as e:
+        log.exception("[%s] analyze(bg) FAILED: %s", sid, e)
+        sessions.update_session(sid, notes_status="error", notes_error=str(e))
+    finally:
+        with _analyze_lock:
+            _analyzing.pop(sid, None)
+
+
+def _submit_transcribe(sid):
+    """Queue transcription for a session, at most once. Returns True if this call queued it.
+    Shared by the /transcribe endpoint and the auto-start path in add_part."""
+    s = sessions.get_session(sid)
+    if not s:
+        return False
+    if not [p for p in sessions.get_parts(sid) if p]:
+        return False
+    with _submit_lock:
+        if sid in _submitted or s["status"] == "running":
+            return False
+        _submitted.add(sid)
+    sessions.update_session(sid, status="queued", message="排隊中…", error=None)
+    _executor.submit(_run_transcribe, sid)
+    return True
+
 
 def _run_transcribe(sid):
     parts = [p for p in sessions.get_parts(sid) if p]  # skip empty index slots
@@ -142,14 +195,10 @@ def transcribe(sid: str):
     if not [p for p in sessions.get_parts(sid) if p]:
         return JSONResponse({"error": "沒有錄音段落"}, status_code=400)
     # Idempotent: if a job is already in flight (or running) for this session, don't launch another.
-    with _submit_lock:
-        if sid in _submitted or s["status"] == "running":
-            log.info("[%s] transcribe dedup (already in flight)", sid)
-            return {"ok": True, "dedup": True}
-        _submitted.add(sid)
+    if not _submit_transcribe(sid):
+        log.info("[%s] transcribe dedup (already in flight)", sid)
+        return {"ok": True, "dedup": True}
     log.info("[%s] transcribe queued (%d parts)", sid, len([p for p in sessions.get_parts(sid) if p]))
-    sessions.update_session(sid, status="queued", message="排隊中…", error=None)
-    _executor.submit(_run_transcribe, sid)
     return {"ok": True}
 
 @app.get("/api/sessions/{sid}")
@@ -162,6 +211,14 @@ def session_status(sid: str):
         out["transcript"] = json.loads(s["transcript"])
     if s.get("error"):
         out["error"] = s["error"]
+    # Notes are reported here too so a client that vanished mid-generation (backgrounded, killed) can
+    # collect the finished result on its next run instead of re-running the LLM.
+    if s.get("notes"):
+        out["notes"] = s["notes"]
+    if s.get("notes_status"):
+        out["notes_status"] = s["notes_status"]
+    if s.get("notes_error"):
+        out["notes_error"] = s["notes_error"]
     return out
 
 @app.get("/api/llm/models")
@@ -180,6 +237,22 @@ async def analyze(sid: str, req: Request):
     if not text.strip():
         return JSONResponse({"error": "沒有逐字稿內容"}, status_code=400)
     model = body.get("model") or config.LLM_MODEL
+
+    # Background mode: queue the generation and return immediately. The notes are written to the DB
+    # when it finishes, so a client that is backgrounded/killed mid-generation collects them from
+    # GET /api/sessions/{sid} on its next run instead of losing the work (and paying for it twice).
+    # Clients that don't pass `background` keep the original synchronous behaviour.
+    if body.get("background"):
+        with _analyze_lock:
+            if _analyzing.get(sid):
+                log.info("[%s] analyze dedup (already generating)", sid)
+                return {"ok": True, "dedup": True}
+            _analyzing[sid] = True
+        sessions.update_session(sid, notes_status="running", notes_error=None)
+        _executor.submit(_run_analyze, sid, text, body.get("model") or None, model)
+        log.info("[%s] analyze queued in background -> LLM %s", sid, model)
+        return {"ok": True, "background": True}
+
     log.info("[%s] analyze -> LLM %s (%d chars transcript)", sid, model, len(text))
     t0 = time.time()
     try:

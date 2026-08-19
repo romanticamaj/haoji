@@ -51,7 +51,7 @@ test('uploads both parts in order, transcribes, polls until done, preserves part
   );
 
   // createSession keyed on the LOCAL session id (idempotency/task key) so duplicates map to one server session
-  expect(mockCreateSession).toHaveBeenCalledWith('sess-parts');
+  expect(mockCreateSession).toHaveBeenCalledWith('sess-parts', 2); // + expected part count → backend auto-starts
   // Both parts uploaded in order with their index, keyed on the backend id (NOT the local route id)
   expect(mockUploadPart).toHaveBeenCalledTimes(2);
   expect(mockUploadPart).toHaveBeenNthCalledWith(1, 'backend-1', { uri: 'file:///doc/part0.m4a', name: 'part-0.m4a', mime: 'audio/mp4' }, 0);

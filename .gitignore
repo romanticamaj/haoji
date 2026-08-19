@@ -39,3 +39,6 @@ backend/data/
 backend/deploy/.env
 backend/deploy/docker-compose.override.yml
 .playwright-mcp/
+
+# local backend test venv (not part of the Docker deploy)
+backend/.venv/

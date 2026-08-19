@@ -2,6 +2,7 @@ import * as api from './api';
 import { resolvePartUri } from './recordings';
 import { SessionStore } from './store';
 import { runJob, isActive } from './job';
+import { runNotesJob, isNotesActive } from './notesJob';
 
 // Process-wide registry of in-flight transcription jobs.
 //
@@ -71,5 +72,47 @@ export async function resumeAllJobs(store: SessionStore): Promise<number> {
   const list = await store.list();
   const active = list.filter((s) => isActive(s.job));
   for (const s of active) void ensureJob(s.id, store);
-  return active.length;
+  // Notes generation is resumed the same way — the backend kept the result while we were away.
+  const notes = list.filter((s) => isNotesActive(s.notesJob));
+  for (const s of notes) void ensureNotesJob(s.id, store);
+  return active.length + notes.length;
+}
+
+
+// --- AI notes generation ---------------------------------------------------------------------
+// Same contract as the transcription job: keeps running when you leave the screen, and is resumed on
+// the next launch because the backend holds the result (see lib/notesJob.ts).
+const runningNotes = new Map<string, Promise<void>>();
+const cancelledNotes = new Set<string>();
+
+export const isNotesRunning = (sessionId: string) => runningNotes.has(sessionId);
+
+export function ensureNotesJob(sessionId: string, store: SessionStore, opts: { model?: string } = {}): Promise<void> {
+  const existing = runningNotes.get(sessionId);
+  if (existing) return existing;
+
+  const p = runNotesJob(sessionId, opts, {
+    analyzeInBackground: api.analyzeInBackground,
+    getSession: api.getSession,
+    load: () => store.get(sessionId),
+    save: async (s) => { await store.upsert(s); notify(); },
+    delay: (ms) => new Promise<void>((r) => setTimeout(r, ms)),
+    isCancelled: () => cancelledNotes.has(sessionId),
+  }).finally(() => { runningNotes.delete(sessionId); cancelledNotes.delete(sessionId); notify(); });
+
+  runningNotes.set(sessionId, p);
+  notify();
+  return p;
+}
+
+/** Regenerate from scratch: cancel + await anything in flight, clear the stage, then start again. */
+export async function restartNotesJob(sessionId: string, store: SessionStore, opts: { model?: string } = {}): Promise<void> {
+  const inflight = runningNotes.get(sessionId);
+  if (inflight) {
+    cancelledNotes.add(sessionId);
+    await inflight.catch(() => {});
+  }
+  const s = await store.get(sessionId);
+  if (s) await store.upsert({ ...s, notesJob: undefined });
+  return ensureNotesJob(sessionId, store, opts);
 }

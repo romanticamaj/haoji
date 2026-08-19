@@ -1,0 +1,96 @@
+import { runNotesJob, isNotesActive, NotesJob, NotesJobDeps, POLL_TIMEOUT_MS } from '../notesJob';
+import { SavedSession } from '../store';
+import { SessionStatus } from '../types';
+
+const base: SavedSession = {
+  id: 'local-1', createdAt: 1, title: '7/15/2026, 12:07:52 AM', names: { SPEAKER_00: 'Gary' },
+  unlocked: false, parts: [], backendId: 'backend-1',
+};
+
+function harness(seed: SavedSession, statuses: SessionStatus[], nowFn?: () => number) {
+  let stored: SavedSession = { ...seed };
+  const q = [...statuses];
+  const deps: NotesJobDeps = {
+    analyzeInBackground: jest.fn(async () => {}),
+    getSession: jest.fn(async () => q.shift() ?? ({ status: 'done', pct: 1, message: '' } as SessionStatus)),
+    load: async () => stored,
+    save: async (s) => { stored = s; },
+    delay: async () => {},
+    now: nowFn ?? (() => 1000),
+  };
+  return { deps, get session() { return stored; } };
+}
+
+const doneWith = (notes: string): SessionStatus =>
+  ({ status: 'done', pct: 1, message: '完成', notes_status: 'done', notes });
+
+test('queues generation on the backend and stores the notes when they land', async () => {
+  const h = harness(base, [
+    { status: 'done', pct: 1, message: '', notes_status: 'running' },
+    doneWith('## 會議摘要\n內容'),
+  ]);
+  await runNotesJob('local-1', {}, h.deps);
+
+  expect(h.deps.analyzeInBackground).toHaveBeenCalledWith('backend-1', { model: undefined, names: { SPEAKER_00: 'Gary' } });
+  expect(h.session.notes).toContain('會議摘要');
+  expect(h.session.notesJob?.stage).toBe('done');
+});
+
+test('resuming an in-flight generation polls WITHOUT submitting a second LLM run', async () => {
+  const seed = { ...base, notesJob: { stage: 'generating', message: '', updatedAt: 0 } as NotesJob };
+  const h = harness(seed, [doneWith('## 會議摘要\n內容')]);
+  await runNotesJob('local-1', {}, h.deps);
+
+  expect(h.deps.analyzeInBackground).not.toHaveBeenCalled();   // the expensive part is never repeated
+  expect(h.session.notes).toContain('會議摘要');
+});
+
+test('promotes the AI title only while the meeting name is still a timestamp default', async () => {
+  const h1 = harness(base, [doneWith('# 會議記錄：AI 導入探討會\n\n## 會議摘要\n內容')]);
+  await runNotesJob('local-1', {}, h1.deps);
+  expect(h1.session.title).toBe('AI 導入探討會');
+
+  const named = { ...base, title: '客戶月會' };
+  const h2 = harness(named, [doneWith('# 會議記錄：AI 導入探討會\n\n## 會議摘要\n內容')]);
+  await runNotesJob('local-1', {}, h2.deps);
+  expect(h2.session.title).toBe('客戶月會');                    // a user-typed name is never overwritten
+});
+
+test('a regenerate archives the previous notes so 版本紀錄 can revert', async () => {
+  const withOld = { ...base, notes: '## 舊版\n舊內容' };
+  const h = harness(withOld, [doneWith('## 會議摘要\n新內容')]);
+  await runNotesJob('local-1', {}, h.deps);
+  expect(h.session.notes).toContain('新內容');
+  expect(h.session.notesHistory?.[0].notes).toContain('舊內容');
+});
+
+test('backend error is recorded on the job', async () => {
+  const h = harness(base, [{ status: 'done', pct: 1, message: '', notes_status: 'error', notes_error: 'LLM 沒開' }]);
+  await runNotesJob('local-1', {}, h.deps);
+  expect(h.session.notesJob?.stage).toBe('error');
+  expect(h.session.notesJob?.error).toBe('LLM 沒開');
+});
+
+test('OLDER backend (no notes_status): changed notes still count as finished, never hangs', async () => {
+  // A backend without background mode generates synchronously and stores the notes but never sets
+  // notes_status — polling for that alone would spin forever.
+  const h = harness({ ...base, notes: '## 舊版' },
+    [{ status: 'done', pct: 1, message: '完成', notes: '## 會議摘要\n新的' }]);
+  await runNotesJob('local-1', {}, h.deps);
+  expect(h.session.notesJob?.stage).toBe('done');
+  expect(h.session.notes).toContain('新的');
+});
+
+test('gives up instead of polling forever when the backend never reports a result', async () => {
+  let t = 0;
+  const h = harness(base, [], () => (t += POLL_TIMEOUT_MS));   // every check is "much later"
+  await runNotesJob('local-1', {}, h.deps);
+  expect(h.session.notesJob?.stage).toBe('error');
+  expect(h.session.notesJob?.error).toMatch(/逾時/);
+});
+
+test('isNotesActive', () => {
+  expect(isNotesActive({ stage: 'generating' } as NotesJob)).toBe(true);
+  expect(isNotesActive({ stage: 'done' } as NotesJob)).toBe(false);
+  expect(isNotesActive(undefined)).toBe(false);
+});

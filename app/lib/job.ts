@@ -26,7 +26,7 @@ export type Job = {
 };
 
 export type JobDeps = {
-  createSession(clientId: string): Promise<string>;
+  createSession(clientId: string, expectedParts?: number): Promise<string>;
   uploadPart(backendId: string, file: { uri: string; name: string; mime: string }, index: number): Promise<number>;
   transcribe(backendId: string): Promise<void>;
   getSession(backendId: string): Promise<SessionStatus>;
@@ -75,7 +75,9 @@ export async function runJob(sessionId: string, d: JobDeps): Promise<void> {
     let backendId = s.backendId;
     if (!backendId) {
       await patch({ message: '連線後端…' });
-      backendId = await d.createSession(sessionId);
+      // Declare the part count up front: once they have all landed the backend starts transcription
+      // ITSELF, so the pipeline completes even if this app never gets to call /transcribe.
+      backendId = await d.createSession(sessionId, (s.parts ?? []).length);
       await patch({}, { backendId });
     }
     if (cancelled()) return;
