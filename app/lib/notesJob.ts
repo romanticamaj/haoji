@@ -19,7 +19,7 @@ export type NotesJobDeps = {
   createSession(clientId: string): Promise<string>;
   analyzeInBackground(
     backendId: string,
-    opts: { model?: string; names?: Record<string, string>; transcript?: SavedSession['transcript'] },
+    opts: { model?: string; names?: Record<string, string>; transcript?: SavedSession['transcript']; clientId?: string },
   ): Promise<void>;
   getSession(backendId: string): Promise<SessionStatus>;
   load(): Promise<SavedSession | null>;
@@ -86,7 +86,7 @@ export async function runNotesJob(
       // Send OUR transcript: it carries the user's corrections, and it exists even when the server
       // copy doesn't. Without this the notes were generated from the uncorrected server-side text.
       await d.analyzeInBackground(backendId, {
-        model: opts.model, names: s.names, transcript: s.transcript,
+        model: opts.model, names: s.names, transcript: s.transcript, clientId: s.id,
       });
     }
 

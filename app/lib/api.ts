@@ -79,12 +79,16 @@ export async function analyze(
 // result survives the app being backgrounded or killed — poll getSession() for notes_status/notes.
 export async function analyzeInBackground(
   id: string,
-  opts: { model?: string; names?: Record<string, string>; transcript?: Transcript },
+  opts: { model?: string; names?: Record<string, string>; transcript?: Transcript; clientId?: string },
 ): Promise<void> {
   await asJson(await timedFetch(`${API_BASE}/api/sessions/${id}/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...opts, background: true }),
+    // client_id links a server row recreated on demand back to this local session.
+    body: JSON.stringify({
+      model: opts.model, names: opts.names, transcript: opts.transcript,
+      client_id: opts.clientId, background: true,
+    }),
   }, 20000));
 }
 

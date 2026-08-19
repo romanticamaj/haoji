@@ -283,8 +283,6 @@ def llm_models():
 @app.post("/api/sessions/{sid}/analyze")
 async def analyze(sid: str, req: Request):
     s = sessions.get_session(sid)
-    if not s:
-        return JSONResponse({"error": "查無此工作"}, status_code=404)
     body = await req.json()
     # Prefer the transcript the CLIENT sends. The phone is the source of truth: it holds the user's
     # corrections (inline edits, keyword fixes) and it still has the transcript long after the server
@@ -294,8 +292,17 @@ async def analyze(sid: str, req: Request):
     client_tr = body.get("transcript") if isinstance(body, dict) else None
     if isinstance(client_tr, dict) and client_tr.get("segments"):
         data = client_tr
-    elif s.get("transcript"):
+        # The client brought everything needed, so it does not matter whether we have ever seen this
+        # session: create the row on demand purely to hold the async result. Without this a phone
+        # whose stored id had gone (redeploy, DB reset, pruning) got "查無此工作" for a meeting whose
+        # transcript it was holding in its hand.
+        if not s:
+            s = sessions.ensure_session(sid, "notes", client_id=body.get("client_id"))
+            log.info("[%s] analyze: session recreated on demand from the client's transcript", sid)
+    elif s and s.get("transcript"):
         data = json.loads(s["transcript"])
+    elif not s:
+        return JSONResponse({"error": "查無此工作"}, status_code=404)
     else:
         return JSONResponse({"error": "查無逐字稿"}, status_code=404)
     text = sessions.build_transcript_text(data["segments"], body.get("names") or {})

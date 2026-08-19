@@ -36,6 +36,23 @@ def create_session(filename, client_id=None, expected_parts=None):
                   (sid, filename, "queued", 0.0, "排隊中…", time.time(), client_id, expected_parts))
     return sid
 
+def ensure_session(sid, filename="notes", client_id=None):
+    """Create a session row under a CALLER-SUPPLIED id if it isn't there, and return it.
+
+    Notes generation is a pure function of (transcript, names, model) — the client already holds all
+    of it. Requiring a pre-existing server session meant a phone whose stored id had gone (server
+    redeployed, DB reset, session pruned) got "查無此工作" for a meeting it could see perfectly well.
+    The row exists only to hang the async result on so the client can collect it later."""
+    existing = get_session(sid)
+    if existing:
+        return existing
+    with _conn() as c:
+        c.execute("INSERT OR IGNORE INTO sessions(id,filename,status,pct,message,created,client_id)"
+                  " VALUES(?,?,?,?,?,?,?)",
+                  (sid, filename, "done", 1.0, "", time.time(), client_id))
+    return get_session(sid)
+
+
 def get_session(sid):
     with _conn() as c:
         row = c.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()

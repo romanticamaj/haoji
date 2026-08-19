@@ -32,7 +32,9 @@ test('queues generation on the backend and stores the notes when they land', asy
   ]);
   await runNotesJob('local-1', {}, h.deps);
 
-  expect(h.deps.analyzeInBackground).toHaveBeenCalledWith('backend-1', { model: undefined, names: { SPEAKER_00: 'Gary' } });
+  expect(h.deps.analyzeInBackground).toHaveBeenCalledWith('backend-1',
+    // clientId lets the server link a row it recreates on demand back to this local session
+    expect.objectContaining({ model: undefined, names: { SPEAKER_00: 'Gary' }, clientId: 'local-1' }));
   expect(h.session.notes).toContain('會議摘要');
   expect(h.session.notesJob?.stage).toBe('done');
 });

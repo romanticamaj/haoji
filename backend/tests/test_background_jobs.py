@@ -221,3 +221,50 @@ def test_debug_jobs_reports_what_the_server_is_working_on(tmp_path, monkeypatch)
     assert set(j) == {"transcribe", "notes"}
     for k in ("in_flight", "workers", "queued"):
         assert k in j["transcribe"] and k in j["notes"]
+
+
+def test_analyze_works_for_a_session_the_server_has_never_seen(tmp_path, monkeypatch):
+    """The exact '查無此工作' report: the phone's stored id is gone (redeploy / DB reset / pruning)
+    but it still holds the transcript. Notes are a pure function of what the client sends, so the
+    row is created on demand just to hold the result."""
+    _db(tmp_path, monkeypatch)
+
+    class FakeProvider:
+        def generate_meeting_notes(self, transcript, model=None):
+            return "## 會議摘要\n好"
+    monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": FakeProvider())
+
+    c = TestClient(appmod.app)
+    unknown = "totally-unknown-id"
+    assert sessions.get_session(unknown) is None
+
+    r = c.post(f"/api/sessions/{unknown}/analyze", json={
+        "background": True,
+        "transcript": {"speakers": ["SPEAKER_00"],
+                       "segments": [{"start": 0, "end": 2, "speaker": "SPEAKER_00", "text": "內容"}]},
+    })
+    assert r.status_code == 200                      # was 404 查無此工作
+
+    for _ in range(100):
+        s = sessions.get_session(unknown)
+        if s and s["notes_status"] == "done":
+            break
+        time.sleep(0.02)
+    # and the client can collect the result by polling the same id it used
+    st = c.get(f"/api/sessions/{unknown}").json()
+    assert st["notes_status"] == "done" and st["notes"].startswith("## 會議摘要")
+
+
+def test_unknown_session_without_a_transcript_still_404s(tmp_path, monkeypatch):
+    """Nothing to work from — say so rather than inventing an empty session."""
+    _db(tmp_path, monkeypatch)
+    c = TestClient(appmod.app)
+    r = c.post("/api/sessions/nope/analyze", json={})
+    assert r.status_code == 404 and r.json()["error"] == "查無此工作"
+
+
+def test_ensure_session_is_idempotent(tmp_path, monkeypatch):
+    _db(tmp_path, monkeypatch)
+    a = sessions.ensure_session("fixed-id", client_id="local-9")
+    b = sessions.ensure_session("fixed-id", client_id="local-9")
+    assert a["id"] == b["id"] == "fixed-id"
