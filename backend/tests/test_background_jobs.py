@@ -161,3 +161,63 @@ def test_put_part_rejects_an_empty_body(tmp_path, monkeypatch):
     sid = c.post("/api/sessions", json={}).json()["session_id"]
     assert c.put(f"/api/sessions/{sid}/parts/0", content=b"").status_code == 400
     assert sessions.get_parts(sid) == []
+
+
+def test_analyze_uses_the_transcript_the_CLIENT_sends(tmp_path, monkeypatch):
+    """The phone is the source of truth: it holds the user's corrections and still has the transcript
+    when the server copy is long gone. Sending it means notes are generated from the CORRECTED text."""
+    _db(tmp_path, monkeypatch)
+    sid = sessions.create_session("m.wav")          # NOTE: no transcript stored server-side at all
+    seen = {}
+
+    class FakeProvider:
+        def generate_meeting_notes(self, transcript, model=None):
+            seen["text"] = transcript
+            return "## 會議摘要\n好"
+    monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": FakeProvider())
+
+    c = TestClient(appmod.app)
+    r = c.post(f"/api/sessions/{sid}/analyze", json={
+        "names": {"SPEAKER_00": "Gary"},
+        "transcript": {"speakers": ["SPEAKER_00"],
+                       "segments": [{"start": 0, "end": 2, "speaker": "SPEAKER_00", "text": "改過的內容"}]},
+    })
+    assert r.status_code == 200                      # would have been 404 查無逐字稿 before
+    assert "Gary: 改過的內容" in seen["text"]
+
+
+def test_analyze_still_falls_back_to_the_stored_transcript(tmp_path, monkeypatch):
+    """Older builds don't send one."""
+    _db(tmp_path, monkeypatch)
+    sid = sessions.create_session("m.wav")
+    _seed_transcript(sid)
+
+    class FakeProvider:
+        def generate_meeting_notes(self, transcript, model=None):
+            return "## 會議摘要\n好"
+    monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": FakeProvider())
+    c = TestClient(appmod.app)
+    assert c.post(f"/api/sessions/{sid}/analyze", json={}).status_code == 200
+
+
+def test_analyze_404s_only_when_there_is_no_transcript_anywhere(tmp_path, monkeypatch):
+    _db(tmp_path, monkeypatch)
+    sid = sessions.create_session("m.wav")
+    c = TestClient(appmod.app)
+    r = c.post(f"/api/sessions/{sid}/analyze", json={})
+    assert r.status_code == 404 and r.json()["error"] == "查無逐字稿"
+
+
+def test_notes_generation_does_not_share_the_transcription_pool(tmp_path, monkeypatch):
+    """A couple of long transcriptions used to starve every later notes job — it just sat in the
+    queue looking hung. The pools are separate now."""
+    assert appmod._notes_executor is not appmod._executor
+
+
+def test_debug_jobs_reports_what_the_server_is_working_on(tmp_path, monkeypatch):
+    _db(tmp_path, monkeypatch)
+    c = TestClient(appmod.app)
+    j = c.get("/api/debug/jobs").json()
+    assert set(j) == {"transcribe", "notes"}
+    for k in ("in_flight", "workers", "queued"):
+        assert k in j["transcribe"] and k in j["notes"]

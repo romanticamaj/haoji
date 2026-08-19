@@ -11,6 +11,7 @@ function harness(seed: SavedSession, statuses: SessionStatus[], nowFn?: () => nu
   let stored: SavedSession = { ...seed };
   const q = [...statuses];
   const deps: NotesJobDeps = {
+    createSession: jest.fn(async () => 'backend-new'),
     analyzeInBackground: jest.fn(async () => {}),
     getSession: jest.fn(async () => q.shift() ?? ({ status: 'done', pct: 1, message: '' } as SessionStatus)),
     load: async () => stored,
@@ -93,4 +94,29 @@ test('isNotesActive', () => {
   expect(isNotesActive({ stage: 'generating' } as NotesJob)).toBe(true);
   expect(isNotesActive({ stage: 'done' } as NotesJob)).toBe(false);
   expect(isNotesActive(undefined)).toBe(false);
+});
+
+
+test('sends OUR transcript so the notes reflect the user\'s corrections', async () => {
+  const corrected = { speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '改過的字' }] };
+  const h = harness({ ...base, transcript: corrected }, [doneWith('## 會議摘要\n內容')]);
+  await runNotesJob('local-1', {}, h.deps);
+  expect(h.deps.analyzeInBackground).toHaveBeenCalledWith('backend-1',
+    expect.objectContaining({ transcript: corrected, names: { SPEAKER_00: 'Gary' } }));
+});
+
+test('recreates the backend session when there is none (was "查無逐字稿")', async () => {
+  const { backendId, ...noBackend } = base;               // e.g. a recovered recording
+  const h = harness(noBackend as SavedSession, [doneWith('## 會議摘要\n內容')]);
+  await runNotesJob('local-1', {}, h.deps);
+  expect(h.deps.createSession).toHaveBeenCalledWith('local-1');   // idempotent on the local id
+  expect(h.session.backendId).toBe('backend-new');
+  expect(h.deps.analyzeInBackground).toHaveBeenCalledWith('backend-new', expect.anything());
+  expect(h.session.notes).toContain('會議摘要');
+});
+
+test('an existing backend session is reused, not recreated', async () => {
+  const h = harness(base, [doneWith('## 會議摘要\n內容')]);
+  await runNotesJob('local-1', {}, h.deps);
+  expect(h.deps.createSession).not.toHaveBeenCalled();
 });

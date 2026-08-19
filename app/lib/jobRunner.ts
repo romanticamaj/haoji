@@ -100,6 +100,7 @@ export function ensureNotesJob(sessionId: string, store: SessionStore, opts: { m
   if (existing) return existing;
 
   const p = runNotesJob(sessionId, opts, {
+    createSession: api.createSession,
     analyzeInBackground: api.analyzeInBackground,
     getSession: api.getSession,
     load: () => store.get(sessionId),

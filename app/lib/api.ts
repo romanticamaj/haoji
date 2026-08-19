@@ -1,5 +1,5 @@
 import { API_BASE } from './config';
-import { SessionStatus } from './types';
+import { SessionStatus, Transcript } from './types';
 
 // RN's fetch has no default timeout, so a stalled backend (or a half-open Tailscale connection)
 // leaves a request hanging forever — that's why uploading a file could sit on "上傳中…" with no
@@ -79,7 +79,7 @@ export async function analyze(
 // result survives the app being backgrounded or killed — poll getSession() for notes_status/notes.
 export async function analyzeInBackground(
   id: string,
-  opts: { model?: string; names?: Record<string, string> },
+  opts: { model?: string; names?: Record<string, string>; transcript?: Transcript },
 ): Promise<void> {
   await asJson(await timedFetch(`${API_BASE}/api/sessions/${id}/analyze`, {
     method: 'POST',

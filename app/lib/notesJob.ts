@@ -16,7 +16,11 @@ export type NotesJob = {
 };
 
 export type NotesJobDeps = {
-  analyzeInBackground(backendId: string, opts: { model?: string; names?: Record<string, string> }): Promise<void>;
+  createSession(clientId: string): Promise<string>;
+  analyzeInBackground(
+    backendId: string,
+    opts: { model?: string; names?: Record<string, string>; transcript?: SavedSession['transcript'] },
+  ): Promise<void>;
   getSession(backendId: string): Promise<SessionStatus>;
   load(): Promise<SavedSession | null>;
   save(s: SavedSession): Promise<void>;
@@ -45,7 +49,12 @@ export async function runNotesJob(
   const loaded = await d.load();
   if (!loaded) return;
   let s: SavedSession = loaded;
-  const backendId = s.backendId ?? s.id;
+
+  // Whether a generation was ALREADY in flight when we started. Captured up front because the
+  // backendId patch below writes a notesJob, which would otherwise make the check below think this
+  // very call had already submitted — leaving the job polling forever without ever asking the
+  // backend to generate anything.
+  const wasAlreadyRunning = isNotesActive(s.notesJob);
 
   const patch = async (next: Partial<NotesJob>, extra?: Partial<SavedSession>) => {
     const notesJob: NotesJob = { ...(s.notesJob ?? { stage: 'generating', message: '' }), ...next, updatedAt: now() };
@@ -62,10 +71,23 @@ export async function runNotesJob(
   const startedAt = now();
 
   try {
-    // Only submit when nothing is already running — otherwise just attach and poll.
-    if (!isNotesActive(s.notesJob)) {
+    // Make sure a server session exists to hang the result on. createSession is idempotent on the
+    // local id, so this reuses the existing one — and quietly recreates it if the backend lost it
+    // (restarted, DB reset), which used to surface as "查無逐字稿" for a meeting the app could see.
+    if (!s.backendId) {
+      const created = await d.createSession(s.id);
+      await patch({}, { backendId: created });
+    }
+    const backendId = s.backendId ?? s.id;
+
+    // Only submit when nothing was already running — otherwise just attach and poll.
+    if (!wasAlreadyRunning) {
       await patch({ stage: 'generating', message: '生成會議記錄中…', error: undefined });
-      await d.analyzeInBackground(backendId, { model: opts.model, names: s.names });
+      // Send OUR transcript: it carries the user's corrections, and it exists even when the server
+      // copy doesn't. Without this the notes were generated from the uncorrected server-side text.
+      await d.analyzeInBackground(backendId, {
+        model: opts.model, names: s.names, transcript: s.transcript,
+      });
     }
 
     while (!cancelled()) {

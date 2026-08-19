@@ -4,8 +4,10 @@ import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 const mockAnalyze = jest.fn();
 const mockAnalyzeBg = jest.fn();
 const mockGetSession = jest.fn();
+const mockCreateSession = jest.fn();
 jest.mock('../../lib/api', () => ({
   analyze: (...a: any[]) => mockAnalyze(...a),
+  createSession: (...a: any[]) => mockCreateSession(...a),
   analyzeInBackground: (...a: any[]) => mockAnalyzeBg(...a),
   getSession: (...a: any[]) => mockGetSession(...a),
   getModels: jest.fn().mockResolvedValue({ ok: true, models: ['gemma4:e4b-it-qat'], default: 'gemma4:e4b-it-qat' }),
@@ -48,6 +50,7 @@ const renderTab = async (session: SavedSession, props: any = {}) => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockAnalyzeBg.mockResolvedValue(undefined);
+  mockCreateSession.mockResolvedValue('backend-new');   // sessions without a backendId get one
   mockGetSession.mockResolvedValue({ status: 'done', pct: 1, message: '完成', notes_status: 'done', notes });
   mockAnalyze.mockResolvedValue({ notes, model: 'gemma4:e4b-it-qat' });
 });
@@ -56,7 +59,8 @@ test('generating notes queues a BACKGROUND job and persists the result to the st
   const { getByText, store } = await renderTab(base);
   fireEvent.press(getByText('生成會議記錄'));
   // queued with the speaker names, and NOT awaited synchronously — the backend owns the run
-  await waitFor(() => expect(mockAnalyzeBg).toHaveBeenCalledWith('s', { model: undefined, names: { SPEAKER_00: 'Gary' } }));
+  await waitFor(() => expect(mockAnalyzeBg).toHaveBeenCalledWith('backend-new',
+    expect.objectContaining({ model: undefined, names: { SPEAKER_00: 'Gary' } })));
   // the job stores the notes itself, so they survive the app being closed mid-generation
   await waitFor(async () => expect((await store.get('s'))?.notes).toContain('會議摘要'));
   expect((await store.get('s'))?.notesJob?.stage).toBe('done');
@@ -85,7 +89,8 @@ test('analyze targets the backend id when present (not the local id)', async () 
   const s = { ...base, id: 'local-123', backendId: 'backend-xyz' };
   const { getByText } = await renderTab(s);
   fireEvent.press(getByText('生成會議記錄'));
-  await waitFor(() => expect(mockAnalyzeBg).toHaveBeenCalledWith('backend-xyz', { model: undefined, names: { SPEAKER_00: 'Gary' } }));
+  await waitFor(() => expect(mockAnalyzeBg).toHaveBeenCalledWith('backend-xyz',
+    expect.objectContaining({ model: undefined, names: { SPEAKER_00: 'Gary' } })));
 });
 
 test('no transcript: blocks generation, shows gate hint + 前往逐字稿', async () => {
@@ -192,5 +197,6 @@ test('進階 model list: selecting a model passes it to analyze', async () => {
   fireEvent.press(getByText(/phi4:mini/));
   await waitFor(() => getByText(/○ gemma4:e4b-it-qat/));
   fireEvent.press(getByText('生成會議記錄'));
-  await waitFor(() => expect(mockAnalyzeBg).toHaveBeenCalledWith('s', { model: 'phi4:mini', names: { SPEAKER_00: 'Gary' } }));
+  await waitFor(() => expect(mockAnalyzeBg).toHaveBeenCalledWith('backend-new',
+    expect.objectContaining({ model: 'phi4:mini', names: { SPEAKER_00: 'Gary' } })));
 });

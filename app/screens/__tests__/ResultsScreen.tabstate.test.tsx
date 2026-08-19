@@ -5,6 +5,7 @@ const mockAnalyzeBg = jest.fn().mockResolvedValue(undefined);
 const mockGetSession = jest.fn().mockResolvedValue({ status: 'done', pct: 1, message: '完成', notes_status: 'done', notes });
 jest.mock('../../lib/api', () => ({
   analyze: jest.fn(),
+  createSession: jest.fn().mockResolvedValue('backend-1'),
   analyzeInBackground: (...a: any[]) => mockAnalyzeBg(...a),
   getSession: (...a: any[]) => mockGetSession(...a),
   getModels: jest.fn().mockResolvedValue({ ok: true, models: [], default: '' }),

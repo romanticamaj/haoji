@@ -53,6 +53,10 @@ async def _log_requests(request: Request, call_next):
     return resp
 
 _executor = ThreadPoolExecutor(max_workers=2)
+# Notes generation gets its OWN pool. Sharing the transcription pool meant a couple of long jobs
+# starved every later request: a third submission simply sat in the queue with no sign of progress,
+# which is exactly what "生成會議記錄卡住" looked like. Kept small — the local LLM is the bottleneck.
+_notes_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="notes")
 
 # Sessions with a transcription job in flight. Guards against a client that submits transcribe more
 # than once (the duplicate-upload class of bug) launching a second, redundant job for the same audio.
@@ -252,6 +256,25 @@ def session_status(sid: str):
         out["notes_error"] = s["notes_error"]
     return out
 
+@app.get("/api/debug/jobs")
+def debug_jobs():
+    """What the server is actually working on — the first thing to check when something 'hangs'.
+
+    `queued` > 0 with nothing finishing means the pool is saturated, not that a job died."""
+    with _submit_lock:
+        transcribing = sorted(_submitted)
+    with _analyze_lock:
+        analyzing = sorted(_analyzing)
+    return {
+        "transcribe": {"in_flight": transcribing,
+                       "workers": _executor._max_workers,
+                       "queued": _executor._work_queue.qsize()},
+        "notes": {"in_flight": analyzing,
+                  "workers": _notes_executor._max_workers,
+                  "queued": _notes_executor._work_queue.qsize()},
+    }
+
+
 @app.get("/api/llm/models")
 def llm_models():
     ok, names, _ = llm.llm_status()
@@ -260,10 +283,21 @@ def llm_models():
 @app.post("/api/sessions/{sid}/analyze")
 async def analyze(sid: str, req: Request):
     s = sessions.get_session(sid)
-    if not s or not s.get("transcript"):
-        return JSONResponse({"error": "查無逐字稿"}, status_code=404)
+    if not s:
+        return JSONResponse({"error": "查無此工作"}, status_code=404)
     body = await req.json()
-    data = json.loads(s["transcript"])
+    # Prefer the transcript the CLIENT sends. The phone is the source of truth: it holds the user's
+    # corrections (inline edits, keyword fixes) and it still has the transcript long after the server
+    # copy is gone (backend restarted, DB reset, session cleaned up). Relying on the stored copy meant
+    # "查無逐字稿" for sessions the app could see perfectly well — and notes generated from the
+    # UNCORRECTED text. Fall back to the stored copy for older clients.
+    client_tr = body.get("transcript") if isinstance(body, dict) else None
+    if isinstance(client_tr, dict) and client_tr.get("segments"):
+        data = client_tr
+    elif s.get("transcript"):
+        data = json.loads(s["transcript"])
+    else:
+        return JSONResponse({"error": "查無逐字稿"}, status_code=404)
     text = sessions.build_transcript_text(data["segments"], body.get("names") or {})
     if not text.strip():
         return JSONResponse({"error": "沒有逐字稿內容"}, status_code=400)
@@ -280,7 +314,7 @@ async def analyze(sid: str, req: Request):
                 return {"ok": True, "dedup": True}
             _analyzing[sid] = True
         sessions.update_session(sid, notes_status="running", notes_error=None)
-        _executor.submit(_run_analyze, sid, text, body.get("model") or None, model)
+        _notes_executor.submit(_run_analyze, sid, text, body.get("model") or None, model)
         log.info("[%s] analyze queued in background -> LLM %s", sid, model)
         return {"ok": True, "background": True}
 
