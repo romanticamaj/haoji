@@ -139,3 +139,29 @@ test('mirrors the backend progress so the list badge can move while generating',
   expect(h.session.notesJob?.pct).toBe(1);                     // and finishes at 100%
   expect(h.session.notesJob?.stage).toBe('done');
 });
+
+test('waiting for a worker shows 排隊中 with its position, not 生成中', async () => {
+  const h = harness(base, [
+    { status: 'done', pct: 1, message: '', notes_status: 'queued', notes_queue_position: 2 },
+    { status: 'done', pct: 1, message: '', notes_status: 'running', notes_pct: 0.3, notes_message: '生成中…（已寫 200 字）' },
+    doneWith('## 會議摘要\n內容'),
+  ]);
+  const stages: string[] = [];
+  const msgs: string[] = [];
+  const origSave = h.deps.save;
+  h.deps.save = async (s) => {
+    if (s.notesJob) { stages.push(s.notesJob.stage); msgs.push(s.notesJob.message); }
+    await origSave(s);
+  };
+
+  await runNotesJob('local-1', {}, h.deps);
+
+  expect(stages).toContain('queued');
+  expect(msgs.some((m) => m.includes('排隊中') && m.includes('第 2 位'))).toBe(true);
+  expect(stages.indexOf('queued')).toBeLessThan(stages.lastIndexOf('generating')); // queued → generating
+  expect(h.session.notesJob?.stage).toBe('done');
+});
+
+test('a queued job still counts as active (so the list keeps showing it)', () => {
+  expect(isNotesActive({ stage: 'queued' } as NotesJob)).toBe(true);
+});

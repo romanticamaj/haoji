@@ -6,7 +6,7 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-import os, json, re, time, logging, threading
+import math, os, json, re, time, logging, threading
 from typing import Optional
 from logging.handlers import RotatingFileHandler
 from concurrent.futures import ThreadPoolExecutor
@@ -129,7 +129,17 @@ async def add_part(sid: str, index: Optional[int] = None, file: UploadFile = Fil
 # Sessions with a notes generation in flight (guards a duplicate submit from launching a second,
 # expensive LLM run for the same transcript).
 _analyzing = {}
+# Submission order of notes jobs that have not started executing yet. A ThreadPoolExecutor queues
+# silently, so without this a job waiting its turn looked identical to one being generated — the
+# user saw "生成中" with nothing happening. Position in this list is what tells them they're waiting.
+_notes_waiting = []
 _analyze_lock = threading.Lock()
+
+
+def notes_queue_position(sid):
+    """1-based place in the notes queue, or 0 if it is running / not queued."""
+    with _analyze_lock:
+        return _notes_waiting.index(sid) + 1 if sid in _notes_waiting else 0
 
 
 def _notes_target_chars(transcript_text):
@@ -151,8 +161,12 @@ def _run_analyze(sid, text, model_arg, model_label):
         sessions.update_session(sid, notes_pct=round(pct, 3),
                                 notes_message=f"生成中…（已寫 {chars} 字）")
 
+    # We are executing now — leave the queue and say so.
+    with _analyze_lock:
+        if sid in _notes_waiting:
+            _notes_waiting.remove(sid)
     try:
-        sessions.update_session(sid, notes_pct=0.0, notes_message="生成中…")
+        sessions.update_session(sid, notes_status="running", notes_pct=0.0, notes_message="生成中…")
         notes = llm.get_provider("ollama").generate_meeting_notes(
             text, model=model_arg, on_progress=on_progress)
         sessions.update_session(sid, notes=notes, notes_status="done", notes_error=None,
@@ -164,6 +178,8 @@ def _run_analyze(sid, text, model_arg, model_label):
     finally:
         with _analyze_lock:
             _analyzing.pop(sid, None)
+            if sid in _notes_waiting:
+                _notes_waiting.remove(sid)
 
 
 def _submit_transcribe(sid):
@@ -224,7 +240,34 @@ def _run_transcribe(sid):
         media.concat_to_wav(parts, wav)
         log.info("[%s] ASR + diarization…", sid)
         sessions.update_session(sid, pct=0.35, message="辨識中（含講者分離）…")
-        norm = asr.normalize(asr.transcribe_diarize(wav))
+        # Recognition is ONE blocking call to Breeze ASR — it reports nothing while it works, so the
+        # bar used to sit frozen at the same number for the entire (longest) phase, which reads as
+        # "stuck". Tick an estimate instead, scaled off the audio length: it always moves, never goes
+        # backwards, and approaches but never reaches the end of the phase however long it takes.
+        # The elapsed time in the message is the honest part; the percentage is openly an estimate.
+        stop_tick = threading.Event()
+
+        def _tick():
+            t_asr = time.time()
+            try:
+                dur = asr.probe_duration(wav) or 0
+            except Exception:
+                dur = 0
+            expected = max(20.0, dur * 0.5)      # rough: ASR runs faster than real time on the GPU
+            while not stop_tick.wait(2.0):
+                elapsed = time.time() - t_asr
+                frac = 1 - math.exp(-elapsed / expected)     # asymptotic: never claims to be done
+                mm, ss = divmod(int(elapsed), 60)
+                sessions.update_session(
+                    sid, pct=round(0.35 + 0.6 * frac, 3),
+                    message=f"辨識中（含講者分離）…（已 {mm}:{ss:02d}）")
+
+        ticker = threading.Thread(target=_tick, daemon=True, name=f"asr-tick-{sid}")
+        ticker.start()
+        try:
+            norm = asr.normalize(asr.transcribe_diarize(wav))
+        finally:
+            stop_tick.set()
         sessions.update_session(sid, status="done", pct=1.0, message="完成",
                                 transcript=json.dumps(norm, ensure_ascii=False))
         log.info("[%s] transcribe done: %d segs, %d speakers, %.0fs audio, took %.0fs",
@@ -276,6 +319,10 @@ def session_status(sid: str):
         out["notes_pct"] = s["notes_pct"]
     if s.get("notes_message"):
         out["notes_message"] = s["notes_message"]
+    if s.get("notes_status") == "queued":
+        pos = notes_queue_position(sid)
+        if pos:
+            out["notes_queue_position"] = pos
     return out
 
 @app.get("/api/debug/jobs")
@@ -292,6 +339,7 @@ def debug_jobs():
                        "workers": _executor._max_workers,
                        "queued": _executor._work_queue.qsize()},
         "notes": {"in_flight": analyzing,
+                  "waiting": list(_notes_waiting),
                   "workers": _notes_executor._max_workers,
                   "queued": _notes_executor._work_queue.qsize()},
     }
@@ -342,7 +390,11 @@ async def analyze(sid: str, req: Request):
                 log.info("[%s] analyze dedup (already generating)", sid)
                 return {"ok": True, "dedup": True}
             _analyzing[sid] = True
-        sessions.update_session(sid, notes_status="running", notes_error=None)
+        # queued, NOT running: the worker flips it to running when it actually starts.
+        with _analyze_lock:
+            _notes_waiting.append(sid)
+        sessions.update_session(sid, notes_status="queued", notes_error=None,
+                                notes_pct=0.0, notes_message="排隊中…")
         _notes_executor.submit(_run_analyze, sid, text, body.get("model") or None, model)
         log.info("[%s] analyze queued in background -> LLM %s", sid, model)
         return {"ok": True, "background": True}

@@ -7,8 +7,22 @@ Two things make that possible:
     backgrounded or killed mid-generation collects it later instead of paying for a second LLM run.
 """
 import json, time
+import pytest
 from fastapi.testclient import TestClient
 import app as appmod, sessions
+
+
+@pytest.fixture(autouse=True)
+def _reset_module_state():
+    """app.py keeps in-flight/queued sets at module level, so one test's leftovers would otherwise
+    leak into the next (a test that stubs out submit never lets the worker drain the queue)."""
+    appmod._notes_waiting.clear()
+    appmod._analyzing.clear()
+    appmod._submitted.clear()
+    yield
+    appmod._notes_waiting.clear()
+    appmod._analyzing.clear()
+    appmod._submitted.clear()
 
 
 def _db(tmp_path, monkeypatch):
@@ -311,3 +325,89 @@ def test_notes_target_scales_with_transcript_length_within_bounds():
     assert appmod._notes_target_chars("x" * 100) == 500          # floor
     assert appmod._notes_target_chars("x" * 100000) == 2500      # ceiling
     assert appmod._notes_target_chars("x" * 10000) == 1500       # scaled
+
+
+def test_a_queued_notes_job_is_reported_as_waiting_not_generating(tmp_path, monkeypatch):
+    """A ThreadPoolExecutor queues silently, so a job waiting its turn used to look identical to one
+    being generated — the user saw 生成中 with nothing happening. It must say it is waiting, and
+    where in the line it is."""
+    _db(tmp_path, monkeypatch)
+    sid = sessions.create_session("m.wav")
+    _seed_transcript(sid)
+
+    # never let the worker start, so the job stays queued for the assertions
+    monkeypatch.setattr(appmod._notes_executor, "submit", lambda *a, **k: None)
+
+    c = TestClient(appmod.app)
+    r = c.post(f"/api/sessions/{sid}/analyze", json={"background": True})
+    assert r.status_code == 200
+
+    st = c.get(f"/api/sessions/{sid}").json()
+    assert st["notes_status"] == "queued"          # NOT "running"
+    assert st["notes_message"] == "排隊中…"
+    assert st["notes_queue_position"] == 1         # first in line
+
+    # a second submission lines up behind the first
+    sid2 = sessions.create_session("m2.wav")
+    _seed_transcript(sid2)
+    c.post(f"/api/sessions/{sid2}/analyze", json={"background": True})
+    assert c.get(f"/api/sessions/{sid2}").json()["notes_queue_position"] == 2
+    # and the debug endpoint lists who is waiting
+    assert appmod.notes_queue_position(sid) == 1
+    assert c.get("/api/debug/jobs").json()["notes"]["waiting"] == [sid, sid2]
+
+
+def test_a_job_that_starts_running_leaves_the_queue(tmp_path, monkeypatch):
+    _db(tmp_path, monkeypatch)
+    sid = sessions.create_session("m.wav")
+    _seed_transcript(sid)
+    seen_status = {}
+
+    class FakeProvider:
+        def generate_meeting_notes(self, transcript, model=None, on_progress=None):
+            # by the time we are generating, the job must no longer be queued
+            seen_status["while_running"] = sessions.get_session(sid)["notes_status"]
+            seen_status["position"] = appmod.notes_queue_position(sid)
+            return "## 會議摘要\n好"
+    monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": FakeProvider())
+
+    c = TestClient(appmod.app)
+    c.post(f"/api/sessions/{sid}/analyze", json={"background": True})
+    for _ in range(100):
+        if sessions.get_session(sid)["notes_status"] == "done":
+            break
+        time.sleep(0.02)
+
+    assert seen_status["while_running"] == "running"
+    assert seen_status["position"] == 0            # left the queue
+    assert c.get("/api/debug/jobs").json()["notes"]["waiting"] == []
+
+
+def test_recognition_progress_moves_instead_of_freezing(tmp_path, monkeypatch):
+    """Breeze ASR reports nothing while it works, so the bar used to sit at one number for the whole
+    (longest) phase — 61% every time, which reads as stuck. The estimate must advance, stay inside
+    the phase, and never go backwards."""
+    _db(tmp_path, monkeypatch)
+    sid = sessions.create_session("m.wav")
+    sessions.set_part(sid, 0, str(tmp_path / "p0.wav"))
+    (tmp_path / "p0.wav").write_bytes(b"x")
+
+    monkeypatch.setattr(appmod.media, "concat_to_wav", lambda parts, out: open(out, "wb").write(b"x"))
+    monkeypatch.setattr(appmod.asr, "probe_duration", lambda p: 600.0)      # a 10-minute meeting
+    seen = []
+
+    def slow_asr(wav, **kw):
+        for _ in range(3):                      # let the ticker run a few times
+            time.sleep(2.2)
+            seen.append(sessions.get_session(sid)["pct"])
+        return {"segments": [], "speakers": []}
+    monkeypatch.setattr(appmod.asr, "transcribe_diarize", slow_asr)
+    monkeypatch.setattr(appmod.asr, "normalize", lambda d: {"segments": [], "speakers": [], "duration": 0})
+
+    appmod._run_transcribe(sid)
+
+    assert len(seen) >= 2
+    assert seen == sorted(seen)                  # only ever moves forward
+    assert seen[-1] > seen[0]                    # and it actually moved
+    assert all(0.35 <= p < 0.95 for p in seen)   # stays inside the recognition phase
+    assert sessions.get_session(sid)["pct"] == 1.0   # completion is what reaches 100%

@@ -198,9 +198,11 @@ function SessionCard({ session, now, onPress }: { session: SavedSession; now: nu
           {/* Notes generation is the slowest step, so surface its progress right here in the list
               rather than making the user open the meeting to find out whether anything is happening. */}
           {isNotesActive(session.notesJob) && (
-            <View style={[styles.pill, styles.pillBusy]}>
-              <Text style={styles.pillBusyText}>
-                生成記錄中{typeof session.notesJob?.pct === 'number' ? ` ${Math.round(session.notesJob.pct * 100)}%` : ''}
+            <View style={[styles.pill, session.notesJob?.stage === 'queued' ? styles.pillWait : styles.pillBusy]}>
+              <Text style={session.notesJob?.stage === 'queued' ? styles.pillWaitText : styles.pillBusyText}>
+                {session.notesJob?.stage === 'queued'
+                  ? (session.notesJob.message || '排隊中…')
+                  : `生成記錄中${typeof session.notesJob?.pct === 'number' ? ` ${Math.round(session.notesJob.pct * 100)}%` : ''}`}
               </Text>
             </View>
           )}
@@ -270,6 +272,9 @@ const styles = StyleSheet.create({
   tick: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.good, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
   tickText: { fontSize: 8, color: '#fff', fontWeight: '700', lineHeight: 10 },
   pillBusy: { backgroundColor: colors.brandSoft },
+  // waiting for a worker — deliberately quieter than the active-work badge
+  pillWait: { backgroundColor: colors.chipBg },
+  pillWaitText: { fontSize: 11, fontWeight: '600', color: colors.ink2 },
   pillBusyText: { fontSize: 11, fontWeight: '700', color: colors.brand },
   pillTodo: { backgroundColor: colors.chipBg },
   pillTodoText: { fontSize: 11, fontWeight: '600', color: colors.ink3 },

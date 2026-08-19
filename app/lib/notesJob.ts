@@ -9,7 +9,9 @@ import { extractNotesTitle, looksLikeAutoTitle } from './notesDoc';
 // server session when it finishes, so a phone that is backgrounded or killed mid-generation collects
 // the finished notes on its next run instead of losing them and paying for a second LLM run.
 export type NotesJob = {
-  stage: 'generating' | 'done' | 'error';
+  // 'queued' = accepted by the server but waiting for a worker. Distinguishing it from 'generating'
+  // matters: a queued job used to display as 生成中 with nothing happening, which reads as stuck.
+  stage: 'queued' | 'generating' | 'done' | 'error';
   message: string;
   error?: string;
   updatedAt: number;
@@ -31,7 +33,7 @@ export type NotesJobDeps = {
   isCancelled?(): boolean;
 };
 
-export const isNotesActive = (j?: NotesJob) => j?.stage === 'generating';
+export const isNotesActive = (j?: NotesJob) => j?.stage === 'queued' || j?.stage === 'generating';
 
 // Generation on a local LLM is slow but not unbounded; give up rather than poll forever if the
 // backend never reports a result (restarted mid-run, job lost, etc.).
@@ -117,10 +119,16 @@ export async function runNotesJob(
         await patch({ stage: 'error', error: st.notes_error || '生成失敗' });
         return;
       }
-      // Mirror the backend's progress so the list badge and the tab both move while we wait.
-      if (typeof st.notes_pct === 'number' || st.notes_message) {
-        await patch({ pct: st.notes_pct, message: st.notes_message || '生成會議記錄中…' });
-      }
+      // Mirror the backend's stage + progress so the list badge and the tab both reflect reality:
+      // waiting in line looks different from actually generating.
+      const queued = st.notes_status === 'queued';
+      await patch({
+        stage: queued ? 'queued' : 'generating',
+        pct: queued ? undefined : st.notes_pct,
+        message: queued
+          ? (st.notes_queue_position ? `排隊中…（第 ${st.notes_queue_position} 位）` : '排隊中…')
+          : (st.notes_message || '生成會議記錄中…'),
+      });
       await d.delay(2000);
     }
   } catch (e: any) {
