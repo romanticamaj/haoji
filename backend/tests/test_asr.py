@@ -22,7 +22,7 @@ def test_normalize_converts_transcript_to_traditional(monkeypatch):
 
 def test_transcribe_diarize_posts_to_breeze(monkeypatch, tmp_path):
     wav = tmp_path / "a.wav"; wav.write_bytes(b"RIFF....")
-    monkeypatch.setattr(asr, "detect_asr_base", lambda force=False: "http://127.0.0.1:8765")
+    monkeypatch.setattr(asr, "detect_asr_base", lambda force=False: "http://127.0.0.1:7765")
     captured = {}
     def fake_post(url, params, files, timeout):
         captured["url"] = url; captured["params"] = params
@@ -34,3 +34,20 @@ def test_transcribe_diarize_posts_to_breeze(monkeypatch, tmp_path):
     asr.transcribe_diarize(str(wav), num_speakers=2, language="zh")
     assert captured["url"].endswith("/transcribe_diarize")
     assert captured["params"]["num_speakers"] == 2
+
+
+def test_detect_asr_base_uses_env_url(monkeypatch):
+    """ASR_BASE_URL set -> returned directly when healthy, no IP scanning."""
+    import asr, config
+    monkeypatch.setattr(config, "ASR_BASE_URL", "http://breeze-asr:7765")
+    monkeypatch.setattr(asr, "_asr_cache", None)
+    monkeypatch.setattr(asr, "_is_breeze", lambda url: url == "http://breeze-asr:7765")
+    assert asr.detect_asr_base(force=True) == "http://breeze-asr:7765"
+
+
+def test_detect_asr_base_env_url_unhealthy_returns_none(monkeypatch):
+    import asr, config
+    monkeypatch.setattr(config, "ASR_BASE_URL", "http://breeze-asr:7765")
+    monkeypatch.setattr(asr, "_asr_cache", None)
+    monkeypatch.setattr(asr, "_is_breeze", lambda url: False)
+    assert asr.detect_asr_base(force=True) is None

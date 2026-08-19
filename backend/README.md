@@ -7,30 +7,30 @@ FastAPI service: record **parts** upload → ffmpeg concat → diarized transcri
 ## Prerequisites (same machine)
 - Python 3.10, `pip install -r requirements.txt`
 - ffmpeg / ffprobe on PATH (or the winget path baked into `config.py`)
-- **Breeze ASR** on `:8765` — start it via the AI Service Manager at `C:\ai-servers` (`start_manager.bat`, then start the "Breeze ASR" service)
+- **Breeze ASR** on `:7765` — served by the containerized stack (`backend/deploy`, published locally via the compose override); the legacy native install (`C:\ai-servers`, AI Service Manager, `:8765`) is retired
 - **Ollama** on `:11434` with the `gemma4:e4b-it-qat` model (tray app, auto-starts)
 - **Tailscale** running (so the Mac/phone reach this box anywhere)
 
 ## Run
 Just double-click **`start.bat`** (→ `start.ps1`). It brings the whole backend up in order:
 1. **AI Service Manager** (`:8760`) — starts it if not already running
-2. **Breeze ASR** (`:8765`) via the manager — the GPU is mutually exclusive (one `gpu:true`
+2. **Breeze ASR** (`:7765`) via the manager — the GPU is mutually exclusive (one `gpu:true`
    service at a time), so if another model (e.g. Flamingo Suite) owns it, the script **asks
    before stopping it**, then starts ASR and waits until it's healthy
 3. **Ollama** (`:11434`) — best-effort auto-start (only needed at `/analyze`)
-4. **好記 backend** (`:8780`) — `python app.py`
+4. **好記 backend** (`:7780`) — `python app.py`
 
 Flags: `-Force` (stop the GPU owner without asking), `-NoStop` (abort if GPU is busy),
-`-RestartBackend` (kill + relaunch an already-running `:8780`).
+`-RestartBackend` (kill + relaunch an already-running `:7780`).
 
 Manual equivalent, if you prefer:
 ```
 pip install -r requirements.txt
 # open http://127.0.0.1:8760 → stop whatever owns the GPU → start "Breeze ASR"
-python app.py            # serves on http://0.0.0.0:8780
+python app.py            # serves on http://0.0.0.0:7780
 ```
 
-App reaches it at `http://100.106.118.45:8780` (Tailscale) or `http://192.168.100.10:8780` (same-WiFi LAN). Keep this machine on.
+App reaches it at `http://100.106.118.45:7780` (Tailscale) or `http://192.168.100.10:7780` (same-WiFi LAN). Keep this machine on.
 
 ## API (v2 — parts flow)
 - `GET  /health`

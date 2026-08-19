@@ -1,0 +1,15 @@
+transformers==4.48.3
+# 4.x required with torch>=2.6 (weights_only default flip breaks 3.x checkpoints' load);
+# mirrors the working native install on the dev box.
+pyannote.audio==4.0.4
+# torch stack pinned to the versions the verified build resolved — an unpinned
+# torch could silently drop the sm_120 (Blackwell) support this image exists to
+# provide. (pyannote's deps upgrade torch past the base image's copy; see Dockerfile.)
+torch==2.13.0
+torchaudio==2.11.0
+librosa==0.10.2.post1
+fastapi==0.135.2
+uvicorn==0.34.0
+python-multipart==0.0.22
+huggingface_hub==0.28.1
+matplotlib==3.10.0

@@ -36,3 +36,6 @@ __pycache__/
 backend/data/
 *.db
 *.p8
+backend/deploy/.env
+backend/deploy/docker-compose.override.yml
+.playwright-mcp/

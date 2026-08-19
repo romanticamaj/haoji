@@ -1,0 +1,8 @@
+deploy/
+venv/
+__pycache__/
+*.pyc
+data/
+logs/
+.pytest_cache/
+keepalive.log

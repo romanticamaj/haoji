@@ -1,0 +1,4 @@
+# Shell scripts are bind-mounted into Linux containers — they must stay LF even
+# on Windows checkouts (a CRLF shebang crash-loops the container).
+*.sh text eol=lf
+backend/deploy/** text eol=lf
