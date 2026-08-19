@@ -10,11 +10,13 @@
 		0C80B921A6F3F58F76C31292 /* libPods-Haoji.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-Haoji.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		16318103530447E514B7E620 /* BackgroundUpload.m in Sources */ = {isa = PBXBuildFile; fileRef = 11F03FB4B158BD862B403485 /* BackgroundUpload.m */; };
+		52897DB7DF26C30C80E9B873 /* AudioExtract.m in Sources */ = {isa = PBXBuildFile; fileRef = 3DB97975D866E73F6E058ADC /* AudioExtract.m */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		93CAAAE70B8C4DB225EB070A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		9969B21539DC8CB474585749 /* AudioInterruption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854A7F53DA365F2D0A86405D /* AudioInterruption.swift */; };
 		A25BF26A5F1F824B474534D6 /* AudioInterruption.m in Sources */ = {isa = PBXBuildFile; fileRef = 4350D8E71B5D0AA33E62F377 /* AudioInterruption.m */; };
+		E3CC3708C133365D270295FB /* AudioExtract.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A17C21E24BA311CA8F0A19 /* AudioExtract.swift */; };
 		F5E444D17767B36A51C1028C /* BackgroundUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61160A32D4EABF15AA1C25D4 /* BackgroundUpload.swift */; };
 /* End PBXBuildFile section */
 
@@ -25,6 +27,7 @@
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Haoji/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = Haoji/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-Haoji.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Haoji.debug.xcconfig"; path = "Target Support Files/Pods-Haoji/Pods-Haoji.debug.xcconfig"; sourceTree = "<group>"; };
+		3DB97975D866E73F6E058ADC /* AudioExtract.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Haoji/AudioExtract.m; sourceTree = "<group>"; };
 		4350D8E71B5D0AA33E62F377 /* AudioInterruption.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Haoji/AudioInterruption.m; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-Haoji.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Haoji.release.xcconfig"; path = "Target Support Files/Pods-Haoji/Pods-Haoji.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-Haoji.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Haoji.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -32,6 +35,7 @@
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Haoji/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Haoji/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		854A7F53DA365F2D0A86405D /* AudioInterruption.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Haoji/AudioInterruption.swift; sourceTree = "<group>"; };
+		B6A17C21E24BA311CA8F0A19 /* AudioExtract.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Haoji/AudioExtract.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -59,6 +63,8 @@
 				4350D8E71B5D0AA33E62F377 /* AudioInterruption.m */,
 				61160A32D4EABF15AA1C25D4 /* BackgroundUpload.swift */,
 				11F03FB4B158BD862B403485 /* BackgroundUpload.m */,
+				B6A17C21E24BA311CA8F0A19 /* AudioExtract.swift */,
+				3DB97975D866E73F6E058ADC /* AudioExtract.m */,
 			);
 			name = Haoji;
 			sourceTree = "<group>";
@@ -263,6 +269,8 @@
 				A25BF26A5F1F824B474534D6 /* AudioInterruption.m in Sources */,
 				F5E444D17767B36A51C1028C /* BackgroundUpload.swift in Sources */,
 				16318103530447E514B7E620 /* BackgroundUpload.m in Sources */,
+				E3CC3708C133365D270295FB /* AudioExtract.swift in Sources */,
+				52897DB7DF26C30C80E9B873 /* AudioExtract.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

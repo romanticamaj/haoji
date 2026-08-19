@@ -9,7 +9,10 @@ import { useNavigation } from '@react-navigation/native';
 import { pick, keepLocalCopy, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { useRecorder } from '../hooks/useRecorder';
+import RNFS from 'react-native-fs';
 import { moveToPart } from '../lib/recordings';
+import { isVideo, storageExtFor } from '../lib/importMedia';
+import * as audioExtract from '../lib/audioExtract';
 import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
 import Waveform from '../components/Waveform';
@@ -80,7 +83,26 @@ export default function RecordScreen() {
     const title = new Date().toLocaleString();
     const parts: { uri: string; durationMs: number }[] = [];
     for (let i = 0; i < localUris.length; i++) {
-      const rel = await moveToPart(id, i, localUris[i]);
+      const src = localUris[i];
+      let rel: string;
+      if (isVideo(src) && audioExtract.available) {
+        // A video's bytes can be transcribed but not PLAYED by an audio player, so pull its audio
+        // track out once here — that makes the import behave like a recording in the preview.
+        const tmp = `${RNFS.CachesDirectoryPath}/extract-${id}-${i}.m4a`;
+        setBusyMsg(localUris.length > 1 ? `擷取音訊中… ${i + 1}/${localUris.length}` : '擷取音訊中…');
+        try {
+          await audioExtract.extractAudio(src, tmp);
+          rel = await moveToPart(id, i, tmp, 'm4a');
+        } catch {
+          // Extraction failed (no audio track, odd codec) — keep the original so transcription still
+          // works; only the on-device preview is lost.
+          rel = await moveToPart(id, i, src, 'm4a');
+        }
+      } else {
+        // Keep a real audio file's own extension: storing everything as .m4a was what made an
+        // imported .wav/.mp3 unplayable even though nothing was wrong with it.
+        rel = await moveToPart(id, i, src, storageExtFor(src));
+      }
       parts.push({ uri: rel, durationMs: 0 });
     }
     await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts });
