@@ -2,35 +2,69 @@
 
 FastAPI service: record **parts** upload → ffmpeg concat → diarized transcript (Breeze ASR) → Markdown meeting notes (local LLM).
 
-**Where it runs:** on the **GPU machine (this Windows box)** — Breeze ASR + Ollama need the GPU. The Expo app (developed on Mac / shipped via TestFlight) connects here over **Tailscale**. Don't run this backend on the Mac.
-
-## Prerequisites (same machine)
-- Python 3.10, `pip install -r requirements.txt`
-- ffmpeg / ffprobe on PATH (or the winget path baked into `config.py`)
-- **Breeze ASR** on `:7765` — served by the containerized stack (`backend/deploy`, published locally via the compose override); the legacy native install (`C:\ai-servers`, AI Service Manager, `:8765`) is retired
-- **Ollama** on `:11434` with the `gemma4:e4b-it-qat` model (tray app, auto-starts)
-- **Tailscale** running (so the Mac/phone reach this box anywhere)
+**Deployed as a Docker Compose unit** — three containers (`haoji-backend` + `breeze-asr` + `ollama`)
+brought up by one `docker compose up -d` on any machine with an NVIDIA GPU. The app (Mac dev /
+TestFlight) reaches it over **Tailscale**.
 
 ## Run
-Just double-click **`start.bat`** (→ `start.ps1`). It brings the whole backend up in order:
-1. **AI Service Manager** (`:8760`) — starts it if not already running
-2. **Breeze ASR** (`:7765`) via the manager — the GPU is mutually exclusive (one `gpu:true`
-   service at a time), so if another model (e.g. Flamingo Suite) owns it, the script **asks
-   before stopping it**, then starts ASR and waits until it's healthy
-3. **Ollama** (`:11434`) — best-effort auto-start (only needed at `/analyze`)
-4. **好記 backend** (`:7780`) — `python app.py`
 
-Flags: `-Force` (stop the GPU owner without asking), `-NoStop` (abort if GPU is busy),
-`-RestartBackend` (kill + relaunch an already-running `:7780`).
+👉 **Full guide: [`deploy/DEPLOY.md`](deploy/DEPLOY.md)** — host prerequisites (GPU ≥16GB VRAM,
+NVIDIA Container Toolkit), pre-built-image vs. self-build paths, verification, data/privacy, ops.
 
-Manual equivalent, if you prefer:
+Quick start (deployer who received the image tar — no HuggingFace token needed):
+
+```bash
+docker load -i haoji-breeze-asr.tar
+cd backend/deploy
+cp .env.example .env          # HF_TOKEN can stay empty
+docker compose up -d          # do NOT pass --build
 ```
+
+Verify:
+
+```bash
+curl -s http://127.0.0.1:7780/health          # {"status":"ok","service":"haoji-backend"}
+curl -s http://127.0.0.1:7780/api/llm/models  # {"ok":true,"models":["gemma4:e4b-it-qat"],...}
+```
+
+### Ports
+
+| Service | Port | Exposed? |
+|---|---|---|
+| `haoji-backend` | **7780** | ✅ the only port published to the host — the app connects here |
+| `breeze-asr` | 7765 | container network only |
+| `ollama` | 11434 | container network only |
+
+App reaches it at `http://100.106.118.45:7780` (Tailscale) or `http://192.168.100.10:7780` (same-WiFi LAN).
+
+### Uptime
+
+All three services are `restart: unless-stopped`, so a crash or a host reboot brings them back
+automatically — no external watchdog needed. (The old native launcher/keepalive scripts —
+`start.bat`, `start.ps1`, `keepalive.ps1`, `run-forever.bat`, and the `C:\ai-servers` AI Service
+Manager — are **retired**; see git history if you need them.)
+
+Ops:
+
+```bash
+docker compose ps                       # three-container status
+docker compose logs -f haoji-backend    # backend activity log
+docker compose restart <service>        # restart one service
+git pull && docker compose up -d --build   # update
+```
+
+## Development (no Docker)
+
+Only for editing/testing the FastAPI code on a dev box — the ASR/LLM dependencies still have to come
+from somewhere (point `ASR_BASE_URL` / `OLLAMA_BASE_URL` at a running stack).
+
+```bash
 pip install -r requirements.txt
-# open http://127.0.0.1:8760 → stop whatever owns the GPU → start "Breeze ASR"
-python app.py            # serves on http://0.0.0.0:7780
+python app.py            # serves on 0.0.0.0:${WEB_PORT:-7780}
+python -m pytest -q      # tests (no GPU needed)
 ```
 
-App reaches it at `http://100.106.118.45:7780` (Tailscale) or `http://192.168.100.10:7780` (same-WiFi LAN). Keep this machine on.
+Config is env-driven (`config.py`): `WEB_PORT`, `ASR_BASE_URL`, `OLLAMA_BASE_URL`, `LLM_MODEL`, `DATA_DIR`.
 
 ## API (v2 — parts flow)
 - `GET  /health`
@@ -41,7 +75,6 @@ App reaches it at `http://100.106.118.45:7780` (Tailscale) or `http://192.168.10
 - `POST /api/sessions/{id}/analyze` `{model?, names?}` → `{notes}` (Traditional-Chinese meeting notes)
 - `GET  /api/llm/models`
 
-## Tests
-```
-python -m pytest -q
-```
+## Data & privacy
+- **Audio is deleted as soon as transcription finishes** (backend `finally`) — nothing is retained server-side.
+- The `data` volume holds only SQLite (session state / transcript / notes).

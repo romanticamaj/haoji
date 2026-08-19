@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Two independently-deployed pieces, in one repo:
 
 - `app/` — bare React Native client (`@react-native-community/cli`, **not Expo**), native iOS + Android. Developed on Mac, shipped to TestFlight via fastlane.
-- `backend/` — FastAPI service. **Runs only on the GPU Windows box** (Breeze ASR + Ollama need the GPU). The app reaches it over Tailscale (`http://100.106.118.45:7780`) or same-WiFi LAN (`http://192.168.100.10:7780`). Do not run the backend on the Mac.
+- `backend/` — FastAPI service, deployed as a **Docker Compose unit** (`backend/deploy`: `haoji-backend` + `breeze-asr` + `ollama`) on a machine with an NVIDIA GPU (Breeze ASR + Ollama need it). The app reaches it over Tailscale (`http://100.106.118.45:7780`) or same-WiFi LAN (`http://192.168.100.10:7780`). Do not run the backend on the Mac.
 
 ## Bare React Native discipline
 
@@ -29,10 +29,20 @@ npx jest -t "test name substring"       # single test
 cd ios && fastlane beta                  # archive + sign + upload to TestFlight (ASC API key)
 ```
 
-Backend (`cd backend`, on the GPU machine):
+Backend — deploy (`cd backend/deploy`, on the GPU machine; full guide in `backend/deploy/DEPLOY.md`):
+```
+docker compose up -d                        # bring up all three containers
+docker compose ps                           # status (all restart: unless-stopped)
+docker compose logs -f haoji-backend        # backend log
+docker compose restart haoji-backend        # restart one service
+git pull && docker compose up -d --build    # update
+```
+Only `haoji-backend` is published to the host, on **:7780**.
+
+Backend — editing/testing the FastAPI code (`cd backend`, no GPU needed for tests):
 ```
 pip install -r requirements.txt
-python app.py            # serves on 0.0.0.0:7780 (start.bat also pre-checks Ollama/ASR)
+python app.py            # serves on 0.0.0.0:${WEB_PORT:-7780}
 python -m pytest -q
 python -m pytest tests/test_parts.py -q  # single file
 ```
@@ -51,11 +61,11 @@ The pipeline is split so the phone uploads recording **parts** incrementally, th
 
 Module responsibilities:
 - `config.py` — central config: ports, Breeze ASR endpoints, Ollama model (`gemma4:e4b-it-qat`), ffmpeg/ffprobe path resolution (PATH → winget fallback).
-- `asr.py` — auto-detects the Breeze ASR server by probing `:8765/health` across local IPs (cached); ffmpeg audio extraction with progress; `normalize()` shapes segments + speaker stats.
+- `asr.py` — resolves the Breeze ASR base URL: `ASR_BASE_URL` (set by compose to `http://breeze-asr:7765`) wins; otherwise it falls back to probing `:7765/health` across local IPs (cached). Plus ffmpeg audio extraction with progress; `normalize()` shapes segments + speaker stats.
 - `llm.py` — provider abstraction (`get_provider("ollama")`). Dynamically sizes Ollama `num_ctx` from transcript length, strips `<think>` blocks, and converts output to Traditional Chinese via OpenCC (`s2tw`). The meeting-notes prompt is here and deliberately forbids the model from guessing which speaker code maps to which real name.
 - `sessions.py` — SQLite store + `build_transcript_text()` which merges consecutive same-speaker segments into `[mm:ss] Name: text` paragraphs.
 
-External dependencies the backend assumes are already running on the same machine: Breeze ASR on `:8765`, Ollama on `:11434`, ffmpeg/ffprobe on PATH, Tailscale.
+The backend's dependencies ship as sibling containers in the same compose unit — Breeze ASR (`breeze-asr:7765`) and Ollama (`ollama:11434`), reachable only on the container network — and ffmpeg/ffprobe are baked into the backend image. Config is env-driven (`ASR_BASE_URL` / `OLLAMA_BASE_URL` / `LLM_MODEL` / `WEB_PORT` / `DATA_DIR`); see `config.py`. Tailscale runs on the host.
 
 ## App architecture
 
