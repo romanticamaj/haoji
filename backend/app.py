@@ -132,13 +132,31 @@ _analyzing = {}
 _analyze_lock = threading.Lock()
 
 
+def _notes_target_chars(transcript_text):
+    """Roughly how long the notes will be, used to turn 'characters produced' into a percentage.
+    Notes condense the transcript, so scale off its length with sane floor/ceiling."""
+    return max(500, min(2500, int(len(transcript_text) * 0.15)))
+
+
 def _run_analyze(sid, text, model_arg, model_label):
     """Background notes generation. Writes the result (or the error) to the session so the client can
     pick it up later — the whole point of background mode."""
     t0 = time.time()
+    target = _notes_target_chars(text)
+
+    def on_progress(chars):
+        # Real progress (characters actually produced), capped below 100% so it never claims to be
+        # finished before it is — the last step is the completion write below.
+        pct = min(0.95, chars / target) if target else 0.0
+        sessions.update_session(sid, notes_pct=round(pct, 3),
+                                notes_message=f"生成中…（已寫 {chars} 字）")
+
     try:
-        notes = llm.get_provider("ollama").generate_meeting_notes(text, model=model_arg)
-        sessions.update_session(sid, notes=notes, notes_status="done", notes_error=None)
+        sessions.update_session(sid, notes_pct=0.0, notes_message="生成中…")
+        notes = llm.get_provider("ollama").generate_meeting_notes(
+            text, model=model_arg, on_progress=on_progress)
+        sessions.update_session(sid, notes=notes, notes_status="done", notes_error=None,
+                                notes_pct=1.0, notes_message="完成")
         log.info("[%s] analyze(bg) done: %d chars notes, took %.0fs", sid, len(notes), time.time() - t0)
     except Exception as e:
         log.exception("[%s] analyze(bg) FAILED: %s", sid, e)
@@ -254,6 +272,10 @@ def session_status(sid: str):
         out["notes_status"] = s["notes_status"]
     if s.get("notes_error"):
         out["notes_error"] = s["notes_error"]
+    if s.get("notes_pct") is not None:
+        out["notes_pct"] = s["notes_pct"]
+    if s.get("notes_message"):
+        out["notes_message"] = s["notes_message"]
     return out
 
 @app.get("/api/debug/jobs")

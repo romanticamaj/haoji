@@ -21,7 +21,8 @@ def init_db():
         # landed — which is what makes a background/OS-driven upload work without the app running.
         cols = [r[1] for r in c.execute("PRAGMA table_info(sessions)").fetchall()]
         for col, decl in (("client_id", "TEXT"), ("notes_status", "TEXT"),
-                          ("notes_error", "TEXT"), ("expected_parts", "INTEGER")):
+                          ("notes_error", "TEXT"), ("expected_parts", "INTEGER"),
+                          ("notes_pct", "REAL"), ("notes_message", "TEXT")):
             if col not in cols:
                 c.execute(f"ALTER TABLE sessions ADD COLUMN {col} {decl}")
 

@@ -122,3 +122,20 @@ test('an existing backend session is reused, not recreated', async () => {
   await runNotesJob('local-1', {}, h.deps);
   expect(h.deps.createSession).not.toHaveBeenCalled();
 });
+
+test('mirrors the backend progress so the list badge can move while generating', async () => {
+  const h = harness(base, [
+    { status: 'done', pct: 1, message: '', notes_status: 'running', notes_pct: 0.2, notes_message: '生成中…（已寫 100 字）' },
+    { status: 'done', pct: 1, message: '', notes_status: 'running', notes_pct: 0.7, notes_message: '生成中…（已寫 400 字）' },
+    doneWith('## 會議摘要\n內容'),
+  ]);
+  const seen: (number | undefined)[] = [];
+  const origSave = h.deps.save;
+  h.deps.save = async (s) => { seen.push(s.notesJob?.pct); await origSave(s); };
+
+  await runNotesJob('local-1', {}, h.deps);
+
+  expect(seen).toEqual(expect.arrayContaining([0.2, 0.7]));   // progress reached the session
+  expect(h.session.notesJob?.pct).toBe(1);                     // and finishes at 100%
+  expect(h.session.notesJob?.stage).toBe('done');
+});

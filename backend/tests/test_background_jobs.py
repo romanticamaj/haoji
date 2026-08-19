@@ -69,7 +69,7 @@ def test_background_analyze_returns_immediately_and_stores_the_notes(tmp_path, m
     _seed_transcript(sid)
 
     class FakeProvider:
-        def generate_meeting_notes(self, transcript, model=None):
+        def generate_meeting_notes(self, transcript, model=None, on_progress=None):
             return "## 會議摘要\n好"
     monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": FakeProvider())
 
@@ -95,7 +95,7 @@ def test_background_analyze_records_failure_instead_of_hanging(tmp_path, monkeyp
     _seed_transcript(sid)
 
     class Boom:
-        def generate_meeting_notes(self, transcript, model=None):
+        def generate_meeting_notes(self, transcript, model=None, on_progress=None):
             raise RuntimeError("LLM 沒開")
     monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": Boom())
 
@@ -117,7 +117,7 @@ def test_synchronous_analyze_still_works(tmp_path, monkeypatch):
     _seed_transcript(sid)
 
     class FakeProvider:
-        def generate_meeting_notes(self, transcript, model=None):
+        def generate_meeting_notes(self, transcript, model=None, on_progress=None):
             return "## 會議摘要\n同步"
     monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": FakeProvider())
 
@@ -171,7 +171,7 @@ def test_analyze_uses_the_transcript_the_CLIENT_sends(tmp_path, monkeypatch):
     seen = {}
 
     class FakeProvider:
-        def generate_meeting_notes(self, transcript, model=None):
+        def generate_meeting_notes(self, transcript, model=None, on_progress=None):
             seen["text"] = transcript
             return "## 會議摘要\n好"
     monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": FakeProvider())
@@ -193,7 +193,7 @@ def test_analyze_still_falls_back_to_the_stored_transcript(tmp_path, monkeypatch
     _seed_transcript(sid)
 
     class FakeProvider:
-        def generate_meeting_notes(self, transcript, model=None):
+        def generate_meeting_notes(self, transcript, model=None, on_progress=None):
             return "## 會議摘要\n好"
     monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": FakeProvider())
     c = TestClient(appmod.app)
@@ -230,7 +230,7 @@ def test_analyze_works_for_a_session_the_server_has_never_seen(tmp_path, monkeyp
     _db(tmp_path, monkeypatch)
 
     class FakeProvider:
-        def generate_meeting_notes(self, transcript, model=None):
+        def generate_meeting_notes(self, transcript, model=None, on_progress=None):
             return "## 會議摘要\n好"
     monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": FakeProvider())
 
@@ -268,3 +268,46 @@ def test_ensure_session_is_idempotent(tmp_path, monkeypatch):
     a = sessions.ensure_session("fixed-id", client_id="local-9")
     b = sessions.ensure_session("fixed-id", client_id="local-9")
     assert a["id"] == b["id"] == "fixed-id"
+
+
+def test_background_analyze_reports_real_progress_while_generating(tmp_path, monkeypatch):
+    """Notes generation is the slowest step and used to be a blind wait. Progress is derived from
+    characters actually produced (not a timer), and never claims 100% before the result is stored."""
+    _db(tmp_path, monkeypatch)
+    sid = sessions.create_session("m.wav")
+    _seed_transcript(sid)
+    seen = []
+
+    class StreamingProvider:
+        def generate_meeting_notes(self, transcript, model=None, on_progress=None):
+            for chars in (100, 400, 5000):        # last one overshoots the estimate on purpose
+                on_progress(chars)
+                seen.append(sessions.get_session(sid)["notes_pct"])
+            return "## 會議摘要\n好"
+    monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": StreamingProvider())
+
+    c = TestClient(appmod.app)
+    c.post(f"/api/sessions/{sid}/analyze", json={"background": True})
+    for _ in range(100):
+        if sessions.get_session(sid)["notes_status"] == "done":
+            break
+        time.sleep(0.02)
+
+    assert seen == sorted(seen)                   # progress only moves forward
+    assert max(seen) <= 0.95                      # never claims done while still generating
+    st = c.get(f"/api/sessions/{sid}").json()
+    assert st["notes_pct"] == 1.0 and st["notes_status"] == "done"
+
+
+def test_notes_progress_is_visible_through_the_status_endpoint(tmp_path, monkeypatch):
+    _db(tmp_path, monkeypatch)
+    sid = sessions.create_session("m.wav")
+    sessions.update_session(sid, notes_status="running", notes_pct=0.42, notes_message="生成中…（已寫 300 字）")
+    st = TestClient(appmod.app).get(f"/api/sessions/{sid}").json()
+    assert st["notes_pct"] == 0.42 and "300 字" in st["notes_message"]
+
+
+def test_notes_target_scales_with_transcript_length_within_bounds():
+    assert appmod._notes_target_chars("x" * 100) == 500          # floor
+    assert appmod._notes_target_chars("x" * 100000) == 2500      # ceiling
+    assert appmod._notes_target_chars("x" * 10000) == 1500       # scaled

@@ -8,4 +8,7 @@ export type SessionStatus = {
   notes?: string;
   notes_status?: 'running' | 'done' | 'error';
   notes_error?: string;
+  // Real generation progress: 0..1 derived from characters produced, plus a human-readable line.
+  notes_pct?: number;
+  notes_message?: string;
 };

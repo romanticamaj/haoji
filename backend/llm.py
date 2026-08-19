@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """LLM provider abstraction + Ollama provider for Traditional-Chinese meeting notes."""
+import json
 import re
+import time
 import requests
 import config
 # Shared s2tw converter (also used by asr.normalize so the transcript is Traditional too). Imported
@@ -36,7 +38,7 @@ def llm_status():
 class OllamaProvider:
     name = "ollama"
 
-    def generate_meeting_notes(self, transcript, model=None):
+    def generate_meeting_notes(self, transcript, model=None, on_progress=None):
         model = model or config.LLM_MODEL
         ok, names, thinking = llm_status()
         if not ok:
@@ -52,21 +54,62 @@ class OllamaProvider:
                 {"role": "system", "content": MEETING_NOTES_PROMPT},
                 {"role": "user", "content": transcript},
             ],
-            "stream": False,
+            # Stream only when someone wants progress: the non-streaming path stays the default so
+            # nothing else changes shape.
+            "stream": bool(on_progress),
             "options": {"temperature": 0.3, "num_ctx": num_ctx},
         }
         if model in thinking and not config.LLM_THINK:
             payload["think"] = False
-        try:
-            r = requests.post(config.OLLAMA_BASE + "/api/chat", json=payload, timeout=config.LLM_TIMEOUT)
-            r.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"本機 LLM 請求失敗：{e}")
-        content = (r.json().get("message", {}) or {}).get("content", "")
+        if on_progress:
+            content = self._generate_streaming(payload, on_progress)
+        else:
+            try:
+                r = requests.post(config.OLLAMA_BASE + "/api/chat", json=payload, timeout=config.LLM_TIMEOUT)
+                r.raise_for_status()
+            except requests.exceptions.RequestException as e:
+                raise RuntimeError(f"本機 LLM 請求失敗：{e}")
+            content = (r.json().get("message", {}) or {}).get("content", "")
         if "</think>" in content:
             content = content.rsplit("</think>", 1)[-1]
         content = re.sub(r"<think>.*?</think>", "", content, flags=re.S).strip()
         return to_traditional(content)
+
+    def _generate_streaming(self, payload, on_progress):
+        """Read Ollama's NDJSON stream, reporting characters produced so far.
+
+        Generation is the slowest step in the app and used to be a completely blind wait. The
+        character count is REAL progress (not a timer), which is what makes a progress bar honest.
+        Reports are throttled — this is for a human watching a list, not a firehose."""
+        try:
+            r = requests.post(config.OLLAMA_BASE + "/api/chat", json=payload,
+                              timeout=config.LLM_TIMEOUT, stream=True)
+            r.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"本機 LLM 請求失敗：{e}")
+
+        parts, last_report = [], 0.0
+        for line in r.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue                      # a keep-alive or partial line: skip, never crash
+            chunk = (obj.get("message") or {}).get("content") or ""
+            if chunk:
+                parts.append(chunk)
+                now = time.time()
+                if now - last_report >= 0.7:
+                    last_report = now
+                    try:
+                        on_progress(sum(len(p) for p in parts))
+                    except Exception:
+                        pass                  # a bad progress callback must never fail generation
+            if obj.get("done"):
+                break
+        return "".join(parts)
+
 
 _PROVIDERS = {"ollama": OllamaProvider()}
 def get_provider(name="ollama"):

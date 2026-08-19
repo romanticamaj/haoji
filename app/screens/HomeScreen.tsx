@@ -15,6 +15,7 @@ import {
 import { promoteTitleFromNotes } from '../lib/notesDoc';
 import { resumeAllJobs, onJobChange } from '../lib/jobRunner';
 import { isActive, overallPct } from '../lib/job';
+import { isNotesActive } from '../lib/notesJob';
 
 // Repair crash-truncated WAV headers once per app launch (not on every screen focus).
 let wavRepairDone = false;
@@ -192,6 +193,15 @@ function SessionCard({ session, now, onPress }: { session: SavedSession; now: nu
           {isActive(session.job) && (
             <View style={[styles.pill, styles.pillBusy]}>
               <Text style={styles.pillBusyText}>處理中 {Math.round(overallPct(session.job!) * 100)}%</Text>
+            </View>
+          )}
+          {/* Notes generation is the slowest step, so surface its progress right here in the list
+              rather than making the user open the meeting to find out whether anything is happening. */}
+          {isNotesActive(session.notesJob) && (
+            <View style={[styles.pill, styles.pillBusy]}>
+              <Text style={styles.pillBusyText}>
+                生成記錄中{typeof session.notesJob?.pct === 'number' ? ` ${Math.round(session.notesJob.pct * 100)}%` : ''}
+              </Text>
             </View>
           )}
           {transcribed && <DonePill label="逐字稿" />}

@@ -13,6 +13,8 @@ export type NotesJob = {
   message: string;
   error?: string;
   updatedAt: number;
+  // 0..1, mirrored from the backend (characters produced / expected). Drives the list badge.
+  pct?: number;
 };
 
 export type NotesJobDeps = {
@@ -107,13 +109,17 @@ export async function runNotesJob(
         const withNotes = pushNotesVersion(cur, st.notes, now());
         const aiTitle = extractNotesTitle(st.notes);
         const title = aiTitle && looksLikeAutoTitle(cur.title) ? aiTitle : cur.title;
-        s = { ...withNotes, title, notesJob: { stage: 'done', message: '完成', updatedAt: now() } };
+        s = { ...withNotes, title, notesJob: { stage: 'done', message: '完成', pct: 1, updatedAt: now() } };
         await d.save(s);
         return;
       }
       if (st.notes_status === 'error') {
         await patch({ stage: 'error', error: st.notes_error || '生成失敗' });
         return;
+      }
+      // Mirror the backend's progress so the list badge and the tab both move while we wait.
+      if (typeof st.notes_pct === 'number' || st.notes_message) {
+        await patch({ pct: st.notes_pct, message: st.notes_message || '生成會議記錄中…' });
       }
       await d.delay(2000);
     }

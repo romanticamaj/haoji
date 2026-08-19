@@ -158,7 +158,18 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
     }
     return (
       <View style={styles.center}>
-        {busy ? <><ActivityIndicator color={colors.brand} /><Text style={styles.hint}>{session.notesJob?.message || '本機 LLM 生成中…'}</Text><Text style={styles.hintSmall}>離開 App 也會繼續，完成後回來就看得到。</Text></>
+        {busy ? (
+          <>
+            <ActivityIndicator color={colors.brand} />
+            <Text style={styles.hint}>{session.notesJob?.message || '本機 LLM 生成中…'}</Text>
+            {typeof session.notesJob?.pct === 'number' && (
+              <View style={styles.notesBarTrack}>
+                <View style={[styles.notesBarFill, { width: `${Math.round(session.notesJob.pct * 100)}%` }]} />
+              </View>
+            )}
+            <Text style={styles.hintSmall}>離開 App 也會繼續，完成後回來就看得到。</Text>
+          </>
+        )
           : <>
               <Text style={styles.hint}>把逐字稿整理成會議記錄（摘要 / 重點 / 決議 / 待辦）。</Text>
               <Pressable style={styles.primary} onPress={generate}><Text style={styles.primaryText}>生成會議記錄</Text></Pressable>
@@ -380,6 +391,8 @@ const styles = StyleSheet.create({
   advList: { color: colors.ink, marginTop: 8, fontSize: 13 },
   err: { color: colors.brand, marginTop: 14 },
   hintSmall: { color: colors.ink3, fontSize: 12, marginTop: 8, textAlign: 'center' },
+  notesBarTrack: { width: 200, height: 5, borderRadius: 3, backgroundColor: colors.chipBg, marginTop: 12, overflow: 'hidden' },
+  notesBarFill: { height: 5, borderRadius: 3, backgroundColor: colors.brand },
 
   lockWrap: { marginTop: 8, position: 'relative' },
   // Gradient-fade paywall: absolutely positioned over the top of the locked content.
