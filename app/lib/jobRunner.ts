@@ -10,6 +10,7 @@ import { runJob, isActive } from './job';
 // crashes, or is swiped away. `running` only prevents the SAME job being driven twice at once inside
 // one app session; correctness across launches comes from the persisted stage, not from this map.
 const running = new Map<string, Promise<void>>();
+const cancelled = new Set<string>();
 const listeners = new Set<() => void>();
 
 /** Subscribe to "some job made progress" (screens re-read the store on the callback). */
@@ -35,15 +36,27 @@ export function ensureJob(sessionId: string, store: SessionStore): Promise<void>
     save: async (s) => { await store.upsert(s); notify(); },
     resolveUri: resolvePartUri,
     delay: (ms) => new Promise<void>((r) => setTimeout(r, ms)),
-  }).finally(() => { running.delete(sessionId); notify(); });
+    isCancelled: () => cancelled.has(sessionId),
+  }).finally(() => { running.delete(sessionId); cancelled.delete(sessionId); notify(); });
 
   running.set(sessionId, p);
   notify();
   return p;
 }
 
-/** Restart a failed/finished job from scratch (the 重試 / 重新生成 path). */
+/**
+ * Restart a job from scratch (the 重試 / 重新生成 path).
+ *
+ * A job already in flight MUST be cancelled and awaited first: `ensureJob` attaches to the running
+ * promise, so without this the "restart" would silently join the old run — which would then keep
+ * writing its stale stage back over the cleared one.
+ */
 export async function restartJob(sessionId: string, store: SessionStore): Promise<void> {
+  const inflight = running.get(sessionId);
+  if (inflight) {
+    cancelled.add(sessionId);
+    await inflight.catch(() => {});
+  }
   const s = await store.get(sessionId);
   if (s) await store.upsert({ ...s, backendId: undefined, job: undefined });
   return ensureJob(sessionId, store);

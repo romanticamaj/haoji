@@ -31,7 +31,7 @@ test('resumeAllJobs picks up ONLY the jobs left in flight (the app-relaunch path
   const n = await resumeAllJobs(store);
   expect(n).toBe(1);                             // only 'a' was still in flight
 
-  await new Promise((r) => setTimeout(r, 20));   // let the resumed job settle
+  await new Promise<void>((r) => setTimeout(() => r(), 20));   // let the resumed job settle
   expect((await store.get('a'))?.job?.stage).toBe('done');
   expect((await store.get('a'))?.transcript).toEqual(transcript);
   expect((await store.get('c'))?.job).toBeUndefined();

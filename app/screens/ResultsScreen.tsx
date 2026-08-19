@@ -11,6 +11,7 @@ import AnalysisTab from './AnalysisTab';
 import RecordingsList, { type RecordingsHandle } from './RecordingsList';
 import { IconPencil } from '../components/icons';
 import { promoteTitleFromNotes } from '../lib/notesDoc';
+import { onJobChange } from '../lib/jobRunner';
 import { colors, radius } from '../lib/theme';
 
 export default function ResultsScreen() {
@@ -43,13 +44,17 @@ export default function ResultsScreen() {
   }, [nav]);
 
   useFocusEffect(useCallback(() => {
-    store.get(id).then((s) => {
+    const refresh = () => store.get(id).then((s) => {
       if (!s) { setSession(s); return; }
       // Auto-replace a still-default (timestamp) title with the AI notes' topic, and persist it.
       const promoted = promoteTitleFromNotes(s);
       if (promoted !== s) store.upsert(promoted);
       setSession(promoted);
     });
+    refresh();
+    // Stay live while a transcription runs in the background: the progress shown here keeps ticking
+    // and the transcript appears by itself the moment the job finishes — no need to leave and return.
+    return onJobChange(() => { void refresh(); });
   }, [id, store]));
 
   const update = async (s: SavedSession) => { setSession(s); await store.upsert(s); };
@@ -72,6 +77,8 @@ export default function ResultsScreen() {
   // We don't touch the store here, so if the re-run fails (e.g. backend down) the existing
   // transcript/backendId are preserved. ProcessingScreen persists the new ids only on success.
   const regenerate = () => nav.replace('Processing', { sessionId: id, regen: true });
+  // Watch a job that's already running — no `regen`, so it attaches instead of restarting.
+  const viewProgress = () => nav.navigate('Processing', { sessionId: id });
 
   if (!session) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
   return (
@@ -87,7 +94,7 @@ export default function ResultsScreen() {
             ))}
           </View>
           <View style={{ flex: 1, display: tab === 'transcript' ? 'flex' : 'none' }}>
-            <TranscriptTab session={session} onUpdate={update} onRegenerate={regenerate}
+            <TranscriptTab session={session} onUpdate={update} onRegenerate={regenerate} onViewProgress={viewProgress}
               onSeek={(ms) => playerRef.current?.seekToGlobal(ms)}
               activeMs={tab === 'transcript' ? playheadMs : 0} />
           </View>

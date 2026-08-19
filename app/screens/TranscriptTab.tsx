@@ -7,18 +7,24 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { SavedSession } from '../lib/store';
 import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText } from '../lib/transcript';
 import { IconCheck, IconCopy } from '../components/icons';
+import { isActive, overallPct } from '../lib/job';
 import { colors, radius, tabularNums, speakerColor } from '../lib/theme';
 
 export default function TranscriptTab(
-  { session, onUpdate, onRegenerate, onSeek, activeMs = 0 }:
+  { session, onUpdate, onRegenerate, onViewProgress, onSeek, activeMs = 0 }:
   {
     session: SavedSession; onUpdate(s: SavedSession): void; onRegenerate?(): void;
-    onSeek?(globalMs: number): void; activeMs?: number;
+    onViewProgress?(): void; onSeek?(globalMs: number): void; activeMs?: number;
   },
 ) {
   const segs = session.transcript?.segments ?? [];
   const speakers = session.transcript?.speakers ?? [];
   const hasParts = (session.parts?.length ?? 0) > 0;
+  // A transcription already in flight must NOT offer "生成逐字稿": that path restarts the job from
+  // scratch (fresh backend session + full re-upload), throwing away work in progress. Offer a way to
+  // watch it instead.
+  const busy = isActive(session.job);
+  const busyPct = session.job ? Math.round(overallPct(session.job) * 100) : 0;
 
   // Stable per-speaker color index: position in the transcript's speaker list. Any speaker seen in
   // segments but missing from `speakers` falls back to 0 (still valid, just shares the first hue).
@@ -58,11 +64,19 @@ export default function TranscriptTab(
   if (segs.length === 0) {
     return (
       <View style={styles.emptyWrap}>
-        <Text style={styles.emptyTitle}>還沒有逐字稿</Text>
+        <Text style={styles.emptyTitle}>{busy ? '正在生成逐字稿' : '還沒有逐字稿'}</Text>
         <Text style={styles.emptyHint}>
-          {hasParts ? '這段錄音還沒有生成逐字稿。準備好了就點下面開始。' : '找不到可辨識的錄音檔。'}
+          {busy
+            ? `${session.job?.message || '處理中…'}（${busyPct}%）\n離開 App 也會繼續，完成後回來就看得到。`
+            : hasParts ? '這段錄音還沒有生成逐字稿。準備好了就點下面開始。' : '找不到可辨識的錄音檔。'}
         </Text>
-        {hasParts && onRegenerate && (
+        {busy ? (
+          onViewProgress && (
+            <Pressable style={styles.primary} onPress={onViewProgress} accessibilityRole="button">
+              <Text style={styles.primaryText}>查看進度</Text>
+            </Pressable>
+          )
+        ) : hasParts && onRegenerate && (
           <Pressable style={styles.primary} onPress={onRegenerate} accessibilityRole="button">
             <Text style={styles.primaryText}>生成逐字稿</Text>
           </Pressable>
@@ -194,11 +208,15 @@ export default function TranscriptTab(
             </View>
           );
         })}
-        {hasParts && onRegenerate && (
+        {busy && onViewProgress ? (
+          <Pressable style={styles.regenFooter} onPress={onViewProgress} accessibilityRole="button">
+            <Text style={styles.regenText}>查看進度（{busyPct}%）</Text>
+          </Pressable>
+        ) : hasParts && onRegenerate ? (
           <Pressable style={styles.regenFooter} onPress={onRegenerate} accessibilityRole="button">
             <Text style={styles.regenText}>重新生成逐字稿</Text>
           </Pressable>
-        )}
+        ) : null}
       </ScrollView>
 
       {editing != null && (
