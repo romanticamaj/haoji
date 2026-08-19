@@ -198,6 +198,10 @@ function PlayerRow(
   // unreadable (bad codec / truncated). Show a clear iconed notice instead of a blank waveform.
   if (exists === false || failed) {
     const gone = exists === false;
+    // An .m4a that fails to open is a pre-WAV recording killed mid-capture: its moov index was never
+    // written, and neither iOS nor ffmpeg can read it (so it can't be transcribed either). Say so
+    // plainly rather than implying a retry might help. New recordings are WAV and self-repair.
+    const legacyBroken = !gone && storedUri.endsWith('.m4a');
     return (
       <View style={[styles.card, styles.missingCard]}>
         {multi && <Text style={styles.segLabel}>段 {index + 1}</Text>}
@@ -206,7 +210,11 @@ function PlayerRow(
           <View style={styles.missingTextWrap}>
             <Text style={styles.missingTitle}>{gone ? '音檔不存在' : '音檔無法播放'}</Text>
             <Text style={styles.missingHint}>
-              {gone ? '這段錄音已無法播放，檔案可能已被系統清除。' : '這段錄音的格式可能不支援，或檔案已損毀。'}
+              {gone
+                ? '這段錄音已無法播放，檔案可能已被系統清除。'
+                : legacyBroken
+                  ? '這是舊版格式（m4a）在錄音中斷時留下的檔案，索引沒寫完，無法修復或轉為逐字稿。之後的錄音已改用可修復的格式。'
+                  : '這段錄音的格式可能不支援，或檔案已損毀。'}
             </Text>
           </View>
         </View>

@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
-import { deleteSessionFiles, recoverOrphanedRecordings } from '../lib/recordings';
+import { deleteSessionFiles, recoverOrphanedRecordings, repairWavParts } from '../lib/recordings';
 import { RootStackParamList } from '../navigation';
 import SwipeRow from '../components/SwipeRow';
 import { IconSearch } from '../components/icons';
@@ -13,6 +13,9 @@ import {
   groupSessions, relativeDay, durationLabel, speakerCount, avatarSpec, hasTranscript, hasNotes,
 } from '../lib/sessionList';
 import { promoteTitleFromNotes } from '../lib/notesDoc';
+
+// Repair crash-truncated WAV headers once per app launch (not on every screen focus).
+let wavRepairDone = false;
 
 export default function HomeScreen() {
   const store = useStore();
@@ -27,6 +30,10 @@ export default function HomeScreen() {
   useFocusEffect(useCallback(() => {
     (async () => {
       const list = await store.list();
+      // Once per launch, repair the RIFF header of any WAV left truncated by a crash. Incremental
+      // persistence means a crashed recording is usually ALREADY in the store, so it never reaches the
+      // orphan scan below — without this it would sit in the list as an unplayable '音檔無法播放'.
+      if (!wavRepairDone) { wavRepairDone = true; await repairWavParts(list); }
       // Recover any on-disk recordings with no store entry (e.g. the app crashed mid-recording before
       // the session was saved) so they reappear as drafts instead of being silently lost.
       const recovered = await recoverOrphanedRecordings(new Set(list.map((s) => s.id)));

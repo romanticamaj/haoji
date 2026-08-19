@@ -95,10 +95,100 @@ export async function recoverOrphanedRecordings(knownIds: Set<string>): Promise<
       .sort((a, b) => partIndex(a.name) - partIndex(b.name));
     if (partFiles.length === 0) continue;
     const parts = partFiles.map((f) => ({ uri: `haoji/${d.name}/${f.name}`, durationMs: 0 }));
+    // A recovered recording is by definition one that never stopped cleanly — repair any WAV
+    // header so it actually plays instead of surfacing as '音檔無法播放'.
+    for (const f of partFiles) if (f.name.endsWith('.wav')) await repairWavHeader(f.path);
     const at = partFiles[0].mtime instanceof Date ? partFiles[0].mtime.getTime() : Date.now();
     out.push({ id: d.name, createdAt: at, title: `已復原的錄音（${new Date(at).toLocaleString()}）`, names: {}, unlocked: false, parts });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Crash-truncated WAV repair
+// ---------------------------------------------------------------------------
+// A recording killed mid-capture (crash, force-quit, OOM) keeps all its audio bytes, but the RIFF
+// header's two length fields are only filled in on a clean stop — so they stay 0. ffmpeg shrugs and
+// reads to EOF, but iOS's AVAudioFile (which the waveform player and every AV API use) trusts the
+// header, sees 0 frames, and reports the file as unplayable ("音檔無法播放"). Rewriting the two
+// lengths from the real file size makes the recording play again; the audio itself is untouched.
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+export function b64ToBytes(b64: string): Uint8Array {
+  const clean = b64.replace(/[^A-Za-z0-9+/]/g, '');
+  const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
+  let p = 0, buf = 0, bits = 0;
+  for (let i = 0; i < clean.length; i++) {
+    buf = (buf << 6) | B64.indexOf(clean[i]);
+    bits += 6;
+    if (bits >= 8) { bits -= 8; out[p++] = (buf >> bits) & 0xff; }
+  }
+  return out.subarray(0, p);
+}
+
+export function bytesToB64(bytes: Uint8Array): string {
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i], b1 = bytes[i + 1], b2 = bytes[i + 2];
+    out += B64[b0 >> 2];
+    out += B64[((b0 & 3) << 4) | ((b1 ?? 0) >> 4)];
+    out += b1 === undefined ? '=' : B64[((b1 & 15) << 2) | ((b2 ?? 0) >> 6)];
+    out += b2 === undefined ? '=' : B64[b2 & 63];
+  }
+  return out;
+}
+
+const u32le = (n: number) => new Uint8Array([n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff]);
+const readU32 = (b: Uint8Array, o: number) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+const tag = (b: Uint8Array, o: number) => String.fromCharCode(b[o], b[o + 1], b[o + 2], b[o + 3]);
+
+// Locate the `data` chunk by WALKING the RIFF chunk chain — it is NOT at a fixed offset (a real
+// recording carries fmt/LIST/etc. before it, so data can start at 70+ rather than the textbook 44).
+// Returns the chunk's offset, or -1. Exported for unit tests.
+export function findDataChunk(head: Uint8Array): number {
+  if (head.length < 12 || tag(head, 0) !== 'RIFF' || tag(head, 8) !== 'WAVE') return -1;
+  let off = 12;
+  while (off + 8 <= head.length) {
+    if (tag(head, off) === 'data') return off;
+    const sz = readU32(head, off + 4);
+    if (sz <= 0) return -1;            // a broken non-data chunk: stop (never loop forever)
+    off += 8 + sz + (sz & 1);          // chunks are word-aligned
+  }
+  return -1;
+}
+
+// Repair one WAV in place. Returns true only if it actually rewrote the header.
+export async function repairWavHeader(storedOrPath: string): Promise<boolean> {
+  const path = bare(storedOrPath);
+  try {
+    const size = Number((await RNFS.stat(path)).size);
+    if (!(size > 44)) return false;
+    const head = b64ToBytes(await RNFS.read(path, 4096, 0, 'base64'));
+    const dataOff = findDataChunk(head);
+    if (dataOff < 0 || dataOff + 8 > size) return false;
+    const realData = size - (dataOff + 8);
+    const realRiff = size - 8;
+    if (readU32(head, dataOff + 4) === realData && readU32(head, 4) === realRiff) return false; // already sane
+    await RNFS.write(path, bytesToB64(u32le(realRiff)), 4, 'base64');
+    await RNFS.write(path, bytesToB64(u32le(realData)), dataOff + 4, 'base64');
+    return true;
+  } catch {
+    return false;                      // best-effort; never block the app on a repair
+  }
+}
+
+// Repair every .wav part across the given sessions. Runs for sessions ALREADY in the store too —
+// with incremental persistence a crashed recording is usually already saved, so it would never pass
+// through the orphan scan. Returns how many files were repaired.
+export async function repairWavParts(sessions: { parts?: { uri: string }[] }[]): Promise<number> {
+  let n = 0;
+  for (const s of sessions) {
+    for (const p of s.parts ?? []) {
+      if (!p.uri.endsWith('.wav')) continue;
+      if (await repairWavHeader(resolvePartUri(p.uri))) n++;
+    }
+  }
+  return n;
 }
 
 // Permanently delete a session's audio files (its whole per-session dir).
