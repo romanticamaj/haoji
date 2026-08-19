@@ -154,12 +154,32 @@ def _run_analyze(sid, text, model_arg, model_label):
     t0 = time.time()
     target = _notes_target_chars(text)
 
+    # Progress has TWO sources, because most of the wait is prompt processing, during which the model
+    # has produced no output at all — character-based progress alone sits at 0 and then rushes to
+    # 100%. So a ticker supplies an elapsed-time floor until tokens start flowing, and the character
+    # count takes over once it overtakes that floor. Only the larger of the two is ever published, so
+    # the bar never goes backwards.
+    state = {"pct": 0.0}
+    stop_tick = threading.Event()
+
+    def publish(pct, message):
+        pct = min(0.95, max(state["pct"], pct))     # monotonic, and never claims to be done
+        state["pct"] = pct
+        sessions.update_session(sid, notes_pct=round(pct, 3), notes_message=message)
+
     def on_progress(chars):
-        # Real progress (characters actually produced), capped below 100% so it never claims to be
-        # finished before it is — the last step is the completion write below.
-        pct = min(0.95, chars / target) if target else 0.0
-        sessions.update_session(sid, notes_pct=round(pct, 3),
-                                notes_message=f"生成中…（已寫 {chars} 字）")
+        publish(chars / target if target else 0.0, f"生成中…（已寫 {chars} 字）")
+
+    def _tick():
+        t_gen = time.time()
+        while not stop_tick.wait(2.0):
+            if state["pct"] >= 0.1:
+                continue                            # real output is flowing; let it drive
+            elapsed = time.time() - t_gen
+            mm, ss = divmod(int(elapsed), 60)
+            # Reading the transcript takes a while before the first token appears; creep towards 0.35
+            # so the user can see it working rather than staring at a dead 0%.
+            publish(0.35 * (1 - math.exp(-elapsed / 45.0)), f"生成中…（讀取逐字稿… 已 {mm}:{ss:02d}）")
 
     # We are executing now — leave the queue and say so.
     with _analyze_lock:
@@ -167,6 +187,7 @@ def _run_analyze(sid, text, model_arg, model_label):
             _notes_waiting.remove(sid)
     try:
         sessions.update_session(sid, notes_status="running", notes_pct=0.0, notes_message="生成中…")
+        threading.Thread(target=_tick, daemon=True, name=f"notes-tick-{sid}").start()
         notes = llm.get_provider("ollama").generate_meeting_notes(
             text, model=model_arg, on_progress=on_progress)
         sessions.update_session(sid, notes=notes, notes_status="done", notes_error=None,
@@ -176,6 +197,7 @@ def _run_analyze(sid, text, model_arg, model_label):
         log.exception("[%s] analyze(bg) FAILED: %s", sid, e)
         sessions.update_session(sid, notes_status="error", notes_error=str(e))
     finally:
+        stop_tick.set()
         with _analyze_lock:
             _analyzing.pop(sid, None)
             if sid in _notes_waiting:

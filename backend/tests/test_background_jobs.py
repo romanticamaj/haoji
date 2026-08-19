@@ -411,3 +411,39 @@ def test_recognition_progress_moves_instead_of_freezing(tmp_path, monkeypatch):
     assert seen[-1] > seen[0]                    # and it actually moved
     assert all(0.35 <= p < 0.95 for p in seen)   # stays inside the recognition phase
     assert sessions.get_session(sid)["pct"] == 1.0   # completion is what reaches 100%
+
+
+def test_progress_moves_during_prompt_processing_before_any_output(tmp_path, monkeypatch):
+    """Most of the wait is the model reading the transcript, during which it has produced NOTHING —
+    character-based progress alone sits at 0 and then jumps to 100. An elapsed-time floor keeps the
+    bar alive until tokens start flowing, and never overtakes real output."""
+    _db(tmp_path, monkeypatch)
+    sid = sessions.create_session("m.wav")
+    _seed_transcript(sid)
+    samples = []
+
+    class SlowPrefill:
+        def generate_meeting_notes(self, transcript, model=None, on_progress=None):
+            for _ in range(3):                     # long prefill: no on_progress calls at all
+                time.sleep(2.2)
+                s = sessions.get_session(sid)
+                samples.append((s["notes_pct"], s["notes_message"]))
+            on_progress(900)                       # then output starts
+            time.sleep(0.1)
+            samples.append((sessions.get_session(sid)["notes_pct"], sessions.get_session(sid)["notes_message"]))
+            return "## 會議摘要\n好"
+    monkeypatch.setattr(appmod.llm, "get_provider", lambda name="ollama": SlowPrefill())
+
+    c = TestClient(appmod.app)
+    c.post(f"/api/sessions/{sid}/analyze", json={"background": True})
+    for _ in range(200):
+        if sessions.get_session(sid)["notes_status"] == "done":
+            break
+        time.sleep(0.05)
+
+    pcts = [p for p, _ in samples]
+    assert pcts == sorted(pcts)                    # never goes backwards
+    assert pcts[0] > 0                             # alive during prefill, not a dead 0%
+    assert "讀取逐字稿" in samples[0][1]            # and says what it is doing
+    assert pcts[-1] > pcts[-2]                     # real output overtakes the time-based floor
+    assert max(pcts) <= 0.95
