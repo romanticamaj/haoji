@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transcript } from './types';
+import type { Job } from './job';
 
 export type SavedSession = {
   id: string; createdAt: number; title: string;
@@ -13,6 +14,9 @@ export type SavedSession = {
   // local, device-generated id so recording never depends on backend reachability; `backendId`
   // is what the transcribe/analyze endpoints key on.
   backendId?: string;
+  // Durable transcription job state (see lib/job.ts). Persisted so a backgrounded, crashed or
+  // force-quit app can resume the upload / keep fetching progress instead of losing the work.
+  job?: Job;
 };
 
 export interface SessionStore {

@@ -13,6 +13,8 @@ import {
   groupSessions, relativeDay, durationLabel, speakerCount, avatarSpec, hasTranscript, hasNotes,
 } from '../lib/sessionList';
 import { promoteTitleFromNotes } from '../lib/notesDoc';
+import { resumeAllJobs, onJobChange } from '../lib/jobRunner';
+import { isActive, overallPct } from '../lib/job';
 
 // Repair crash-truncated WAV headers once per app launch (not on every screen focus).
 let wavRepairDone = false;
@@ -27,25 +29,33 @@ export default function HomeScreen() {
   // On load, auto-replace any still-default (timestamp) title with the AI notes' topic, then persist
   // the ones that changed (sequential writes — AsyncStorage upsert is read-modify-write of the whole
   // map, so parallel writes would clobber each other).
+  // Reload + resume. Resuming is the other half of durable jobs (lib/job.ts): a transcription that
+  // was still uploading or still being processed when the app was backgrounded / killed gets picked
+  // back up here, so progress keeps advancing across launches instead of being silently dropped.
+  const load = useCallback(async () => {
+    const list = await store.list();
+    // Once per launch, repair the RIFF header of any WAV left truncated by a crash. Incremental
+    // persistence means a crashed recording is usually ALREADY in the store, so it never reaches the
+    // orphan scan below — without this it would sit in the list as an unplayable '音檔無法播放'.
+    if (!wavRepairDone) { wavRepairDone = true; await repairWavParts(list); }
+    // Recover any on-disk recordings with no store entry (e.g. the app crashed mid-recording before
+    // the session was saved) so they reappear as drafts instead of being silently lost.
+    const recovered = await recoverOrphanedRecordings(new Set(list.map((s) => s.id)));
+    for (const r of recovered) await store.upsert(r);
+    const full = recovered.length ? await store.list() : list;
+    const promoted = full.map(promoteTitleFromNotes);
+    setItems(promoted);
+    for (let i = 0; i < full.length; i++) {
+      if (promoted[i] !== full[i]) await store.upsert(promoted[i]);
+    }
+    void resumeAllJobs(store);
+  }, [store]);
+
   useFocusEffect(useCallback(() => {
-    (async () => {
-      const list = await store.list();
-      // Once per launch, repair the RIFF header of any WAV left truncated by a crash. Incremental
-      // persistence means a crashed recording is usually ALREADY in the store, so it never reaches the
-      // orphan scan below — without this it would sit in the list as an unplayable '音檔無法播放'.
-      if (!wavRepairDone) { wavRepairDone = true; await repairWavParts(list); }
-      // Recover any on-disk recordings with no store entry (e.g. the app crashed mid-recording before
-      // the session was saved) so they reappear as drafts instead of being silently lost.
-      const recovered = await recoverOrphanedRecordings(new Set(list.map((s) => s.id)));
-      for (const r of recovered) await store.upsert(r);
-      const full = recovered.length ? await store.list() : list;
-      const promoted = full.map(promoteTitleFromNotes);
-      setItems(promoted);
-      for (let i = 0; i < full.length; i++) {
-        if (promoted[i] !== full[i]) await store.upsert(promoted[i]);
-      }
-    })();
-  }, [store]));
+    void load();
+    // Live-refresh the list while a job runs in the background (progress badge on the card).
+    return onJobChange(() => { void load(); });
+  }, [load]));
 
   // Permanently remove a recording: drop it from the list immediately, then delete its audio files
   // and the stored entry. The device is the source of truth, so this frees the on-device storage.
@@ -179,6 +189,11 @@ function SessionCard({ session, now, onPress }: { session: SavedSession; now: nu
         </View>
 
         <View style={styles.pills}>
+          {isActive(session.job) && (
+            <View style={[styles.pill, styles.pillBusy]}>
+              <Text style={styles.pillBusyText}>處理中 {Math.round(overallPct(session.job!) * 100)}%</Text>
+            </View>
+          )}
           {transcribed && <DonePill label="逐字稿" />}
           {noted ? <DonePill label="記錄" /> : transcribed ? <TodoPill label="未生成記錄" /> : null}
         </View>
@@ -244,6 +259,8 @@ const styles = StyleSheet.create({
   pillDoneText: { fontSize: 11, fontWeight: '600', color: colors.good },
   tick: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.good, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
   tickText: { fontSize: 8, color: '#fff', fontWeight: '700', lineHeight: 10 },
+  pillBusy: { backgroundColor: colors.brandSoft },
+  pillBusyText: { fontSize: 11, fontWeight: '700', color: colors.brand },
   pillTodo: { backgroundColor: colors.chipBg },
   pillTodoText: { fontSize: 11, fontWeight: '600', color: colors.ink3 },
 

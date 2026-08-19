@@ -1,104 +1,100 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { createSession, uploadPart, transcribe, getSession } from '../lib/api';
-import { resolvePartUri } from '../lib/recordings';
 import { useStore } from '../lib/store-context';
-import { colors } from '../lib/theme';
+import { SavedSession } from '../lib/store';
+import { ensureJob, restartJob, onJobChange } from '../lib/jobRunner';
+import { overallPct } from '../lib/job';
+import { colors, radius } from '../lib/theme';
 
+// This screen no longer OWNS the work — it just watches it.
+//
+// The job lives in lib/jobRunner and persists every step, so it keeps running when you navigate away
+// and is resumed on the next launch if the app is backgrounded, crashes, or is swiped away. That is
+// why leaving here is safe (and why there's a "在背景繼續" button): the backend finishes the
+// transcription on its own, and the app only has to collect the result whenever it next runs.
 export default function ProcessingScreen() {
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const store = useStore();
-  // Local id (device source of truth). The backend draft session is created lazily below; all
-  // results are persisted back under this local id.
   const sessionId: string = route.params.sessionId;
-  // regen (from "重新生成逐字稿"): force a brand-new backend session instead of reusing the old
-  // backendId, whose uploaded parts were already deleted server-side after the previous attempt.
+  // regen (from "重新生成逐字稿"): drop the old backend session/job and start a clean one — the old
+  // session's uploaded parts are deleted server-side after each attempt.
   const regen: boolean = route.params.regen ?? false;
-  const [message, setMessage] = useState('準備中…');
-  const [error, setError] = useState<string | null>(null);
-  const cancelled = useRef(false);
-  // Ensures the upload pipeline runs at most once per mount — a second run would re-upload the same
-  // audio and, combined with any backend hiccup, is exactly how duplicates crept in.
-  const started = useRef(false);
+  const [session, setSession] = useState<SavedSession | null>(null);
 
   useEffect(() => {
-    cancelled.current = false;
+    let alive = true;
+    const refresh = () => { void store.get(sessionId).then((s) => { if (alive) setSession(s); }); };
+    const off = onJobChange(refresh);
     (async () => {
-      if (started.current) return;
-      started.current = true;
-      const s0 = await store.get(sessionId);
-      const parts = s0?.parts ?? [];
-
-      // Create the backend draft session now (recording/upload up to this point was fully offline).
-      // Reuse an existing backendId if this screen is retried; otherwise create one keyed on the
-      // local session id (idempotency/task key) so a duplicated pipeline maps to ONE server session.
-      setMessage('連線後端…');
-      let backendId: string;
-      try { backendId = (!regen && s0?.backendId) ? s0.backendId : (await createSession(regen ? undefined : sessionId)); }
-      catch { setError('無法連線後端，請確認手機已連上 Tailscale／後端已啟動。'); return; }
-      if (cancelled.current) return;
-      // Persist backendId immediately so a retry/analyze reuses the same server session.
-      if (backendId !== s0?.backendId) {
-        const cur = await store.get(sessionId);
-        if (cur) await store.upsert({ ...cur, backendId });
+      // Defensive: the recording/import flow always persists the session first, but never start a job
+      // against a missing record — create a minimal one so the pipeline has something to write to.
+      if (!(await store.get(sessionId))) {
+        await store.upsert({
+          id: sessionId, createdAt: Date.now(), title: new Date().toLocaleString(),
+          names: {}, unlocked: false, parts: [],
+        });
       }
-
-      for (let i = 0; i < parts.length; i++) {
-        setMessage(`上傳中… ${i + 1}/${parts.length}`);
-        try { await uploadPart(backendId, { uri: resolvePartUri(parts[i].uri), name: `part-${i}.m4a`, mime: 'audio/mp4' }, i); }
-        catch (e: any) { setError('上傳失敗：' + (e?.message || '')); return; }
-      }
-      setMessage('開始辨識…');
-      try { await transcribe(backendId); }
-      catch (e: any) { setError(e?.message || '辨識失敗'); return; }
-      while (!cancelled.current) {
-        let s; try { s = await getSession(backendId); } catch { await delay(1500); continue; }
-        setMessage(s.message || s.status);
-        if (s.status === 'done') {
-          const existing = await store.get(sessionId);
-          const saved = {
-            id: sessionId, createdAt: existing?.createdAt ?? Date.now(),
-            title: existing?.title ?? new Date().toLocaleString(),
-            transcript: s.transcript, names: existing?.names ?? {},
-            notes: existing?.notes, unlocked: existing?.unlocked ?? false,
-            parts: existing?.parts ?? [], backendId,
-          };
-          await store.upsert(saved);
-          nav.replace('Results', { sessionId, session: saved }); // preload so Results renders instantly
-          return;
-        }
-        if (s.status === 'error') { setError(s.error || s.message || '辨識失敗'); return; }
-        await delay(1500);
-      }
+      if (!alive) return;
+      if (regen) await restartJob(sessionId, store);
+      else void ensureJob(sessionId, store);
     })();
-    return () => { cancelled.current = true; };
-  }, [sessionId]);
+    refresh();
+    return () => { alive = false; off(); };
+  }, [sessionId, regen, store]);
 
-  if (error) return (
+  const job = session?.job;
+
+  // Finished while we were watching → go straight to the result.
+  useEffect(() => {
+    if (job?.stage === 'done' && session) nav.replace('Results', { sessionId, session });
+  }, [job?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (job?.stage === 'error') return (
     <View style={styles.center}>
-      <Text style={styles.err}>{error}</Text>
+      <Text style={styles.err}>{job.error || '處理失敗'}</Text>
       <View style={styles.errActions}>
-        {/* retry with a fresh backend session (regen) so a partial/failed upload starts clean */}
-        <Pressable style={styles.retry} onPress={() => nav.replace('Processing', { sessionId, regen: true })}>
+        <Pressable style={styles.retry} onPress={() => void restartJob(sessionId, store)} accessibilityRole="button">
           <Text style={styles.retryText}>重試</Text>
         </Pressable>
-        <Pressable style={styles.back} onPress={() => nav.navigate('Home')}><Text style={styles.backText}>返回</Text></Pressable>
+        <Pressable style={styles.back} onPress={() => nav.navigate('Home')} accessibilityRole="button">
+          <Text style={styles.backText}>返回</Text>
+        </Pressable>
       </View>
     </View>
   );
+
+  const pct = job ? Math.round(overallPct(job) * 100) : 0;
   return (
     <View style={styles.center}>
       <ActivityIndicator size="large" color={colors.brand} />
-      <Text style={styles.msg}>{message}</Text>
+      <Text style={styles.msg}>{job?.message || '準備中…'}</Text>
+      <View style={styles.barTrack}><View style={[styles.barFill, { width: `${pct}%` }]} /></View>
+      <Text style={styles.pct}>{pct}%</Text>
+
+      <Text style={styles.note}>
+        {job?.stage === 'transcribing'
+          ? '已送出給後端處理，離開 App 也會繼續。'
+          : '上傳完成後就會在後端繼續處理。'}
+      </Text>
+      <Pressable style={styles.bg} onPress={() => nav.navigate('Home')} accessibilityRole="button">
+        <Text style={styles.bgText}>在背景繼續</Text>
+      </Pressable>
     </View>
   );
 }
-const delay = (ms: number) => new Promise<void>((r) => setTimeout(() => r(), ms));
+
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, padding: 24 },
   msg: { marginTop: 16, color: colors.ink2, fontSize: 15 },
+  barTrack: { width: '78%', height: 6, borderRadius: 3, backgroundColor: colors.chipBg, marginTop: 16, overflow: 'hidden' },
+  barFill: { height: 6, borderRadius: 3, backgroundColor: colors.brand },
+  pct: { marginTop: 8, fontSize: 12.5, color: colors.ink3, fontVariant: ['tabular-nums'] },
+  note: { marginTop: 22, fontSize: 12.5, color: colors.ink3, textAlign: 'center', lineHeight: 18 },
+  bg: { marginTop: 12, paddingVertical: 10, paddingHorizontal: 22, borderRadius: radius.pill, backgroundColor: colors.chipBg },
+  bgText: { color: colors.ink, fontSize: 14, fontWeight: '600' },
+
   err: { color: colors.brand, fontSize: 16, textAlign: 'center' },
   errActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
   retry: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: colors.brand },
