@@ -1,4 +1,4 @@
-import { runJob, newJob, isActive, overallPct, Job, JobDeps } from '../job';
+import { runJob, newJob, isActive, overallPct, UPLOAD_WAIT_TIMEOUT_MS, Job, JobDeps } from '../job';
 import { SavedSession } from '../store';
 import { SessionStatus } from '../types';
 
@@ -121,4 +121,60 @@ test('isActive / overallPct', () => {
   expect(overallPct({ stage: 'uploading', pct: 1 } as Job)).toBeCloseTo(0.4);
   expect(overallPct({ stage: 'transcribing', pct: 0 } as Job)).toBeCloseTo(0.4);
   expect(overallPct({ stage: 'done', pct: 1 } as Job)).toBe(1);
+});
+
+// --- OS background upload -----------------------------------------------------------------------
+// When iOS can carry the transfers itself we hand the files over and stop driving the upload: the OS
+// finishes it with the app swiped away, and the backend starts transcription once all parts land.
+function bgHarness(seed: SavedSession, statuses: SessionStatus[], pending: string[] = [], nowFn?: () => number) {
+  const h = harness(seed, statuses);
+  const enqueued: Array<{ url: string; file: string; taskId: string }> = [];
+  h.deps.bg = {
+    available: true,
+    enqueue: jest.fn(async (url, file, taskId) => { enqueued.push({ url, file, taskId }); }),
+    pendingTasks: jest.fn(async () => pending),
+    partUrl: (backendId, i) => `http://host/api/sessions/${backendId}/parts/${i}`,
+  };
+  if (nowFn) h.deps.now = nowFn;
+  // NOTE: don't spread `h` — that would snapshot its `session` getter and the assertions would read
+  // the seed instead of what the job actually saved.
+  return { deps: h.deps, enqueued, get session() { return h.session; } };
+}
+
+test('background upload: hands every part to the OS and does NOT upload or submit itself', async () => {
+  const h = bgHarness(base, [{ status: 'done', pct: 1, message: '完成', transcript }]);
+  await runJob('local-1', h.deps);
+
+  expect(h.enqueued.map((e) => e.taskId)).toEqual(['local-1:0', 'local-1:1', 'local-1:2']);
+  expect(h.enqueued[0].url).toBe('http://host/api/sessions/backend-1/parts/0');
+  expect(h.enqueued[0].file).toBe('file:///doc/haoji/local-1/part-0.wav');
+  expect(h.deps.uploadPart).not.toHaveBeenCalled();   // the OS does the transfer
+  expect(h.deps.transcribe).not.toHaveBeenCalled();   // the BACKEND auto-starts once parts land
+  expect(h.session.transcript).toEqual(transcript);
+});
+
+test('background upload: never queues a part the OS is already carrying', async () => {
+  const h = bgHarness(base, [{ status: 'done', pct: 1, message: '完成', transcript }],
+                      ['local-1:0', 'local-1:2']);
+  await runJob('local-1', h.deps);
+  expect(h.enqueued.map((e) => e.taskId)).toEqual(['local-1:1']);
+});
+
+test('background upload: gives up if the parts never land instead of polling forever', async () => {
+  let t = 0;
+  const queued: SessionStatus[] = Array.from({ length: 5 }, () => ({ status: 'queued', pct: 0, message: '排隊中…' }));
+  // every clock read jumps far past the wait window
+  const h = bgHarness(base, queued, [], () => (t += UPLOAD_WAIT_TIMEOUT_MS));
+  await runJob('local-1', h.deps);
+  expect(h.session.job?.stage).toBe('error');
+  expect(h.session.job?.error).toMatch(/上傳未完成/);
+});
+
+test('background upload unavailable → falls back to uploading in the foreground', async () => {
+  const h = harness(base, [{ status: 'done', pct: 1, message: '完成', transcript }]);
+  h.deps.bg = { available: false, enqueue: jest.fn(), pendingTasks: jest.fn(async () => []), partUrl: () => '' };
+  await runJob('local-1', h.deps);
+  expect(h.uploads).toEqual([0, 1, 2]);
+  expect(h.deps.transcribe).toHaveBeenCalled();
+  expect(h.deps.bg.enqueue).not.toHaveBeenCalled();
 });

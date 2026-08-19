@@ -125,3 +125,39 @@ def test_synchronous_analyze_still_works(tmp_path, monkeypatch):
     r = c.post(f"/api/sessions/{sid}/analyze", json={})
     assert r.status_code == 200
     assert r.json()["notes"].endswith("同步")
+
+
+def test_put_part_stores_bytes_and_is_idempotent_by_index(tmp_path, monkeypatch):
+    """The raw-body route used by iOS background uploads."""
+    _db(tmp_path, monkeypatch)
+    c = TestClient(appmod.app)
+    sid = c.post("/api/sessions", json={}).json()["session_id"]
+
+    r = c.put(f"/api/sessions/{sid}/parts/0", content=b"hello-audio")
+    assert r.status_code == 200 and r.json()["count"] == 1
+    # re-sending the same index overwrites rather than appending (a retried upload can't duplicate)
+    r = c.put(f"/api/sessions/{sid}/parts/0", content=b"hello-audio-again")
+    assert r.json()["count"] == 1
+    path = sessions.get_parts(sid)[0]
+    assert open(path, "rb").read() == b"hello-audio-again"
+
+
+def test_put_part_auto_starts_transcription_on_the_last_expected_part(tmp_path, monkeypatch):
+    """The whole point: the OS can finish the upload with the app closed and the job still runs."""
+    _db(tmp_path, monkeypatch)
+    started = []
+    monkeypatch.setattr(appmod, "_submit_transcribe", lambda sid: (started.append(sid), True)[1])
+    c = TestClient(appmod.app)
+    sid = c.post("/api/sessions", json={"expected_parts": 2}).json()["session_id"]
+
+    assert c.put(f"/api/sessions/{sid}/parts/0", content=b"aaa").json()["transcribe_started"] is False
+    assert c.put(f"/api/sessions/{sid}/parts/1", content=b"bbb").json()["transcribe_started"] is True
+    assert started == [sid]
+
+
+def test_put_part_rejects_an_empty_body(tmp_path, monkeypatch):
+    _db(tmp_path, monkeypatch)
+    c = TestClient(appmod.app)
+    sid = c.post("/api/sessions", json={}).json()["session_id"]
+    assert c.put(f"/api/sessions/{sid}/parts/0", content=b"").status_code == 400
+    assert sessions.get_parts(sid) == []

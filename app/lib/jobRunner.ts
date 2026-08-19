@@ -1,5 +1,6 @@
 import * as api from './api';
 import { resolvePartUri } from './recordings';
+import * as bgUpload from './backgroundUpload';
 import { SessionStore } from './store';
 import { runJob, isActive } from './job';
 import { runNotesJob, isNotesActive } from './notesJob';
@@ -38,6 +39,13 @@ export function ensureJob(sessionId: string, store: SessionStore): Promise<void>
     resolveUri: resolvePartUri,
     delay: (ms) => new Promise<void>((r) => setTimeout(r, ms)),
     isCancelled: () => cancelled.has(sessionId),
+    // When the OS uploader is available the transfers survive the app being swiped away.
+    bg: {
+      available: bgUpload.available,
+      enqueue: bgUpload.enqueue,
+      pendingTasks: bgUpload.pendingTasks,
+      partUrl: api.partPutUrl,
+    },
   }).finally(() => { running.delete(sessionId); cancelled.delete(sessionId); notify(); });
 
   running.set(sessionId, p);

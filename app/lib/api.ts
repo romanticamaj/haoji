@@ -48,6 +48,11 @@ export async function uploadPart(
   const res = await timedFetch(`${API_BASE}/api/sessions/${id}/parts?index=${index}`, { method: 'POST', body: form }, 600000);
   return ((await asJson(res)) as any).count;
 }
+// URL for the raw-body part upload used by the iOS background session (it can only send a file, not
+// a multipart form). Same idempotency as the multipart route: index N overwrites slot N.
+export const partPutUrl = (backendId: string, index: number) =>
+  `${API_BASE}/api/sessions/${backendId}/parts/${index}`;
+
 export async function transcribe(id: string): Promise<void> {
   // Only submits the background job; returns fast.
   await asJson(await timedFetch(`${API_BASE}/api/sessions/${id}/transcribe`, { method: 'POST' }, 20000));

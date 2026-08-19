@@ -31,6 +31,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     return true
   }
+
+  /// iOS wakes the app (relaunching it if needed) once background uploads finish. Hand the completion
+  /// handler to BackgroundUpload so it can call it after delivering the events — without this the
+  /// system may stop giving the app background time for transfers.
+  func application(
+    _ application: UIApplication,
+    handleEventsForBackgroundURLSession identifier: String,
+    completionHandler: @escaping () -> Void
+  ) {
+    BackgroundUpload.backgroundCompletionHandler = completionHandler
+  }
 }
 
 class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {

@@ -23,7 +23,14 @@ export type Job = {
   message: string;
   error?: string;
   updatedAt: number;
+  // Set when the parts were handed to the OS background uploader: from then on we are waiting for the
+  // transfers to land and the backend to auto-start. Used to give up if that never happens.
+  waitingSince?: number;
 };
+
+// How long to wait for OS-driven uploads to land before calling it a failure. Generous: a long
+// meeting over a slow link legitimately takes a while.
+export const UPLOAD_WAIT_TIMEOUT_MS = 30 * 60 * 1000;
 
 export type JobDeps = {
   createSession(clientId: string, expectedParts?: number): Promise<string>;
@@ -36,6 +43,14 @@ export type JobDeps = {
   delay(ms: number): Promise<void>;
   now?(): number;
   isCancelled?(): boolean;
+  // Optional OS-driven upload. When available the parts are handed to iOS, which finishes them even
+  // if the app is swiped away; the backend then starts transcription itself once they all arrive.
+  bg?: {
+    available: boolean;
+    enqueue(url: string, fileUri: string, taskId: string): Promise<void>;
+    pendingTasks(): Promise<string[]>;
+    partUrl(backendId: string, index: number): string;
+  };
 };
 
 export const isActive = (j?: Job) => j?.stage === 'uploading' || j?.stage === 'transcribing';
@@ -90,21 +105,38 @@ export async function runJob(sessionId: string, d: JobDeps): Promise<void> {
       if (st && st.status !== 'queued') await patch({ stage: 'transcribing', pct: st.pct ?? 0, message: st.message || '' });
     }
 
-    // 3. Upload the remaining parts, one at a time, recording progress as we go.
+    // 3. Upload the remaining parts.
     if (job.stage === 'uploading') {
       const parts = s.parts ?? [];
-      for (let i = job.uploaded; i < parts.length; i++) {
+      if (d.bg?.available && parts.length > 0) {
+        // Hand the files to the OS: it keeps uploading with the app suspended or swiped away. We do
+        // NOT call transcribe here — the backend starts it itself once every expected part lands,
+        // which is what lets the whole pipeline finish without this app ever running again.
+        const pending = await d.bg.pendingTasks();
+        for (let i = job.uploaded; i < parts.length; i++) {
+          if (cancelled()) return;
+          const taskId = `${sessionId}:${i}`;
+          if (pending.includes(taskId)) continue;   // already in the OS queue — never queue it twice
+          await d.bg.enqueue(d.bg.partUrl(backendId, i), d.resolveUri(parts[i].uri), taskId);
+        }
+        await patch({
+          stage: 'transcribing', uploaded: parts.length, pct: 0,
+          message: '上傳中（可以離開 App）…', waitingSince: now(),
+        });
+      } else {
+        for (let i = job.uploaded; i < parts.length; i++) {
+          if (cancelled()) return;
+          await patch({ pct: parts.length ? i / parts.length : 0, message: `上傳中… ${i + 1}/${parts.length}` });
+          await d.uploadPart(backendId, {
+            uri: d.resolveUri(parts[i].uri), name: nameFor(parts[i].uri, i), mime: mimeFor(parts[i].uri),
+          }, i);
+          await patch({ uploaded: i + 1, pct: parts.length ? (i + 1) / parts.length : 1 });
+        }
         if (cancelled()) return;
-        await patch({ pct: parts.length ? i / parts.length : 0, message: `上傳中… ${i + 1}/${parts.length}` });
-        await d.uploadPart(backendId, {
-          uri: d.resolveUri(parts[i].uri), name: nameFor(parts[i].uri, i), mime: mimeFor(parts[i].uri),
-        }, i);
-        await patch({ uploaded: i + 1, pct: parts.length ? (i + 1) / parts.length : 1 });
+        await d.transcribe(backendId);
+        // From here the backend finishes on its own — the app can die freely.
+        await patch({ stage: 'transcribing', pct: 0, message: '辨識中…' });
       }
-      if (cancelled()) return;
-      await d.transcribe(backendId);
-      // From here the backend finishes on its own — the app can die freely.
-      await patch({ stage: 'transcribing', pct: 0, message: '辨識中…' });
     }
 
     // 4. Poll until the server is done. This is the only thing a resumed app has to do.
@@ -118,6 +150,12 @@ export async function runJob(sessionId: string, d: JobDeps): Promise<void> {
       }
       if (st.status === 'error') {
         await patch({ stage: 'error', error: st.error || st.message || '辨識失敗' });
+        return;
+      }
+      // Still 'queued' long after the parts were handed to the OS means the transfers never landed
+      // (upload failed / backend unreachable). Fail loudly instead of polling forever.
+      if (st.status === 'queued' && job.waitingSince && now() - job.waitingSince > UPLOAD_WAIT_TIMEOUT_MS) {
+        await patch({ stage: 'error', error: '上傳未完成，請重試。' });
         return;
       }
       await patch({ pct: st.pct ?? 0, message: st.message || '辨識中…' });

@@ -161,6 +161,37 @@ def _submit_transcribe(sid):
     return True
 
 
+@app.put("/api/sessions/{sid}/parts/{index}")
+async def put_part(sid: str, index: int, req: Request):
+    """Raw-body variant of the part upload.
+
+    iOS background uploads (NSURLSession with a background configuration) can only send a FILE as the
+    body — they cannot build a multipart form. So the phone PUTs the audio bytes straight here, which
+    lets the OS finish the transfer even after the app is swiped away. Same idempotency as the
+    multipart route: index N overwrites slot N, and the last expected part auto-starts transcription.
+    """
+    if not sessions.get_session(sid):
+        return JSONResponse({"error": "查無此工作"}, status_code=404)
+    dest = os.path.join(PARTS_DIR, f"{sid}-{index}.m4a")
+    nbytes = 0
+    with open(dest, "wb") as out:
+        async for chunk in req.stream():
+            out.write(chunk)
+            nbytes += len(chunk)
+    if nbytes == 0:
+        try: os.remove(dest)
+        except OSError: pass
+        return JSONResponse({"error": "空的檔案"}, status_code=400)
+    count = sessions.set_part(sid, index, dest)
+    log.info("[%s] part idx %s received via PUT (%.1f KB, %d total)", sid, index, nbytes / 1024, count)
+    started = False
+    if sessions.parts_complete(sid):
+        started = _submit_transcribe(sid)
+        if started:
+            log.info("[%s] all %s parts in (PUT) — transcription auto-started", sid, count)
+    return {"count": count, "transcribe_started": started}
+
+
 def _run_transcribe(sid):
     parts = [p for p in sessions.get_parts(sid) if p]  # skip empty index slots
     t0 = time.time()
