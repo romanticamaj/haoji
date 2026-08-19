@@ -3,8 +3,8 @@
 #
 # Idempotent "ensure the backend stack is up" check. Safe to run on a timer.
 #   1. AI Service Manager (:8760) — start it if it died
-#   2. 好記 backend  (:8780, gpu:false) — start via manager if down (always safe)
-#   3. Breeze ASR    (:8765, gpu:true) — start via manager ONLY if the GPU is free.
+#   2. 好記 backend  (:7780, gpu:false) — start via manager if down (always safe)
+#   3. Breeze ASR    (:7765, gpu:true) — start via manager ONLY if the GPU is free.
 #      If another GPU model owns the GPU we DON'T touch it (a timer must never
 #      kill your other work). When you actually need ASR and a model holds the
 #      GPU, run start.bat interactively — it asks before stopping it.
@@ -39,18 +39,18 @@ if (-not $svc) {
 }
 
 # --- 2. 好記 backend (gpu:false, always safe to start) -----------------------
-$haojiUp = (Get-Json "http://127.0.0.1:8780/health") -ne $null
+$haojiUp = (Get-Json "http://127.0.0.1:7780/health") -ne $null
 if (-not $haojiUp) {
     $h = $svc | Where-Object { $_.id -eq "haoji" }
     if ($h) {
         if ($h.status -ne "stopped") { Post "$ManagerBase/api/services/haoji/stop" | Out-Null; Start-Sleep 1 }
-        if (Post "$ManagerBase/api/services/haoji/start") { Log "haoji :8780 was down -> started" }
+        if (Post "$ManagerBase/api/services/haoji/start") { Log "haoji :7780 was down -> started" }
         else { Log "haoji start request failed" }
     } else { Log "haoji not in services.json — cannot auto-start" }
 }
 
 # --- 3. Breeze ASR (gpu:true, only if GPU is free) ---------------------------
-$asrHealth = Get-Json "http://127.0.0.1:8765/health"
+$asrHealth = Get-Json "http://127.0.0.1:7765/health"
 $asrOk = $asrHealth -and ($asrHealth.status -eq "ok" -or "$($asrHealth.model)" -match "breeze")
 if (-not $asrOk) {
     $blockers = $svc | Where-Object { $_.gpu -eq $true -and $_.id -ne "asr" -and ($_.status -eq "running" -or $_.status -eq "starting") }
@@ -59,7 +59,7 @@ if (-not $asrOk) {
     } else {
         $a = $svc | Where-Object { $_.id -eq "asr" }
         if ($a -and $a.status -ne "stopped") { Post "$ManagerBase/api/services/asr/stop" | Out-Null; Start-Sleep 1 }
-        if (Post "$ManagerBase/api/services/asr/start") { Log "ASR :8765 was down, GPU free -> started" }
+        if (Post "$ManagerBase/api/services/asr/start") { Log "ASR :7765 was down, GPU free -> started" }
         else { Log "ASR start request failed" }
     }
 }

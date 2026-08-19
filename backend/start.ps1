@@ -3,12 +3,12 @@
 #
 # Brings the WHOLE backend up in the right order:
 #   1. AI Service Manager (:8760)  — starts it if it's not already running
-#   2. Breeze ASR (:8765)          — via the manager; if another GPU model owns
+#   2. Breeze ASR (:7765)          — via the manager; if another GPU model owns
 #                                    the GPU it ASKS before stopping it (GPU is
 #                                    mutually exclusive — only one gpu:true svc
 #                                    can run at a time)
 #   3. Ollama (:11434)             — best-effort auto-start (needed at analyze)
-#   4. 好記 backend (:8780)         — python app.py (foreground)
+#   4. 好記 backend (:7780)         — python app.py (foreground)
 #
 # Usage:  powershell -ExecutionPolicy Bypass -File start.ps1
 #         (or just double-click start.bat, which calls this)
@@ -16,7 +16,7 @@
 # Flags:
 #   -Force            stop the GPU-owning model WITHOUT asking
 #   -NoStop           never stop another model (abort if GPU is busy)
-#   -RestartBackend   kill an already-running :8780 and relaunch it
+#   -RestartBackend   kill an already-running :7780 and relaunch it
 
 param(
     [switch]$Force,
@@ -32,11 +32,11 @@ $ManagerBase   = "http://127.0.0.1:8760"
 $ManagerBat    = "C:\ai-servers\start_manager.bat"
 $ManagerDir    = "C:\ai-servers"
 $AsrId         = "asr"
-$AsrHealth     = "http://127.0.0.1:8765/health"
+$AsrHealth     = "http://127.0.0.1:7765/health"
 $OllamaTags    = "http://127.0.0.1:11434/api/tags"
 $OllamaExe     = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"
-$HaojiHealth   = "http://127.0.0.1:8780/health"
-$HaojiPort     = 8780
+$HaojiHealth   = "http://127.0.0.1:7780/health"
+$HaojiPort     = 7780
 
 function Info($m)  { Write-Host $m }
 function Ok($m)    { Write-Host $m -ForegroundColor Green }
@@ -64,7 +64,7 @@ if (-not $svc) {
 Ok "  manager OK"
 
 # --- 2. Breeze ASR (with GPU handoff) ----------------------------------------
-Info "=== [2/4] Breeze ASR (:8765) ==="
+Info "=== [2/4] Breeze ASR (:7765) ==="
 $asr = $svc | Where-Object { $_.id -eq $AsrId } | Select-Object -First 1
 
 $asrHealthy = (Test-Http $AsrHealth 3) -eq 200
@@ -130,23 +130,23 @@ if ((Test-Http $OllamaTags 3) -eq 200) {
 }
 
 # --- 4. 好記 backend ---------------------------------------------------------
-Info "=== [4/4] 好記 backend (:8780) ==="
+Info "=== [4/4] 好記 backend (:7780) ==="
 $beUp = (Test-Http $HaojiHealth 3) -eq 200
 if ($beUp -and -not $RestartBackend) {
-    Ok "  好記後端已在跑 :8780（要重啟加 -RestartBackend）"
+    Ok "  好記後端已在跑 :7780（要重啟加 -RestartBackend）"
     Ok ""
-    Ok "全部就緒。App 可連 http://100.106.118.45:8780 (Tailscale)"
+    Ok "全部就緒。App 可連 http://100.106.118.45:7780 (Tailscale)"
     exit 0
 }
 if ($beUp -and $RestartBackend) {
-    Warn "  重啟 :8780，先關掉舊的…"
+    Warn "  重啟 :7780，先關掉舊的…"
     Get-NetTCPConnection -LocalPort $HaojiPort -State Listen -ErrorAction SilentlyContinue |
         Select-Object -ExpandProperty OwningProcess -Unique |
         ForEach-Object { try { Stop-Process -Id $_ -Force } catch {} }
     Start-Sleep -Seconds 1
 }
 
-Info "  啟動好記後端於 :8780…"
+Info "  啟動好記後端於 :7780…"
 $env:PYTHONIOENCODING = "utf-8"
 Set-Location $Here
 python app.py

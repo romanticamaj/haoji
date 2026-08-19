@@ -10,12 +10,12 @@ if not exist logs mkdir logs
 
 echo === prerequisites ===
 curl -s -o nul -w "  Ollama (11434):    HTTP %%{http_code}\n" http://127.0.0.1:11434/api/tags
-curl -s -o nul -w "  Breeze ASR (8765): HTTP %%{http_code}\n" http://127.0.0.1:8765/health
+curl -s -o nul -w "  Breeze ASR (7765): HTTP %%{http_code}\n" http://127.0.0.1:7765/health
 echo   ^(if ASR shows 000, start it via C:\ai-servers\start_manager.bat then the "Breeze ASR" service^)
 echo.
 
 :loop
-echo [%date% %time%] starting haoji backend on :8780
+echo [%date% %time%] starting haoji backend on :7780
 echo [%date% %time%] --- start --- >> logs\backend.log
 python app.py >> logs\backend.log 2>&1
 echo [%date% %time%] backend EXITED (code %errorlevel%) — restarting in 3s.  Ctrl+C twice to stop.

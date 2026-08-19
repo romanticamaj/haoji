@@ -3,7 +3,7 @@
 Jest covers logic + component behaviour with native modules mocked. Recording, playback, and
 call-interruption behaviour can only be verified on a **real device** — run a local dev build
 (`npm run ios` on a connected device) or install the TestFlight build. The backend URL comes
-from `.env` (`react-native-config`), defaulting to the Tailscale IP `100.106.118.45:8780`.
+from `.env` (`react-native-config`), defaulting to the Tailscale IP `100.106.118.45:7780`.
 
 - [ ] Mic permission prompt appears on first record.
 - [ ] Big red button records; timer counts up; button shows stop (square) while recording.

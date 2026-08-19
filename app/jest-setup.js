@@ -6,7 +6,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
 
 // react-native-config is a native module; give tests a default backend base URL
-jest.mock('react-native-config', () => ({ API_BASE: 'http://127.0.0.1:8780' }));
+jest.mock('react-native-config', () => ({ API_BASE: 'http://127.0.0.1:7780' }));
 
 // react-native-fs constructs a NativeEventEmitter at import → crashes in jest without a
 // native module. Provide a default surface so any suite that transitively imports it loads.
