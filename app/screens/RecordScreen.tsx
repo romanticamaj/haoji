@@ -10,7 +10,7 @@ import { pick, keepLocalCopy, types, isErrorWithCode, errorCodes } from '@react-
 import { launchImageLibrary } from 'react-native-image-picker';
 import { useRecorder } from '../hooks/useRecorder';
 import RNFS from 'react-native-fs';
-import { moveToPart } from '../lib/recordings';
+import { moveToPart, mergeSessionParts } from '../lib/recordings';
 import { isVideo, storageExtFor } from '../lib/importMedia';
 import * as audioExtract from '../lib/audioExtract';
 import { mmss } from '../lib/transcript';
@@ -95,6 +95,16 @@ export default function RecordScreen() {
     // Nothing was captured (opened + left, or a zero-length take) → don't create an empty record.
     if (parts.length === 0) { nav.goBack(); return; }
     await persist(parts);
+    // Segments exist only to protect audio DURING recording. Now that it has stopped cleanly, join
+    // them into one file so the meeting is a single recording everywhere — one player, one waveform,
+    // one export — instead of 段 1 / 段 2 / 段 3. Lossless (identical PCM), and if it can't be done
+    // the parts simply stay as they were.
+    if (parts.length > 1) {
+      setBusyMsg('整理錄音中…');
+      const merged = await mergeSessionParts(sid, parts);
+      if (merged) await persist(merged);
+      setBusyMsg(null);
+    }
     // Don't jump straight into analysis — land on Review so the user can listen back and decide
     // whether to analyze or discard (a bad take shouldn't force a transcription round-trip).
     nav.replace('Review', { sessionId: sid });

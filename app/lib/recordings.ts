@@ -1,5 +1,6 @@
 import RNFS from 'react-native-fs';
 import type { SavedSession } from './store';
+import * as audioMerge from './audioMerge';
 
 // RNFS wants bare POSIX paths; the rest of the app wants file:// URIs. Convert at the edges.
 const bare = (p: string) => p.replace(/^file:\/\//, '');
@@ -189,6 +190,44 @@ export async function repairWavParts(sessions: { parts?: { uri: string }[] }[]):
     }
   }
   return n;
+}
+
+/**
+ * Join a finished recording's parts into ONE file.
+ *
+ * Parts only exist so that an interruption or crash mid-recording can't cost the audio captured so
+ * far. Once recording has stopped there is no reason to keep them apart, and leaving them split
+ * showed one player per segment for what was really a single meeting. Every downstream feature
+ * (player, upload, export, transcript seeking) already handles the single-part case, so merging is
+ * what makes all of them simple rather than requiring each to understand segments.
+ *
+ * Returns the replacement parts array, or null when nothing was merged (fewer than two parts, a
+ * non-WAV part, mismatched formats, no native module) — in which case the caller keeps what it had.
+ */
+export async function mergeSessionParts(
+  sid: string, parts: { uri: string; durationMs: number }[],
+): Promise<{ uri: string; durationMs: number }[] | null> {
+  if (!audioMerge.available || parts.length < 2) return null;
+  if (!parts.every((p) => p.uri.endsWith('.wav'))) return null;   // only the lossless case
+
+  // Merge into the CACHE under the name the launch scavenger recognises: if the app dies between
+  // deleting the originals and moving this into place, the next launch folds it back in as part-0
+  // rather than losing the meeting.
+  const tmp = `${RNFS.CachesDirectoryPath}/rec-${sid}-0.wav`;
+  const srcs = parts.map((p) => bare(resolvePartUri(p.uri)));
+  try {
+    await audioMerge.concatWav(srcs, tmp);
+    const st = await RNFS.stat(tmp);
+    if (!(Number(st.size) > 44)) throw new Error('merged file is empty');
+  } catch {
+    try { await RNFS.unlink(tmp); } catch {}
+    return null;                                                   // keep the parts exactly as they were
+  }
+
+  for (const p of parts) { try { await RNFS.unlink(bare(resolvePartUri(p.uri))); } catch {} }
+  const rel = await moveToPart(sid, 0, tmp, 'wav');
+  const durationMs = parts.reduce((a, p) => a + (p.durationMs || 0), 0);
+  return [{ uri: rel, durationMs }];
 }
 
 // Permanently delete a session's audio files (its whole per-session dir).

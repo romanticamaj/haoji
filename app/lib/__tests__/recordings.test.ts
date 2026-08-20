@@ -10,7 +10,12 @@ jest.mock('react-native-fs', () => ({
   read: jest.fn(),
   write: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('../audioMerge', () => ({
+  available: true,
+  concatWav: jest.fn().mockResolvedValue('/cache/rec-abc-0.wav'),
+}));
 import * as rec from '../recordings';
+import * as audioMerge from '../audioMerge';
 
 const dir = (name: string): any => ({ name, path: `/doc/haoji/${name}`, isDirectory: () => true, isFile: () => false });
 const file = (name: string, path: string, size = 100, mtime = new Date(1_000)): any =>
@@ -182,4 +187,60 @@ test('repairWavParts only touches .wav parts and counts the repairs', async () =
     {},
   ]);
   expect(n).toBe(1);
+});
+
+
+// --- joining a finished recording's parts ------------------------------------------------------
+// Parts exist only to protect audio DURING recording. Leaving them split afterwards showed one
+// player per segment for what was really a single meeting.
+describe('mergeSessionParts', () => {
+  const twoParts = [
+    { uri: 'haoji/abc/part-0.wav', durationMs: 1000 },
+    { uri: 'haoji/abc/part-1.wav', durationMs: 2500 },
+  ];
+
+  beforeEach(() => {
+    (audioMerge.concatWav as jest.Mock).mockClear();   // calls must not leak between tests
+    (audioMerge.concatWav as jest.Mock).mockResolvedValue('/cache/rec-abc-0.wav');
+    const fs = require('react-native-fs');
+    fs.stat.mockResolvedValue({ size: 50000 });
+    fs.exists.mockResolvedValue(false);
+    fs.unlink.mockResolvedValue(undefined);
+    fs.moveFile.mockResolvedValue(undefined);
+  });
+
+  test('joins the parts into one, summing their durations', async () => {
+    const out = await rec.mergeSessionParts('abc', twoParts);
+    expect(audioMerge.concatWav).toHaveBeenCalledWith(
+      ['/doc/haoji/abc/part-0.wav', '/doc/haoji/abc/part-1.wav'],
+      '/cache/rec-abc-0.wav',   // named so the launch scavenger recovers it if we die mid-swap
+    );
+    expect(out).toEqual([{ uri: 'haoji/abc/part-0.wav', durationMs: 3500 }]);
+  });
+
+  test('a single part is left alone (nothing to join)', async () => {
+    expect(await rec.mergeSessionParts('abc', [twoParts[0]])).toBeNull();
+    expect(audioMerge.concatWav).not.toHaveBeenCalled();
+  });
+
+  test('refuses anything that is not all-WAV, rather than transcoding behind the scenes', async () => {
+    const mixed = [twoParts[0], { uri: 'haoji/abc/part-1.m4a', durationMs: 1 }];
+    expect(await rec.mergeSessionParts('abc', mixed)).toBeNull();
+    expect(audioMerge.concatWav).not.toHaveBeenCalled();
+  });
+
+  test('a failed merge keeps the original parts and deletes nothing', async () => {
+    const fs = require('react-native-fs');
+    (audioMerge.concatWav as jest.Mock).mockRejectedValueOnce(new Error('format_mismatch'));
+    fs.unlink.mockClear();
+    expect(await rec.mergeSessionParts('abc', twoParts)).toBeNull();
+    // only the temp file may be cleaned up — never the user's audio
+    for (const call of fs.unlink.mock.calls) expect(call[0]).not.toMatch(/\/doc\/haoji\/abc\/part-/);
+  });
+
+  test('an empty merged file is treated as failure (never replaces real audio with nothing)', async () => {
+    const fs = require('react-native-fs');
+    fs.stat.mockResolvedValueOnce({ size: 0 });
+    expect(await rec.mergeSessionParts('abc', twoParts)).toBeNull();
+  });
 });
