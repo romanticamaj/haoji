@@ -62,7 +62,7 @@ class AudioMerge: NSObject {
     let dst = destPath.replacingOccurrences(of: "file://", with: "")
 
     guard srcs.count >= 2 else { reject("too_few", "需要至少兩個檔案。", nil); return }
-    var infos: [Self.WavInfo] = []
+    var infos: [WavInfo] = []
     for p in srcs {
       guard let info = Self.inspect(p) else { reject("not_wav", "不是可串接的 WAV：\(p)", nil); return }
       if let first = infos.first, first.fmt != info.fmt {
