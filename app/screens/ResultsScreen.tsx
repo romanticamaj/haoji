@@ -86,6 +86,12 @@ export default function ResultsScreen() {
       {ready ? (
         <>
           <RecordingsList ref={playerRef} parts={parts} onProgress={setPlayheadMs} />
+          {/* Carry on recording INTO this meeting — an interrupted or resumed discussion stays one
+              session, so it is transcribed and analysed as a single conversation. */}
+          <Pressable style={styles.appendBtn} onPress={() => nav.navigate('Record', { appendTo: id })}
+            accessibilityRole="button" accessibilityLabel="繼續錄音">
+            <Text style={styles.appendText}>＋ 繼續錄音</Text>
+          </Pressable>
           <View style={styles.tabs}>
             {(['transcript', 'analysis'] as const).map((t) => (
               <Pressable key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
@@ -159,6 +165,8 @@ const styles = StyleSheet.create({
   // the capsule center. (Tuned on iPhone 12 / iOS 26.3; close enough across iOS 26 devices.)
   headerBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 6 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
+  appendBtn: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 18, marginBottom: 6, borderRadius: radius.pill, backgroundColor: colors.chipBg },
+  appendText: { color: colors.ink, fontSize: 14, fontWeight: '600' },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.card },
   tab: { flex: 1, paddingVertical: 13, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: colors.brand },

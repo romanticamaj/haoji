@@ -31,13 +31,21 @@ export default function ReviewScreen() {
     return () => { sub?.(); clearTimeout(timer); };
   }, [nav]);
 
-  // Generate now → run the transcription pipeline.
-  const generate = () => nav.replace('Processing', { sessionId: id });
+  // A meeting that already has a transcript is here because audio was APPENDED to it, so the whole
+  // thing has to be recognised again — speaker labels are assigned per run, so transcribing only the
+  // new part would give it speaker numbers that don't line up with the existing text.
+  const hasTranscript = (session?.transcript?.segments?.length ?? 0) > 0;
+  const generate = () => nav.replace('Processing', { sessionId: id, regen: hasTranscript });
   // Save as a draft and leave: the recording is already persisted (RecordScreen upserts it on stop),
   // so we just go Home. The user can open it later and tap 生成逐字稿 — the work is fully interruptible.
   const saveDraft = () => nav.navigate('Home');
 
   const discard = () => {
+    if (hasTranscript) {
+      // This meeting has earlier content — never let 捨棄 delete the whole thing from here.
+      Alert.alert('保留這場會議', '這場會議已經有逐字稿，補錄的段落已存在其中。若要刪除整場，請回到列表左滑刪除。');
+      return;
+    }
     Alert.alert('捨棄這段錄音？', '刪除後無法復原。', [
       { text: '取消', style: 'cancel' },
       {
@@ -56,8 +64,12 @@ export default function ReviewScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.head}>
-        <Text style={styles.title}>錄好了，先聽聽看</Text>
-        <Text style={styles.sub}>確認沒問題就生成逐字稿；也可以先存起來稍後再生成，或直接捨棄重錄。</Text>
+        <Text style={styles.title}>{hasTranscript ? '補錄好了' : '錄好了，先聽聽看'}</Text>
+        <Text style={styles.sub}>
+          {hasTranscript
+            ? '新的段落已加進這場會議。重新辨識會把整場（含先前的段落）一起處理，之後再重新生成會議記錄。'
+            : '確認沒問題就生成逐字稿；也可以先存起來稍後再生成，或直接捨棄重錄。'}
+        </Text>
       </View>
 
       <View style={styles.player}>
@@ -70,7 +82,7 @@ export default function ReviewScreen() {
 
       <View style={styles.actions}>
         <Pressable style={styles.primary} onPress={generate} accessibilityRole="button">
-          <Text style={styles.primaryText}>生成逐字稿</Text>
+          <Text style={styles.primaryText}>{hasTranscript ? '重新辨識整場' : '生成逐字稿'}</Text>
         </Pressable>
         <View style={styles.secondaryRow}>
           <Pressable style={styles.later} onPress={saveDraft} accessibilityRole="button">

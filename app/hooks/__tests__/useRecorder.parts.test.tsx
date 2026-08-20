@@ -18,9 +18,13 @@ jest.mock('react-native-nitro-sound', () => ({
   AudioSourceAndroidType: { MIC: 1 },
 }));
 // Capture the interruption callback so a test can fire it (holder object avoids the TDZ hoist trap).
-const mockInterrupt: { cb: null | (() => void) } = { cb: null };
+// Mirrors the real wrapper: calling it with no argument means the "interruption began" edge.
+const mockInterrupt: { cb: null | ((e?: any) => void) } = { cb: null };
 jest.mock('../../lib/audioInterruption', () => ({
-  onAudioInterruption: (cb: () => void) => { mockInterrupt.cb = cb; return () => { mockInterrupt.cb = null; }; },
+  onAudioInterruption: (cb: (e: any) => void) => {
+    mockInterrupt.cb = (e?: any) => cb(e ?? { type: 'began' });
+    return () => { mockInterrupt.cb = null; };
+  },
 }));
 jest.mock('../../lib/recordings', () => ({
   ensureDir: jest.fn().mockResolvedValue(undefined),
@@ -162,4 +166,40 @@ test('a genuine failure (e.g. no mic permission) is still surfaced, not hidden b
   expect(S.startRecorder).toHaveBeenCalledTimes(2);   // both routes tried
   expect(result.current.state).toBe('idle');
   expect(result.current.error).toMatch(/麥克風/);
+});
+
+
+// iOS reports BOTH edges of an interruption. Acting only on the start left a recording paused after
+// (say) a demo video finished — everything said afterwards was lost unless the user noticed.
+test('interruption ending with shouldResume starts a fresh part automatically', async () => {
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  await act(async () => { mockInterrupt.cb?.({ type: 'began' }); });
+  expect(result.current.state).toBe('paused');
+  expect(result.current.wasInterrupted).toBe(true);
+
+  await act(async () => { mockInterrupt.cb?.({ type: 'ended', shouldResume: true }); });
+
+  expect(result.current.state).toBe('recording');          // carried on by itself
+  expect(result.current.wasInterrupted).toBe(false);       // prompt cleared
+  expect(S.startRecorder).toHaveBeenCalledTimes(2);        // part 0, then a fresh part 1
+});
+
+test('interruption ending WITHOUT shouldResume leaves the manual 繼續 prompt', async () => {
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  await act(async () => { mockInterrupt.cb?.({ type: 'began' }); });
+  await act(async () => { mockInterrupt.cb?.({ type: 'ended', shouldResume: false }); });
+
+  expect(result.current.state).toBe('paused');             // iOS said not to resume — respect it
+  expect(result.current.wasInterrupted).toBe(true);
+  expect(S.startRecorder).toHaveBeenCalledTimes(1);
+});
+
+test('an interruption ending when we were never interrupted is ignored', async () => {
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  await act(async () => { mockInterrupt.cb?.({ type: 'ended', shouldResume: true }); });
+  expect(result.current.state).toBe('recording');
+  expect(S.startRecorder).toHaveBeenCalledTimes(1);        // no spurious extra part
 });

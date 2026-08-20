@@ -3,7 +3,8 @@ import { SavedSession } from './lib/store';
 
 export type RootStackParamList = {
   Home: undefined;
-  Record: undefined;
+  // appendTo = an existing meeting id: the take is added to it rather than starting a new meeting.
+  Record: { appendTo?: string } | undefined;
   // After recording stops we land here to listen back and decide whether to analyze or discard.
   Review: { sessionId: string };
   Processing: { sessionId: string; regen?: boolean };

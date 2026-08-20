@@ -5,7 +5,7 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'r
 // screens native push/pop transitions (the exiting animation runs as the screen is removed).
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { pick, keepLocalCopy, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { useRecorder } from '../hooks/useRecorder';
@@ -30,6 +30,9 @@ const makeLocalId = () => `local-${Date.now()}-${Math.random().toString(36).slic
 export default function RecordScreen() {
   const store = useStore();
   const nav = useNavigation<any>();
+  const route = useRoute<any>();
+  // Appending to an existing meeting (結果頁的「繼續錄音」) rather than starting a new one.
+  const appendTo: string | undefined = route.params?.appendTo;
   // Non-null while an upload/import is in flight — its text is shown full-screen so the user always
   // has feedback (picking a big video can spend many seconds copying with the picker already gone).
   const [busyMsg, setBusyMsg] = useState<string | null>(null);
@@ -38,18 +41,35 @@ export default function RecordScreen() {
   // Local id available immediately — recording works fully offline. NOTE: we deliberately do NOT
   // persist a session on mount. Doing so left a blank record every time the user opened this screen
   // (or uploaded) without recording. The session is created only when there's a real recorded part.
-  const [sid] = useState(makeLocalId);
+  const [sid] = useState(() => appendTo ?? makeLocalId());
 
-  const rec = useRecorder(sid);
+  // In append mode we must know what the meeting already holds, so new takes continue the part
+  // numbering instead of overwriting part-0. Until it loads we don't let recording start.
+  const [existing, setExisting] = useState<{ uri: string; durationMs: number }[] | null>(appendTo ? null : []);
+  useEffect(() => {
+    if (!appendTo) return;
+    void store.get(appendTo).then((s) => setExisting(s?.parts ?? []));
+  }, [appendTo, store]);
+
+  const rec = useRecorder(sid, existing ?? []);
   const insets = useSafeAreaInsets();
 
   // Stable session metadata so the incremental saves and the final save all agree on id/date/title.
   const [meta] = useState(() => ({ createdAt: Date.now(), title: new Date().toLocaleString() }));
-  const persist = useCallback(
-    (parts: { uri: string; durationMs: number }[]) =>
-      store.upsert({ id: sid, createdAt: meta.createdAt, title: meta.title, names: {}, unlocked: false, parts }),
-    [sid, meta, store],
-  );
+  // MERGE, don't overwrite: appending to an existing meeting must keep its title, transcript, notes
+  // and speaker names — a plain upsert here would wipe them.
+  const persist = useCallback(async (parts: { uri: string; durationMs: number }[]) => {
+    const cur = await store.get(sid);
+    await store.upsert({
+      id: sid,
+      createdAt: cur?.createdAt ?? meta.createdAt,
+      title: cur?.title ?? meta.title,
+      names: cur?.names ?? {},
+      unlocked: cur?.unlocked ?? false,
+      ...(cur ?? {}),
+      parts,
+    });
+  }, [sid, meta, store]);
   // Save the session the moment a part is finalized (a pause, or an OS interruption like an incoming
   // call). This means a crash can never lose the audio — the recording is already a draft on Home,
   // and the launch-time recovery scan backfills anything that wasn't stored yet.

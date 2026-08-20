@@ -21,7 +21,12 @@ jest.mock('@react-native-documents/picker', () => ({
 }));
 const mockReplace = jest.fn();
 const mockGoBack = jest.fn();
-jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ replace: mockReplace, goBack: mockGoBack }) }));
+// route params carry `appendTo` (continue recording into an existing meeting); default = a new one.
+const mockRouteParams: { current: any } = { current: undefined };
+jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ replace: mockReplace, goBack: mockGoBack, navigate: jest.fn() }),
+  useRoute: () => ({ params: mockRouteParams.current }),
+}));
 
 const mockStore = {
   list: jest.fn().mockResolvedValue([]),
@@ -35,7 +40,7 @@ import RecordScreen from '../RecordScreen';
 import * as api from '../../lib/api';
 import { pick, keepLocalCopy } from '@react-native-documents/picker';
 
-beforeEach(() => { jest.clearAllMocks(); mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false; mockRecApi.error = null;
+beforeEach(() => { jest.clearAllMocks(); mockRouteParams.current = undefined; mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false; mockRecApi.error = null;
   // Re-establish implementations cleared by clearAllMocks
   (api.createSession as jest.Mock).mockResolvedValue('sess123');
   (api.uploadPart as jest.Mock).mockResolvedValue(1);
@@ -132,4 +137,47 @@ test('record button is enabled immediately without any backend call', async () =
   const disabled = getByLabelText('開始錄音').props.accessibilityState?.disabled;
   expect(disabled).toBeFalsy();
   expect(api.createSession).not.toHaveBeenCalled();
+});
+
+
+// 繼續錄音: a discussion that was interrupted (or simply resumed later) should stay ONE meeting, so it
+// is transcribed and analysed as a single conversation instead of becoming a second recording.
+test('append mode records into the EXISTING meeting instead of starting a new one', async () => {
+  mockRouteParams.current = { appendTo: 'sess-existing' };
+  mockStore.get.mockResolvedValue({
+    id: 'sess-existing', createdAt: 5, title: '客戶月會', names: { S0: 'Gary' }, unlocked: true,
+    transcript: { speakers: ['S0'], segments: [{ start: 0, end: 1, speaker: 'S0', text: '嗨' }] },
+    notes: '## 會議摘要\n舊內容',
+    parts: [{ uri: 'haoji/sess-existing/part-0.wav', durationMs: 1000 }],
+  });
+  mockRecApi.state = 'recording';
+  mockRecApi.stop.mockResolvedValue([
+    { uri: 'haoji/sess-existing/part-0.wav', durationMs: 1000 },
+    { uri: 'haoji/sess-existing/part-1.wav', durationMs: 2000 },
+  ]);
+
+  const { getByLabelText } = await render(<RecordScreen />);
+  fireEvent.press(getByLabelText('停止錄音'));
+
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: 'sess-existing' }));
+  // the meeting's own identity and content survive — a plain upsert here used to wipe them
+  expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
+    id: 'sess-existing',
+    title: '客戶月會',
+    createdAt: 5,
+    names: { S0: 'Gary' },
+    notes: '## 會議摘要\n舊內容',
+    parts: [
+      { uri: 'haoji/sess-existing/part-0.wav', durationMs: 1000 },
+      { uri: 'haoji/sess-existing/part-1.wav', durationMs: 2000 },
+    ],
+  }));
+});
+
+test('without appendTo a brand-new meeting id is minted (unchanged behaviour)', async () => {
+  mockRecApi.state = 'recording';
+  const { getByLabelText } = await render(<RecordScreen />);
+  fireEvent.press(getByLabelText('停止錄音'));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review',
+    { sessionId: expect.stringMatching(/^local-/) }));
 });

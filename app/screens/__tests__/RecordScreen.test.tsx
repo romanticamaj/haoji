@@ -21,7 +21,12 @@ jest.mock('@react-native-documents/picker', () => ({
 }));
 const mockReplace = jest.fn();
 const mockGoBack = jest.fn();
-jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ replace: mockReplace, goBack: mockGoBack }) }));
+// route params carry `appendTo` (continue recording into an existing meeting); default = a new one.
+const mockRouteParams: { current: any } = { current: undefined };
+jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ replace: mockReplace, goBack: mockGoBack, navigate: jest.fn() }),
+  useRoute: () => ({ params: mockRouteParams.current }),
+}));
 
 const mockStore = {
   list: jest.fn().mockResolvedValue([]),
