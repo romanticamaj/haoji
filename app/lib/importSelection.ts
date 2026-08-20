@@ -45,3 +45,17 @@ export const canImport = (list: ImportCandidate[]) => selected(list).length >= 1
 
 export const totalDurationMs = (list: ImportCandidate[]) =>
   selected(list).reduce((a, c) => a + (c.durationMs || 0), 0);
+
+/**
+ * Move one file up or down. The list order IS the merge order, so this is the only way to fix a pick
+ * that came back in the wrong sequence — and getting it wrong is not obvious until you listen.
+ * Returns the same list unchanged when the move would fall off either end.
+ */
+export function move(list: ImportCandidate[], uri: string, dir: -1 | 1): ImportCandidate[] {
+  const from = list.findIndex((c) => c.uri === uri);
+  const to = from + dir;
+  if (from < 0 || to < 0 || to >= list.length) return list;
+  const next = [...list];
+  [next[from], next[to]] = [next[to], next[from]];
+  return next;
+}

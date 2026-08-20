@@ -115,6 +115,18 @@ export const IconSearch = ({ size = 24, color = colors.ink3, strokeWidth = 2 }: 
   </Stroke>
 );
 
+// Chevrons — reorder a file in the import list (the list order is the merge order).
+export const IconChevronUp = ({ size = 24, color = colors.ink, strokeWidth = 2.2 }: IconProps) => (
+  <Stroke size={size} color={color} strokeWidth={strokeWidth}>
+    <Polyline points="18 15 12 9 6 15" />
+  </Stroke>
+);
+export const IconChevronDown = ({ size = 24, color = colors.ink, strokeWidth = 2.2 }: IconProps) => (
+  <Stroke size={size} color={color} strokeWidth={strokeWidth}>
+    <Polyline points="6 9 12 15 18 9" />
+  </Stroke>
+);
+
 // Trash — discard the just-recorded audio on the review screen.
 export const IconTrash = ({ size = 24, color = colors.brand, strokeWidth = 2 }: IconProps) => (
   <Stroke size={size} color={color} strokeWidth={strokeWidth}>
