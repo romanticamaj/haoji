@@ -82,14 +82,18 @@ class AudioMerge: NSObject {
     do {
       // RIFF header, then the fmt chunk exactly as the inputs had it, then all the samples.
       var header = Data("RIFF".utf8)
-      let riffSize = UInt32(4 + (8 + fmt.count) + 8 + totalData)   // "WAVE" + fmt chunk + data chunk
-      header.append(Self.u32(riffSize))
+      // Split out with explicit types: mixing Int (fmt.count) and UInt64 (totalData) in one
+      // expression defeats Swift's type checker ("unable to type-check in reasonable time").
+      let fmtLen: UInt64 = UInt64(fmt.count)
+      let dataLen: UInt64 = totalData
+      let riffSize: UInt64 = 4 + 8 + fmtLen + 8 + dataLen        // "WAVE" + fmt chunk + data chunk
+      header.append(Self.u32(UInt32(riffSize)))
       header.append(Data("WAVE".utf8))
       header.append(Data("fmt ".utf8))
-      header.append(Self.u32(UInt32(fmt.count)))
+      header.append(Self.u32(UInt32(fmtLen)))
       header.append(fmt)
       header.append(Data("data".utf8))
-      header.append(Self.u32(UInt32(totalData)))
+      header.append(Self.u32(UInt32(dataLen)))
       try out.write(contentsOf: header)
 
       for (i, p) in srcs.enumerated() {

@@ -10,7 +10,7 @@ import { pick, keepLocalCopy, types, isErrorWithCode, errorCodes } from '@react-
 import { launchImageLibrary } from 'react-native-image-picker';
 import { useRecorder } from '../hooks/useRecorder';
 import RNFS from 'react-native-fs';
-import { moveToPart, mergeSessionParts } from '../lib/recordings';
+import { moveToPart, mergeSessionParts, fsPath } from '../lib/recordings';
 import { isVideo, storageExtFor } from '../lib/importMedia';
 import * as audioExtract from '../lib/audioExtract';
 import { mmss } from '../lib/transcript';
@@ -130,7 +130,8 @@ export default function RecordScreen() {
         const tmp = `${RNFS.CachesDirectoryPath}/extract-${id}-${i}.m4a`;
         setBusyMsg(localUris.length > 1 ? `擷取音訊中… ${i + 1}/${localUris.length}` : '擷取音訊中…');
         try {
-          await audioExtract.extractAudio(src, tmp);
+          // decode first: the native side takes a filesystem path, not a percent-encoded URI
+          await audioExtract.extractAudio(fsPath(src), tmp);
           rel = await moveToPart(id, i, tmp, 'm4a');
         } catch {
           // Extraction failed (no audio track, odd codec) — keep the original so transcription still

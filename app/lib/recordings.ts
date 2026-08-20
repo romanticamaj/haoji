@@ -3,7 +3,18 @@ import type { SavedSession } from './store';
 import * as audioMerge from './audioMerge';
 
 // RNFS wants bare POSIX paths; the rest of the app wants file:// URIs. Convert at the edges.
-const bare = (p: string) => p.replace(/^file:\/\//, '');
+//
+// A file:// URI percent-encodes anything non-ASCII, so a picked "趨勢面試 1.m4a" arrives as
+// "%E8%B6%A8...%201.m4a". Stripping the scheme without DECODING left that literal string as the
+// path, and the move failed with "the former doesn't exist" — i.e. every Chinese (or spaced, or
+// emoji) filename was unimportable. Only decode when it really was a URI: a bare POSIX path is
+// allowed to contain a literal '%'.
+export const fsPath = (p: string): string => {
+  if (!p.startsWith('file://')) return p;
+  const stripped = p.slice('file://'.length);
+  try { return decodeURIComponent(stripped); } catch { return stripped; }
+};
+const bare = fsPath;
 
 // Parts live under Documents and are PERSISTED as RELATIVE paths ("haoji/<sid>/part-0.m4a").
 // Never persist an absolute path: on iOS the app-container UUID inside an absolute path

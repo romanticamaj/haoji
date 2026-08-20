@@ -244,3 +244,26 @@ describe('mergeSessionParts', () => {
     expect(await rec.mergeSessionParts('abc', twoParts)).toBeNull();
   });
 });
+
+// --- non-ASCII filenames --------------------------------------------------------------------
+// A file:// URI percent-encodes anything non-ASCII, so a picked 「趨勢面試 1.m4a」 arrives encoded.
+// Stripping the scheme without decoding made every Chinese/spaced/emoji filename unimportable.
+test('fsPath decodes a percent-encoded file URI, and leaves plain paths alone', () => {
+  expect(rec.fsPath('file:///doc/%E8%B6%A8%E5%8B%A2%E9%9D%A2%E8%A9%A6%201.m4a'))
+    .toBe('/doc/趨勢面試 1.m4a');
+  expect(rec.fsPath('file:///doc/plain.m4a')).toBe('/doc/plain.m4a');
+  // a bare POSIX path may legitimately contain '%' — never mangle it
+  expect(rec.fsPath('/doc/100%25 done.m4a')).toBe('/doc/100%25 done.m4a');
+  // malformed encoding must not throw
+  expect(rec.fsPath('file:///doc/bad%ZZ.m4a')).toBe('/doc/bad%ZZ.m4a');
+});
+
+test('moveToPart imports a Chinese filename (was: "the former doesn\'t exist")', async () => {
+  const fs = require('react-native-fs');
+  fs.exists.mockResolvedValue(false);
+  fs.moveFile.mockClear();
+  const out = await rec.moveToPart('abc', 0, 'file:///cache/%E8%B6%A8%E5%8B%A2%E9%9D%A2%E8%A9%A6%201.m4a');
+  // the DECODED path is what the filesystem actually has
+  expect(fs.moveFile).toHaveBeenCalledWith('/cache/趨勢面試 1.m4a', '/doc/haoji/abc/part-0.m4a');
+  expect(out).toBe('haoji/abc/part-0.m4a');
+});
