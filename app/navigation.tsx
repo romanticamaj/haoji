@@ -5,6 +5,8 @@ export type RootStackParamList = {
   Home: undefined;
   // appendTo = an existing meeting id: the take is added to it rather than starting a new meeting.
   Record: { appendTo?: string } | undefined;
+  // Picked files, before committing: confirm what they actually are and whether to join them.
+  ImportConfirm: { files: { uri: string; name: string }[] };
   // After recording stops we land here to listen back and decide whether to analyze or discard.
   Review: { sessionId: string };
   Processing: { sessionId: string; regen?: boolean };

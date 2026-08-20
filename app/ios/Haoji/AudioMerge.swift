@@ -54,6 +54,37 @@ class AudioMerge: NSObject {
 
   private static func u32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
 
+  /// Ask the system what each file actually IS, before offering to join them.
+  ///
+  /// Deliberately decodes rather than trusting the extension: a picked ".m4a" may be a renamed PDF,
+  /// a video with no audio track, or a zero-length file. Joining those silently is not undoable, so
+  /// the user is shown what we found and confirms.
+  @objc(probe:resolver:rejecter:)
+  func probe(_ paths: [String], resolve: @escaping RCTPromiseResolveBlock,
+             reject: @escaping RCTPromiseRejectBlock) {
+    var out: [[String: Any]] = []
+    for p in paths {
+      let path = p.replacingOccurrences(of: "file://", with: "")
+      var item: [String: Any] = ["path": p, "ok": false, "durationMs": 0]
+      if !FileManager.default.fileExists(atPath: path) {
+        item["reason"] = "找不到檔案"
+      } else {
+        let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+        let seconds = CMTimeGetSeconds(asset.duration)
+        if asset.tracks(withMediaType: .audio).isEmpty {
+          item["reason"] = "沒有音訊"
+        } else if !seconds.isFinite || seconds <= 0 {
+          item["reason"] = "長度為零或無法讀取"
+        } else {
+          item["ok"] = true
+          item["durationMs"] = Int(seconds * 1000)
+        }
+      }
+      out.append(item)
+    }
+    resolve(out)
+  }
+
   /// Concatenate ANY audio the system can read (m4a, mp3, wav, a video's audio track…) into one
   /// .m4a. Used for imported files, which are typically compressed and may not even share a format,
   /// so the lossless byte-copy path below cannot apply. This re-encodes; that costs a little time

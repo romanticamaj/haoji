@@ -210,6 +210,15 @@ export default function RecordScreen() {
         if (c.status !== 'success') throw new Error(c.copyError || '檔案複製失敗，請再試一次');
         localUris.push(c.localUri);
       }
+      // More than one file is a decision, not a formality: they may not all be audio, and joining
+      // them is not undoable. Confirm what was actually picked before committing to it.
+      if (localUris.length > 1) {
+        setBusyMsg(null);
+        nav.navigate('ImportConfirm', {
+          files: localUris.map((uri, i) => ({ uri, name: files[i]?.name || `檔案 ${i + 1}` })),
+        });
+        return;
+      }
       await ingestLocalFiles(localUris);
     } catch (e: any) { setBusyMsg(null); setErr(e?.message || '上傳失敗'); }
   }

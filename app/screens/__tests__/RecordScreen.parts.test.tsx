@@ -21,10 +21,11 @@ jest.mock('@react-native-documents/picker', () => ({
 }));
 const mockReplace = jest.fn();
 const mockGoBack = jest.fn();
+const mockNavigate = jest.fn();
 // route params carry `appendTo` (continue recording into an existing meeting); default = a new one.
 const mockRouteParams: { current: any } = { current: undefined };
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ replace: mockReplace, goBack: mockGoBack, navigate: jest.fn() }),
+  useNavigation: () => ({ replace: mockReplace, goBack: mockGoBack, navigate: mockNavigate }),
   useRoute: () => ({ params: mockRouteParams.current }),
 }));
 
@@ -40,7 +41,7 @@ import RecordScreen from '../RecordScreen';
 import * as api from '../../lib/api';
 import { pick, keepLocalCopy } from '@react-native-documents/picker';
 
-beforeEach(() => { jest.clearAllMocks(); mockRouteParams.current = undefined; mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false; mockRecApi.error = null;
+beforeEach(() => { jest.clearAllMocks(); mockNavigate.mockClear(); mockRouteParams.current = undefined; mockRecApi.state = 'idle'; mockRecApi.wasInterrupted = false; mockRecApi.error = null;
   // Re-establish implementations cleared by clearAllMocks
   (api.createSession as jest.Mock).mockResolvedValue('sess123');
   (api.uploadPart as jest.Mock).mockResolvedValue(1);
@@ -92,9 +93,9 @@ test('C2: pressing 上傳 copies file into the persistent per-session dir, skips
   }));
 });
 
-// Multi-select: several picked audio files (e.g. Voice Memos) become sequential PARTS of ONE session
-// so they're concatenated + analysed together as a single meeting.
-test('multi-select import creates one session with a part per file', async () => {
+// Multi-select is a DECISION, not a formality: the files may not all be audio, and joining them is
+// not undoable. Nothing is committed until the user has confirmed what was actually picked.
+test('multi-select goes to the confirmation step instead of importing straight away', async () => {
   (pick as jest.Mock).mockResolvedValueOnce([
     { uri: 'file:///a.m4a', name: 'a.m4a', type: 'audio/mp4' },
     { uri: 'file:///b.m4a', name: 'b.m4a', type: 'audio/mp4' },
@@ -105,20 +106,30 @@ test('multi-select import creates one session with a part per file', async () =>
   ]);
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('匯入音檔（可多選）'));
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
-  // both files copied in a single keepLocalCopy call...
+
+  await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('ImportConfirm', {
+    files: [
+      { uri: 'file:///doc/haoji/a.m4a', name: 'a.m4a' },
+      { uri: 'file:///doc/haoji/b.m4a', name: 'b.m4a' },
+    ],
+  }));
+  // both files were still copied out of the security-scoped picker uris first
   expect(keepLocalCopy).toHaveBeenCalledWith(expect.objectContaining({
     files: [{ uri: 'file:///a.m4a', fileName: 'a.m4a' }, { uri: 'file:///b.m4a', fileName: 'b.m4a' }],
     destination: 'cachesDirectory',
   }));
-  // ...and persisted as two ordered parts of ONE session
-  expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
-    parts: [
-      { uri: expect.stringMatching(/^haoji\/local-.*\/part-0\.m4a$/), durationMs: 0 },
-      { uri: expect.stringMatching(/^haoji\/local-.*\/part-1\.m4a$/), durationMs: 0 },
-    ],
-  }));
+  // ...but NOTHING is committed yet
+  expect(mockStore.upsert).not.toHaveBeenCalled();
+  expect(mockReplace).not.toHaveBeenCalled();
   expect(api.createSession).not.toHaveBeenCalled();
+});
+
+test('a single picked file still imports directly (no decision to make)', async () => {
+  (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
+  const { getByText } = await render(<RecordScreen />);
+  fireEvent.press(getByText('匯入音檔（可多選）'));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
+  expect(mockNavigate).not.toHaveBeenCalled();
 });
 
 test('upload surfaces an error (not a hang) when the local copy fails', async () => {

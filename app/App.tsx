@@ -6,6 +6,7 @@ import { StoreProvider } from './lib/store-context';
 import { colors } from './lib/theme';
 import HomeScreen from './screens/HomeScreen';
 import RecordScreen from './screens/RecordScreen';
+import ImportConfirmScreen from './screens/ImportConfirmScreen';
 import ReviewScreen from './screens/ReviewScreen';
 import ProcessingScreen from './screens/ProcessingScreen';
 import ResultsScreen from './screens/ResultsScreen';
@@ -51,6 +52,7 @@ export default function App() {
               options={{ headerTransparent: true, headerTitle: '', headerStyle: { backgroundColor: 'transparent' } }}
             />
             <Stack.Screen name="Record" component={RecordScreen} options={{ title: '錄音' }} />
+            <Stack.Screen name="ImportConfirm" component={ImportConfirmScreen} options={{ title: '確認音檔' }} />
             <Stack.Screen name="Review" component={ReviewScreen} options={{ title: '錄音檢視', headerBackVisible: false }} />
             <Stack.Screen name="Processing" component={ProcessingScreen} options={{ title: '分析中', headerBackVisible: false }} />
             <Stack.Screen name="Results" component={ResultsScreen} options={{ title: '結果' }} />
