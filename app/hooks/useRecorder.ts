@@ -12,6 +12,7 @@ import { moveToPart } from '../lib/recordings';
 import { onAudioInterruption } from '../lib/audioInterruption';
 
 export type Part = { uri: string; durationMs: number };
+type PartExt = 'wav' | 'm4a';
 export type RecorderState = 'idle' | 'starting' | 'recording' | 'paused' | 'stopped';
 export type RecorderApi = {
   state: RecorderState; durationMs: number; meteringLevel: number; parts: Part[]; wasInterrupted: boolean;
@@ -54,10 +55,25 @@ const AUDIO_SET: AudioSet = {
   AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
 };
 
+// Last-resort settings if PCM/WAV is refused by the device or the audio session. AAC loses the
+// crash-safety WAV gives us (a killed .m4a has no index and can't be recovered), but being unable to
+// record AT ALL is far worse — so we degrade rather than fail.
+const AAC_FALLBACK_SET: AudioSet = {
+  AVFormatIDKeyIOS: 'aac',
+  AVNumberOfChannelsKeyIOS: 1,
+  AVSampleRateKeyIOS: 44100,
+  AudioSourceAndroid: AudioSourceAndroidType.MIC,
+  OutputFormatAndroid: OutputFormatAndroidType.MPEG_4,
+  AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
+};
+
 export function useRecorder(sessionId: string): RecorderApi {
   const partsRef = useRef<Part[]>([]);
   const stateRef = useRef<RecorderState>('idle');
   const tmpPathRef = useRef<string | null>(null);
+  // Which container the CURRENT part is actually being written as — normally 'wav', 'm4a' if the
+  // fallback kicked in. finalize() must persist it under the right extension or nothing can read it.
+  const extRef = useRef<PartExt>('wav');
   const unsubRef = useRef<null | (() => void)>(null);
   const [state, setState] = useState<RecorderState>('idle');
   const [durationMs, setDurationMs] = useState(0);
@@ -71,10 +87,21 @@ export function useRecorder(sessionId: string): RecorderApi {
 
   async function beginPart() {
     const idx = partsRef.current.length;
-    const tmp = `${RNFS.CachesDirectoryPath}/rec-${sessionId}-${idx}.wav`;
-    tmpPathRef.current = tmp;
     // meteringEnabled (3rd arg) MUST be true or currentMetering is undefined and the waveform stays flat
-    await Sound.startRecorder(tmp, AUDIO_SET, true);
+    const attempt = async (ext: PartExt, set: AudioSet) => {
+      const tmp = `${RNFS.CachesDirectoryPath}/rec-${sessionId}-${idx}.${ext}`;
+      tmpPathRef.current = tmp;
+      extRef.current = ext;
+      await Sound.startRecorder(tmp, set, true);
+    };
+    try {
+      await attempt('wav', AUDIO_SET);
+    } catch (e) {
+      // PCM/WAV refused (e.g. the format never reached the native layer, or this route can't do it).
+      // Recording must not be impossible, so fall back to AAC — crash-safety is lost for this take,
+      // but a take that happens beats a take that doesn't.
+      await attempt('m4a', AAC_FALLBACK_SET);
+    }
     Sound.addRecordBackListener((e) => {
       setDurationMs(e.currentPosition ?? 0);
       setMeteringLevel(dbToLevel(e.currentMetering));
@@ -89,7 +116,7 @@ export function useRecorder(sessionId: string): RecorderApi {
     Sound.removeRecordBackListener();
     const src = uri || tmpPathRef.current;
     tmpPathRef.current = null;
-    const moved = await moveToPart(sessionId, partsRef.current.length, src, 'wav'); // persist out of cache
+    const moved = await moveToPart(sessionId, partsRef.current.length, src, extRef.current); // persist out of cache
     const part = { uri: moved, durationMs };
     partsRef.current = [...partsRef.current, part]; setParts(partsRef.current);
     return part;

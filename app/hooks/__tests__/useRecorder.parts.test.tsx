@@ -49,7 +49,8 @@ test('start records with metering enabled', async () => {
 
 // The reported bug: a failed startRecorder must NOT leave the UI silently idle with no feedback.
 test('startRecorder rejection surfaces an error and returns to idle (no silent hang)', async () => {
-  S.startRecorder.mockRejectedValueOnce(new Error('Recording permission denied. Please enable microphone access in Settings.'));
+  // a real permission failure fails BOTH the PCM attempt and the AAC fallback
+  S.startRecorder.mockRejectedValue(new Error('Recording permission denied. Please enable microphone access in Settings.'));
   const { result } = await renderHook(() => useRecorder('s'));
   await act(async () => { await result.current.start(); });
   expect(result.current.state).toBe('idle');
@@ -57,7 +58,7 @@ test('startRecorder rejection surfaces an error and returns to idle (no silent h
 });
 
 test('a generic startRecorder failure is reported, not swallowed', async () => {
-  S.startRecorder.mockRejectedValueOnce(new Error('Audio session setup failed: boom'));
+  S.startRecorder.mockRejectedValue(new Error('Audio session setup failed: boom'));
   const { result } = await renderHook(() => useRecorder('s'));
   await act(async () => { await result.current.start(); });
   expect(result.current.state).toBe('idle');
@@ -65,7 +66,7 @@ test('a generic startRecorder failure is reported, not swallowed', async () => {
 });
 
 test('clearError resets the error', async () => {
-  S.startRecorder.mockRejectedValueOnce(new Error('permission denied'));
+  S.startRecorder.mockRejectedValue(new Error('permission denied'));
   const { result } = await renderHook(() => useRecorder('s'));
   await act(async () => { await result.current.start(); });
   expect(result.current.error).toBeTruthy();
@@ -119,4 +120,46 @@ test('interruption while paused is ignored', async () => {
   await act(async () => { await result.current.pause(); });
   await act(async () => { mockInterrupt.cb?.(); });
   expect(result.current.wasInterrupted).toBe(false);
+});
+
+// Recording is the product. If PCM/WAV is refused (the format not surviving the native bridge showed
+// up as OSStatus 1718449215 'fmt?', which made recording impossible), we must still capture audio —
+// even though an AAC take loses the crash-recoverability WAV gives us.
+test('WAV is attempted first and the part is stored as .wav', async () => {
+  const { moveToPart } = require('../../lib/recordings');
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  expect(S.startRecorder).toHaveBeenCalledTimes(1);
+  expect(S.startRecorder.mock.calls[0][0]).toMatch(/rec-s-0\.wav$/);
+  await act(async () => { await result.current.stop(); });
+  expect(moveToPart).toHaveBeenCalledWith('s', 0, expect.anything(), 'wav');
+});
+
+test('falls back to AAC when WAV is refused, and stores the part as .m4a', async () => {
+  const { moveToPart } = require('../../lib/recordings');
+  S.startRecorder
+    .mockRejectedValueOnce(new Error("The operation couldn't be completed. (OSStatus error 1718449215.)"))
+    .mockResolvedValueOnce('file:///tmp/rec.m4a');
+
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+
+  expect(S.startRecorder).toHaveBeenCalledTimes(2);
+  expect(S.startRecorder.mock.calls[0][0]).toMatch(/\.wav$/);   // tried PCM first
+  expect(S.startRecorder.mock.calls[1][0]).toMatch(/\.m4a$/);   // then AAC
+  expect(result.current.state).toBe('recording');               // recording actually happens
+  expect(result.current.error).toBeNull();
+
+  await act(async () => { await result.current.stop(); });
+  // stored under the extension that ACTUALLY got written — otherwise nothing could read it back
+  expect(moveToPart).toHaveBeenCalledWith('s', 0, expect.anything(), 'm4a');
+});
+
+test('a genuine failure (e.g. no mic permission) is still surfaced, not hidden by the fallback', async () => {
+  S.startRecorder.mockRejectedValue(new Error('Recording permission denied'));
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  expect(S.startRecorder).toHaveBeenCalledTimes(2);   // both routes tried
+  expect(result.current.state).toBe('idle');
+  expect(result.current.error).toMatch(/麥克風/);
 });

@@ -1,8 +1,53 @@
 diff --git a/node_modules/react-native-nitro-sound/ios/Sound.swift b/node_modules/react-native-nitro-sound/ios/Sound.swift
-index 65cd4df..bb1a272 100644
+index 65cd4df..c67427e 100644
 --- a/node_modules/react-native-nitro-sound/ios/Sound.swift
 +++ b/node_modules/react-native-nitro-sound/ios/Sound.swift
-@@ -135,7 +135,11 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -119,12 +119,42 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+             print("🎙️ Directory exists and is writable: \(directory.path)")
+ 
+             // Setup audio settings
+-            let settings = self.getAudioSettings(audioSets: audioSets)
++            var settings = self.getAudioSettings(audioSets: audioSets)
++
++            // HAOJI_FIX: derive the format from the OUTPUT EXTENSION rather than trusting the AudioSet
++            // that came from JS. The NitroModules interop can drop fields, and when AVFormatIDKeyIOS
++            // ('lpcm') fails to arrive the format silently stays the AAC default while the app is
++            // writing a .wav file. AVAudioRecorder then rejects AAC-in-WAVE with
++            // kAudioFormatUnsupportedDataFormatError ('fmt?', OSStatus 1718449215) and recording is
++            // impossible. The extension is unambiguous, so it decides.
++            if fileURL.pathExtension.lowercased() == "wav" {
++                settings[AVFormatIDKey] = Int(kAudioFormatLinearPCM)
++                settings[AVLinearPCMBitDepthKey] = 16
++                settings[AVLinearPCMIsFloatKey] = false
++                settings[AVLinearPCMIsBigEndianKey] = false
++                settings[AVLinearPCMIsNonInterleaved] = false
++                settings.removeValue(forKey: AVEncoderBitRateKey)
++                settings.removeValue(forKey: AVEncoderAudioQualityKey)
++            } else if (settings[AVFormatIDKey] as? Int) == Int(kAudioFormatLinearPCM) {
++                // Conversely: PCM asked for, but the container can't hold it — fall back to AAC.
++                settings[AVFormatIDKey] = Int(kAudioFormatMPEG4AAC)
++                settings.removeValue(forKey: AVLinearPCMBitDepthKey)
++                settings.removeValue(forKey: AVLinearPCMIsFloatKey)
++                settings.removeValue(forKey: AVLinearPCMIsBigEndianKey)
++                settings.removeValue(forKey: AVLinearPCMIsNonInterleaved)
++            }
+             print("🎙️ Audio settings: \(settings)")
+ 
+             // Create recorder
+             print("🎙️ Creating AVAudioRecorder...")
+-            self.audioRecorder = try AVAudioRecorder(url: fileURL, settings: settings)
++            do {
++                self.audioRecorder = try AVAudioRecorder(url: fileURL, settings: settings)
++            } catch {
++                // HAOJI: surface WHAT was rejected — an opaque OSStatus alone cost a release to
++                // diagnose. ('fmt?' = 1718449215 = unsupported format for this container.)
++                throw NSError(domain: "AudioRecorder", code: -4, userInfo: [NSLocalizedDescriptionKey:
++                    "無法建立錄音器：\(error.localizedDescription) | ext=\(fileURL.pathExtension) settings=\(settings)"])
++            }
+             print("🎙️ AVAudioRecorder created successfully")
+ 
+             self.audioRecorder?.isMeteringEnabled = meteringEnabled ?? false
+@@ -135,7 +165,11 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
              print("🎙️ Recorder prepared: \(prepared)")
  
              if !prepared {
@@ -15,7 +60,7 @@ index 65cd4df..bb1a272 100644
              }
  
              // Start recording on main queue
-@@ -415,11 +419,16 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -415,11 +449,16 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
                  DispatchQueue.main.async {
                      recorder.stop()
                      self.stopRecordTimer()
@@ -34,7 +79,7 @@ index 65cd4df..bb1a272 100644
                          // Deactivate audio session
                          try? self.recordingSession?.setActive(false)
                          self.recordingSession = nil
-@@ -771,6 +780,35 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -771,6 +810,35 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
              }
          }
  
