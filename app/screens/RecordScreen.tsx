@@ -146,7 +146,13 @@ export default function RecordScreen() {
       parts.push({ uri: rel, durationMs: 0 });
     }
     await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts });
-    nav.replace('Processing', { sessionId: id });
+
+    // NOTE: imports are deliberately NOT auto-joined (recordings are — those are our own files, all
+    // identical PCM). A picked file may not be audio at all, may be the wrong file, or may not belong
+    // with the others, and silently welding them together is the kind of thing you cannot undo. The
+    // user confirms which files to join first; until that step exists they stay separate.
+    setBusyMsg(null);
+    nav.replace('Review', { sessionId: id });
   }
 
   // Pick a video from the Photos library (圖庫). Videos shot on the phone live in Photos, not the

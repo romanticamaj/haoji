@@ -75,11 +75,11 @@ test('pressing 結束 in interruption prompt stops recording and navigates to Re
 });
 
 // C2 + local-first: onUpload must NOT call createSession or uploadPart; ProcessingScreen owns all backend work
-test('C2: pressing 上傳 copies file into the persistent per-session dir, skips backend, navigates to Processing', async () => {
+test('C2: pressing 上傳 copies file into the persistent per-session dir, skips backend, navigates to Review', async () => {
   (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('匯入音檔（可多選）'));
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
   // First copy out of the security-scoped picker uri into the app cache...
@@ -105,7 +105,7 @@ test('multi-select import creates one session with a part per file', async () =>
   ]);
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('匯入音檔（可多選）'));
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
   // both files copied in a single keepLocalCopy call...
   expect(keepLocalCopy).toHaveBeenCalledWith(expect.objectContaining({
     files: [{ uri: 'file:///a.m4a', fileName: 'a.m4a' }, { uri: 'file:///b.m4a', fileName: 'b.m4a' }],

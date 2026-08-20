@@ -69,10 +69,10 @@ test('while starting, the button shows busy and does not re-trigger start', asyn
 
 // Recording is local-first: onUpload must NOT touch the backend (no createSession, no uploadPart —
 // ProcessingScreen owns all backend work). It persists a draft part under a local id and hands off.
-test('uploading a file does NOT call createSession/uploadPart, sets parts in store, and navigates to Processing', async () => {
+test('uploading a file does NOT call createSession/uploadPart, sets parts in store, and navigates to Review', async () => {
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('匯入音檔（可多選）'));
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
   expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
@@ -82,13 +82,13 @@ test('uploading a file does NOT call createSession/uploadPart, sets parts in sto
 
 // 圖庫 (Photos) video path: image-picker returns a readable file:// uri (no keepLocalCopy needed),
 // which we move straight into the persistent per-session dir. Still no backend call here.
-test('picking a video from the library ingests it as a part and navigates to Processing (no backend)', async () => {
+test('picking a video from the library ingests it as a part and navigates to Review (no backend)', async () => {
   (launchImageLibrary as jest.Mock).mockResolvedValueOnce({
     assets: [{ uri: 'file:///tmp/movie.mov', fileName: 'movie.mov', type: 'video/quicktime' }],
   });
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('從圖庫選影片'));
-  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Processing', { sessionId: expect.stringMatching(/^local-/) }));
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
   expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({

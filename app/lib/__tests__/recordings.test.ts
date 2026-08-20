@@ -13,6 +13,7 @@ jest.mock('react-native-fs', () => ({
 jest.mock('../audioMerge', () => ({
   available: true,
   concatWav: jest.fn().mockResolvedValue('/cache/rec-abc-0.wav'),
+  concatToM4A: jest.fn().mockResolvedValue('/cache/rec-abc-0.m4a'),
 }));
 import * as rec from '../recordings';
 import * as audioMerge from '../audioMerge';
@@ -201,6 +202,7 @@ describe('mergeSessionParts', () => {
 
   beforeEach(() => {
     (audioMerge.concatWav as jest.Mock).mockClear();   // calls must not leak between tests
+    (audioMerge.concatToM4A as jest.Mock).mockClear();
     (audioMerge.concatWav as jest.Mock).mockResolvedValue('/cache/rec-abc-0.wav');
     const fs = require('react-native-fs');
     fs.stat.mockResolvedValue({ size: 50000 });
@@ -223,10 +225,15 @@ describe('mergeSessionParts', () => {
     expect(audioMerge.concatWav).not.toHaveBeenCalled();
   });
 
-  test('refuses anything that is not all-WAV, rather than transcoding behind the scenes', async () => {
-    const mixed = [twoParts[0], { uri: 'haoji/abc/part-1.m4a', durationMs: 1 }];
-    expect(await rec.mergeSessionParts('abc', mixed)).toBeNull();
+  test('compressed / mixed formats go through the re-encoding path, not the byte copy', async () => {
+    // Imports are usually m4a or mp3 and may not share a format, so a lossless byte copy is invalid.
+    (audioMerge.concatToM4A as jest.Mock).mockResolvedValue('/cache/rec-abc-0.m4a');
+    const mixed = [twoParts[0], { uri: 'haoji/abc/part-1.m4a', durationMs: 1500 }];
+    const out = await rec.mergeSessionParts('abc', mixed);
     expect(audioMerge.concatWav).not.toHaveBeenCalled();
+    expect(audioMerge.concatToM4A).toHaveBeenCalledWith(
+      ['/doc/haoji/abc/part-0.wav', '/doc/haoji/abc/part-1.m4a'], '/cache/rec-abc-0.m4a');
+    expect(out).toEqual([{ uri: 'haoji/abc/part-0.m4a', durationMs: 2500 }]);
   });
 
   test('a failed merge keeps the original parts and deletes nothing', async () => {

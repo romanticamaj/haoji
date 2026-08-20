@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import React
 
 /// Concatenates several WAV recordings into ONE file, losslessly.
@@ -52,6 +53,54 @@ class AudioMerge: NSObject {
   }
 
   private static func u32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+
+  /// Concatenate ANY audio the system can read (m4a, mp3, wav, a video's audio track…) into one
+  /// .m4a. Used for imported files, which are typically compressed and may not even share a format,
+  /// so the lossless byte-copy path below cannot apply. This re-encodes; that costs a little time
+  /// and quality, but the alternative is showing one player per imported file for what the user
+  /// picked as a single meeting.
+  @objc(concatToM4A:destPath:resolver:rejecter:)
+  func concatToM4A(_ paths: [String], destPath: String,
+                   resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    let srcs = paths.map { $0.replacingOccurrences(of: "file://", with: "") }
+    let dst = URL(fileURLWithPath: destPath.replacingOccurrences(of: "file://", with: ""))
+    guard srcs.count >= 2 else { reject("too_few", "需要至少兩個檔案。", nil); return }
+
+    let composition = AVMutableComposition()
+    guard let track = composition.addMutableTrack(withMediaType: .audio,
+                                                 preferredTrackID: kCMPersistentTrackID_Invalid) else {
+      reject("no_track", "無法建立音訊軌。", nil); return
+    }
+
+    var cursor = CMTime.zero
+    for p in srcs {
+      let asset = AVURLAsset(url: URL(fileURLWithPath: p))
+      guard let src = asset.tracks(withMediaType: .audio).first else { continue }   // no audio: skip
+      let duration = asset.duration
+      guard duration.isValid, duration > CMTime.zero else { continue }
+      do {
+        try track.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: src, at: cursor)
+        cursor = CMTimeAdd(cursor, duration)
+      } catch {
+        reject("insert_failed", "串接失敗：\(error.localizedDescription)", error); return
+      }
+    }
+    guard cursor > CMTime.zero else { reject("no_audio", "這些檔案裡沒有音訊。", nil); return }
+
+    guard let export = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else {
+      reject("no_export", "無法建立轉檔工作。", nil); return
+    }
+    try? FileManager.default.removeItem(at: dst)
+    export.outputURL = dst
+    export.outputFileType = .m4a
+    export.exportAsynchronously {
+      switch export.status {
+      case .completed: resolve(dst.path)
+      case .cancelled: reject("cancelled", "串接已取消。", nil)
+      default: reject("export_failed", export.error?.localizedDescription ?? "串接失敗。", export.error)
+      }
+    }
+  }
 
   /// paths → destPath. Rejects (so the caller can keep the parts as they are) unless every input is a
   /// WAV sharing the exact same format.
