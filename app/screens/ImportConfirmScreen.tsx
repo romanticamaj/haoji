@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import {
+  View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Animated, PanResponder,
+} from 'react-native';
 import {
   Waveform, type IWaveformRef, FinishMode, PlayerState, useAudioPlayer,
 } from '@simform_solutions/react-native-audio-waveform';
@@ -13,7 +15,7 @@ import {
   buildCandidates, toggle, move, selected, canMerge, canImport, totalDurationMs, ImportCandidate,
 } from '../lib/importSelection';
 import { mmss } from '../lib/transcript';
-import { IconCheck, IconAlert, IconPlay, IconPause, IconChevronUp, IconChevronDown } from '../components/icons';
+import { IconCheck, IconAlert, IconPlay, IconPause, IconGrip } from '../components/icons';
 import { colors, radius } from '../lib/theme';
 
 const makeLocalId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -37,6 +39,10 @@ export default function ImportConfirmScreen() {
   // Only one preview plays at a time — otherwise checking the order turns into a mess of overlapping
   // audio. Holding it here (not per row) is what makes starting one stop the others.
   const [playingUri, setPlayingUri] = useState<string | null>(null);
+  // Measured once from a real row so the drag knows how far a slot is; the list is locked while
+  // dragging so the two gestures never fight.
+  const [rowH, setRowH] = useState(96);
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -105,10 +111,10 @@ export default function ImportConfirmScreen() {
         <Text style={styles.sub}>
           已選 {usable}/{list.length} 個{usable > 0 ? ` · 共 ${mmss(Math.floor(totalDurationMs(list) / 1000))}` : ''}
         </Text>
-        <Text style={styles.hint}>由上而下就是合併順序 · 可播放確認、用箭頭調整</Text>
+        <Text style={styles.hint}>由上而下就是合併順序 · 可播放確認、按住右側 ☰ 拖曳調整</Text>
       </View>
 
-      <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 12 }}>
+      <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 12 }} scrollEnabled={!dragging}>
         {list.map((c, i) => (
           <CandidateRow
             key={c.uri}
@@ -119,6 +125,9 @@ export default function ImportConfirmScreen() {
             onPlayingChange={setPlayingUri}
             onToggle={() => setList(toggle(list, c.uri))}
             onMove={(dir: -1 | 1) => setList(move(list, c.uri, dir))}
+            rowH={rowH}
+            onMeasure={setRowH}
+            onDragChange={setDragging}
           />
         ))}
       </ScrollView>
@@ -153,7 +162,7 @@ export default function ImportConfirmScreen() {
  * order is the merge order, and the only way to know the order is right is to listen.
  */
 function CandidateRow(
-  { candidate: c, index, total, playingUri, onPlayingChange, onToggle, onMove }: {
+  { candidate: c, index, total, playingUri, onPlayingChange, onToggle, onMove, rowH, onMeasure, onDragChange }: {
     candidate: ImportCandidate;
     index: number;
     total: number;
@@ -161,12 +170,57 @@ function CandidateRow(
     onPlayingChange: (uri: string | null) => void;
     onToggle: () => void;
     onMove: (dir: -1 | 1) => void;
+    rowH: number;
+    onMeasure: (h: number) => void;
+    onDragChange: (dragging: boolean) => void;
   },
 ) {
   const ref = useRef<IWaveformRef>(null);
   const { stopAllPlayers } = useAudioPlayer();
   const path = fsPath(c.uri);
   const isPlaying = playingUri === c.uri;
+
+  // Drag-to-reorder on core RN (PanResponder + Animated) — gesture-handler is incompatible with this
+  // RN version, and SwipeRow already establishes this approach in the app.
+  //
+  // The row is reordered LIVE as the finger passes each row height, and `shift` records how far the
+  // row has already been moved in the list so the lift stays under the finger instead of jumping.
+  const [dragging, setDragging] = useState(false);
+  const lift = useRef(new Animated.Value(0)).current;
+  const shift = useRef(0);
+  const rowHRef = useRef(rowH);
+  rowHRef.current = rowH;
+  const idxRef = useRef(index);
+  idxRef.current = index;
+  const totalRef = useRef(total);
+  totalRef.current = total;
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 2,
+      onPanResponderGrant: () => { shift.current = 0; setDragging(true); onDragChange(true); },
+      onPanResponderMove: (_e, g) => {
+        const h = rowHRef.current || 96;
+        const offset = g.dy - shift.current * h;
+        // Crossed into the next slot: reorder now so the list under the finger matches what it will be.
+        if (offset > h * 0.6 && idxRef.current < totalRef.current - 1) {
+          onMove(1); shift.current += 1;
+        } else if (offset < -h * 0.6 && idxRef.current > 0) {
+          onMove(-1); shift.current -= 1;
+        }
+        lift.setValue(g.dy - shift.current * h);
+      },
+      onPanResponderRelease: () => {
+        setDragging(false); onDragChange(false);
+        Animated.spring(lift, { toValue: 0, useNativeDriver: false, bounciness: 0 }).start();
+      },
+      onPanResponderTerminate: () => {
+        setDragging(false); onDragChange(false);
+        lift.setValue(0);
+      },
+    }),
+  ).current;
 
   // Another row started: stop this one so only one preview is ever audible.
   useEffect(() => {
@@ -181,7 +235,16 @@ function CandidateRow(
   };
 
   return (
-    <View style={[styles.row, !c.ok && styles.rowBad]}>
+    <Animated.View
+      onLayout={(e) => onMeasure(e.nativeEvent.layout.height)}
+      style={[
+        styles.row,
+        !c.ok && styles.rowBad,
+        // Lift the dragged row above its neighbours so it reads as being picked up.
+        dragging && styles.rowDragging,
+        { transform: [{ translateY: lift }], zIndex: dragging ? 10 : 0 },
+      ]}
+    >
       <View style={styles.rowTop}>
         <Pressable
           testID={`file-${c.name}`}
@@ -213,27 +276,26 @@ function CandidateRow(
             >
               {isPlaying ? <IconPause size={16} color="#fff" /> : <IconPlay size={16} color="#fff" />}
             </Pressable>
-            <View>
-              <Pressable
-                testID={`up-${c.name}`}
-                style={[styles.arrow, index === 0 && styles.arrowOff]}
-                disabled={index === 0}
-                onPress={() => onMove(-1)}
-                accessibilityRole="button"
-                accessibilityLabel={`往前移 ${c.name}`}
-              >
-                <IconChevronUp size={16} color={index === 0 ? colors.ink3 : colors.ink} />
-              </Pressable>
-              <Pressable
-                testID={`down-${c.name}`}
-                style={[styles.arrow, index === total - 1 && styles.arrowOff]}
-                disabled={index === total - 1}
-                onPress={() => onMove(1)}
-                accessibilityRole="button"
-                accessibilityLabel={`往後移 ${c.name}`}
-              >
-                <IconChevronDown size={16} color={index === total - 1 ? colors.ink3 : colors.ink} />
-              </Pressable>
+            {/* The pan lives on the HANDLE alone, so dragging never fights the list's own scroll and
+                the row stays tappable. Dragging is a pointing gesture, so VoiceOver gets explicit
+                move actions instead — the same reorder, reachable without one. */}
+            <View
+              testID={`grip-${c.name}`}
+              style={styles.grip}
+              {...pan.panHandlers}
+              accessible
+              accessibilityRole="adjustable"
+              accessibilityLabel={`調整 ${c.name} 的順序，目前第 ${index + 1} 個`}
+              accessibilityActions={[
+                { name: 'moveUp', label: '往前移' },
+                { name: 'moveDown', label: '往後移' },
+              ]}
+              onAccessibilityAction={(e) => {
+                if (e.nativeEvent.actionName === 'moveUp') onMove(-1);
+                if (e.nativeEvent.actionName === 'moveDown') onMove(1);
+              }}
+            >
+              <IconGrip size={20} color={dragging ? colors.brand : colors.ink3} />
             </View>
           </View>
         )}
@@ -259,7 +321,7 @@ function CandidateRow(
           onError={() => {}}
         />
       )}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -279,8 +341,11 @@ const styles = StyleSheet.create({
   seq: { fontSize: 12, fontWeight: '700', color: colors.ink3, width: 14, textAlign: 'center' },
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   play: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
-  arrow: { width: 30, height: 22, alignItems: 'center', justifyContent: 'center' },
-  arrowOff: { opacity: 0.35 },
+  grip: { width: 38, height: 44, alignItems: 'center', justifyContent: 'center' },
+  rowDragging: {
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
   wave: { height: 44, marginTop: 10, width: '100%' },
   hint: { fontSize: 12, color: colors.ink3, marginTop: 6, lineHeight: 17 },
   rowBad: { backgroundColor: colors.chipBg },

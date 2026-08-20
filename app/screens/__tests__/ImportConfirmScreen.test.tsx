@@ -64,7 +64,11 @@ test('reordering changes the ORDER the files are written in — the merge order'
   const { getByTestId, findByText, getByText } = await render(<ImportConfirmScreen />);
   await findByText('one.m4a');
 
-  await act(async () => { fireEvent.press(getByTestId('down-one.m4a')); });   // two, one, doc
+  // Reordering is a drag; VoiceOver reaches the same thing through the handle's move actions, which
+  // is also the path a test can drive deterministically.
+  await act(async () => {
+    fireEvent(getByTestId('grip-one.m4a'), 'accessibilityAction', { nativeEvent: { actionName: 'moveDown' } });
+  });                                                                        // two, one, doc
   await act(async () => { fireEvent.press(getByText('合併成一段並繼續')); });
 
   await waitFor(() => expect(mockMoveToPart).toHaveBeenCalledTimes(2));

@@ -115,6 +115,15 @@ export const IconSearch = ({ size = 24, color = colors.ink3, strokeWidth = 2 }: 
   </Stroke>
 );
 
+// Grip (three bars) — press and hold to drag a file into place; the list order is the merge order.
+export const IconGrip = ({ size = 24, color = colors.ink3, strokeWidth = 2 }: IconProps) => (
+  <Stroke size={size} color={color} strokeWidth={strokeWidth}>
+    <Line x1="4" y1="8" x2="20" y2="8" />
+    <Line x1="4" y1="12" x2="20" y2="12" />
+    <Line x1="4" y1="16" x2="20" y2="16" />
+  </Stroke>
+);
+
 // Chevrons — reorder a file in the import list (the list order is the merge order).
 export const IconChevronUp = ({ size = 24, color = colors.ink, strokeWidth = 2.2 }: IconProps) => (
   <Stroke size={size} color={color} strokeWidth={strokeWidth}>
