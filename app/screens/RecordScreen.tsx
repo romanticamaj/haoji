@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 // NOTE: only the transform-based press spring below uses reanimated. We deliberately do NOT use
 // layout animations (entering/exiting) here — they leave a ghost/afterimage during react-native-
@@ -51,7 +51,16 @@ export default function RecordScreen() {
     void store.get(appendTo).then((s) => setExisting(s?.parts ?? []));
   }, [appendTo, store]);
 
-  const rec = useRecorder(sid, existing ?? []);
+  // Stable identity, or useRecorder's effect would re-run every render.
+  const existingParts = useMemo(() => existing ?? [], [existing]);
+  const rec = useRecorder(sid, existingParts);
+  const existingMs = useMemo(() => existingParts.reduce((a, p) => a + (p.durationMs || 0), 0), [existingParts]);
+  // Append mode is a CONTINUATION: show the meeting's running total, not this take's clock, so the
+  // timer reads as one recording carrying on rather than a separate second recording.
+  const shownMs = existingMs + rec.durationMs;
+  // Don't let a take start before we know what the meeting already holds — starting early is exactly
+  // how a continued recording used to overwrite part-0.
+  const loading = appendTo != null && existing === null;
   const insets = useSafeAreaInsets();
 
   // Stable session metadata so the incremental saves and the final save all agree on id/date/title.
@@ -194,7 +203,9 @@ export default function RecordScreen() {
 
   if (busyMsg) return <View style={styles.center}><ActivityIndicator color={colors.brand} size="large" /><Text style={styles.hint}>{busyMsg}</Text></View>;
 
-  const statusText = isRec ? '錄音中' : isPaused ? '已暫停' : isStarting ? '啟動中' : '準備錄音';
+  const statusText = loading ? '讀取中'
+    : isRec ? '錄音中' : isPaused ? '已暫停' : isStarting ? '啟動中'
+    : appendTo ? '準備接續錄音' : '準備錄音';
   const stopMode = isRec || isPaused;
 
   return (
@@ -205,7 +216,12 @@ export default function RecordScreen() {
           <View style={[styles.statusDot, isRec && styles.statusDotLive]} />
           <Text style={styles.statusText}>{statusText}</Text>
         </View>
-        <Text style={styles.timer}>{mmss(Math.floor(rec.durationMs / 1000))}</Text>
+        <Text style={styles.timer}>{mmss(Math.floor(shownMs / 1000))}</Text>
+        {appendTo && existingParts.length > 0 && (
+          <Text style={styles.continueNote}>
+            接續這場會議 · 已有 {existingParts.length} 段（{mmss(Math.floor(existingMs / 1000))}），新錄的會接在後面
+          </Text>
+        )}
       </View>
 
       {/* stage: live waveform + the record button */}
@@ -219,12 +235,12 @@ export default function RecordScreen() {
           <AnimatedPressable
             accessibilityRole="button"
             accessibilityLabel={stopMode ? '停止錄音' : '開始錄音'}
-            accessibilityState={{ busy: isStarting, disabled: !sid || isStarting }}
+            accessibilityState={{ busy: isStarting || loading, disabled: !sid || isStarting || loading }}
             style={[styles.recordBtn, btnAnim]}
             onPressIn={onPressIn}
             onPressOut={onPressOut}
             onPress={stopMode ? onStop : rec.start}
-            disabled={!sid || isStarting}
+            disabled={!sid || isStarting || loading}
           >
             {isStarting
               ? <ActivityIndicator color="#fff" />
@@ -296,6 +312,7 @@ const styles = StyleSheet.create({
   statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.ink3 },
   statusDotLive: { backgroundColor: colors.brand },
   statusText: { fontSize: 13, fontWeight: '600', color: colors.ink2 },
+  continueNote: { fontSize: 12.5, color: colors.ink3, textAlign: 'center', marginTop: 2, paddingHorizontal: 20, lineHeight: 18 },
   timer: { fontSize: 68, fontWeight: '200', color: colors.ink, fontVariant: ['tabular-nums'], letterSpacing: 1 },
 
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },

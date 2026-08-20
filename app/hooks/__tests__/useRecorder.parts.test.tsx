@@ -203,3 +203,41 @@ test('an interruption ending when we were never interrupted is ignored', async (
   expect(result.current.state).toBe('recording');
   expect(S.startRecorder).toHaveBeenCalledTimes(1);        // no spurious extra part
 });
+
+// 繼續錄音: the meeting's existing parts arrive ASYNCHRONOUSLY (the screen loads them from storage),
+// so they are not present on first render. Capturing only that first value made a continued take
+// restart at part-0 and overwrite the original recording.
+test('parts that arrive after the first render are still continued, not overwritten', async () => {
+  const { moveToPart } = require('../../lib/recordings');
+  const existing = [
+    { uri: 'haoji/s/part-0.wav', durationMs: 1000 },
+    { uri: 'haoji/s/part-1.wav', durationMs: 2000 },
+  ];
+
+  // first render knows nothing (still loading), like the real screen
+  const { result, rerender } = await renderHook(
+    ({ parts }: { parts: any[] }) => useRecorder('s', parts),
+    { initialProps: { parts: [] as any[] } },
+  );
+  await act(async () => { rerender({ parts: existing }); });
+  expect(result.current.parts).toHaveLength(2);      // adopted once they landed
+
+  await act(async () => { await result.current.start(); });
+  // the new take must be part-2 — NOT part-0, which would clobber the original audio
+  expect(S.startRecorder.mock.calls[0][0]).toMatch(/rec-s-2\./);
+
+  await act(async () => { await result.current.stop(); });
+  expect(moveToPart).toHaveBeenCalledWith('s', 2, expect.anything(), expect.any(String));
+  expect(result.current.parts).toHaveLength(3);      // two old + one new, in order
+});
+
+test('existing parts arriving mid-take never disturb what is being recorded', async () => {
+  const { result, rerender } = await renderHook(
+    ({ parts }: { parts: any[] }) => useRecorder('s', parts),
+    { initialProps: { parts: [] as any[] } },
+  );
+  await act(async () => { await result.current.start(); });
+  await act(async () => { rerender({ parts: [{ uri: 'haoji/s/part-9.wav', durationMs: 1 }] }); });
+  expect(result.current.state).toBe('recording');    // still recording, unaffected
+  expect(result.current.parts).toHaveLength(0);      // the in-flight take's own list is untouched
+});

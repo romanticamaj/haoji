@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, PermissionsAndroid } from 'react-native';
 import RNFS from 'react-native-fs';
 import Sound, {
@@ -72,11 +72,26 @@ const AAC_FALLBACK_SET: AudioSet = {
  * numbering instead of overwriting part-0, so one meeting can be recorded across several sittings
  * (an interruption, or deliberately carrying on later) and still be transcribed as a single session.
  */
-export function useRecorder(sessionId: string, existingParts: Part[] = []): RecorderApi {
+const NO_PARTS: Part[] = [];   // stable identity: a `= []` default would be a fresh array on every render
+
+export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS): RecorderApi {
   const partsRef = useRef<Part[]>(existingParts);
   const stateRef = useRef<RecorderState>('idle');
-  // Captured once: the parts the meeting already had when this screen opened.
+  // The parts the meeting already had. NOT just useRef(existingParts): in append mode the caller
+  // loads them asynchronously, so the first render sees an empty list — capturing only that is what
+  // made a continued take restart at part-0 and overwrite the original recording.
   const existingPartsRef = useRef<Part[]>(existingParts);
+  // Keyed on CONTENT, not array identity: a caller that rebuilds the array each render would otherwise
+  // retrigger this forever (setParts → re-render → new array → effect …).
+  const existingSig = existingParts.map((p) => p.uri).join('|');
+  useEffect(() => {
+    // Only meaningful before a take starts; never disturb parts captured during this session.
+    if (stateRef.current !== 'idle') return;
+    existingPartsRef.current = existingParts;
+    partsRef.current = existingParts;
+    setParts(existingParts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingSig]);
   const tmpPathRef = useRef<string | null>(null);
   // Which container the CURRENT part is actually being written as — normally 'wav', 'm4a' if the
   // fallback kicked in. finalize() must persist it under the right extension or nothing can read it.
