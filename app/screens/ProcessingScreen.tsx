@@ -22,6 +22,10 @@ export default function ProcessingScreen() {
   // session's uploaded parts are deleted server-side after each attempt.
   const regen: boolean = route.params.regen ?? false;
   const [session, setSession] = useState<SavedSession | null>(null);
+  // Whether THIS visit has actually (re)started the job. A meeting that was analysed before arrives
+  // still carrying job.stage === 'done', and acting on that before the restart cleared it bounced
+  // straight back to the results — "重新生成逐字稿 一進去就跳出".
+  const [started, setStarted] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -37,8 +41,12 @@ export default function ProcessingScreen() {
         });
       }
       if (!alive) return;
+      // regen must be AWAITED: it clears the previous run's stage, and only then is a 'done' we see
+      // this one's rather than last time's.
       if (regen) await restartJob(sessionId, store);
       else void ensureJob(sessionId, store);
+      if (!alive) return;
+      setStarted(true);
     })();
     refresh();
     return () => { alive = false; off(); };
@@ -46,12 +54,13 @@ export default function ProcessingScreen() {
 
   const job = session?.job;
 
-  // Finished while we were watching → go straight to the result.
+  // Finished while we were watching → go straight to the result. Only ever act on a stage produced
+  // by this visit (see `started`), never on one left over from a previous analysis.
   useEffect(() => {
-    if (job?.stage === 'done' && session) nav.replace('Results', { sessionId, session });
-  }, [job?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (started && job?.stage === 'done' && session) nav.replace('Results', { sessionId, session });
+  }, [started, job?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (job?.stage === 'error') return (
+  if (started && job?.stage === 'error') return (
     <View style={styles.center}>
       <Text style={styles.err}>{job.error || '處理失敗'}</Text>
       <View style={styles.errActions}>
