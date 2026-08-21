@@ -42,7 +42,55 @@ platform :ios do
       },
     )
 
-    upload_to_testflight(api_key: key, skip_waiting_for_build_processing: false)
+    upload_to_testflight(
+      api_key: key,
+      skip_waiting_for_build_processing: false,
+      # "What to Test" as the tester sees it in TestFlight. A build with no notes is a build nobody
+      # knows how to check, so this is never left empty: hand-written notes win, otherwise the commit
+      # subjects since the last shipped build stand in.
+      changelog: testflight_notes,
+      distribute_external: false,
+    )
+  end
+
+  # Notes for the build about to go out. Written to fastlane/RELEASE_NOTES.md before shipping;
+  # falls back to what actually changed since the previous build bump.
+  def testflight_notes
+    path = File.join(File.dirname(__FILE__), "RELEASE_NOTES.md")
+    written = File.exist?(path) ? File.read(path).strip : ""
+    return written[0, 3900] unless written.empty?
+
+    last_bump = `git log --format=%H --grep="chore(ios): bump build" -n 1`.strip
+    range = last_bump.empty? ? "-20" : "#{last_bump}..HEAD"
+    subjects = `git log #{range} --format=%s`.lines
+      .map(&:strip)
+      .reject { |l| l.start_with?("chore(ios): bump build") }
+      .map { |l| "• #{l}" }
+    body = subjects.empty? ? "小幅修正與改進。" : subjects.join("\n")
+    ("本次變更：\n" + body)[0, 3900]
+  end
+end
+
+platform :ios do
+  desc "Attach/replace the 'What to Test' notes on a build already uploaded (fastlane notes build:64)"
+  lane :notes do |options|
+    key = app_store_connect_api_key(
+      key_id: "S4KA24P9A5",
+      issuer_id: "efcfbd71-5d12-4d85-8efc-5cee020286d9",
+      key_filepath: File.expand_path("~/.private_keys/AuthKey_S4KA24P9A5.p8"),
+    )
+    build = options[:build] || latest_testflight_build_number(api_key: key, app_identifier: "com.garyhsieh.haoji").to_s
+    upload_to_testflight(
+      api_key: key,
+      app_identifier: "com.garyhsieh.haoji",
+      app_version: options[:version] || "1.0",
+      build_number: build.to_s,
+      changelog: testflight_notes,
+      distribute_only: true,             # notes only — the build is already uploaded
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+    )
+    UI.success("已為 build #{build} 更新測試備註")
   end
 end
 
