@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		04AE1BE71043D73B5D803689 /* AudioMerge.m in Sources */ = {isa = PBXBuildFile; fileRef = EEAC0C01E539D9F92126D63B /* AudioMerge.m */; };
 		0C80B921A6F3F58F76C31292 /* libPods-Haoji.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-Haoji.a */; };
+		111E4C92AE053645328B5065 /* E2EHooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E953F075B7CF294B089CB5C /* E2EHooks.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		16318103530447E514B7E620 /* BackgroundUpload.m in Sources */ = {isa = PBXBuildFile; fileRef = 11F03FB4B158BD862B403485 /* BackgroundUpload.m */; };
 		52897DB7DF26C30C80E9B873 /* AudioExtract.m in Sources */ = {isa = PBXBuildFile; fileRef = 3DB97975D866E73F6E058ADC /* AudioExtract.m */; };
@@ -23,6 +24,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0E953F075B7CF294B089CB5C /* E2EHooks.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Haoji/E2EHooks.swift; sourceTree = "<group>"; };
 		11F03FB4B158BD862B403485 /* BackgroundUpload.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Haoji/BackgroundUpload.m; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Haoji.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Haoji.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Haoji/Images.xcassets; sourceTree = "<group>"; };
@@ -71,6 +73,7 @@
 				3DB97975D866E73F6E058ADC /* AudioExtract.m */,
 				4553F2283237B4E581E9A295 /* AudioMerge.swift */,
 				EEAC0C01E539D9F92126D63B /* AudioMerge.m */,
+				0E953F075B7CF294B089CB5C /* E2EHooks.swift */,
 			);
 			name = Haoji;
 			sourceTree = "<group>";
@@ -279,6 +282,7 @@
 				52897DB7DF26C30C80E9B873 /* AudioExtract.m in Sources */,
 				7CC1EFF6EEB0813FD2763664 /* AudioMerge.swift in Sources */,
 				04AE1BE71043D73B5D803689 /* AudioMerge.m in Sources */,
+				111E4C92AE053645328B5065 /* E2EHooks.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
