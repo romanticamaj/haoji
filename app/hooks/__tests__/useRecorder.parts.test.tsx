@@ -26,10 +26,20 @@ jest.mock('../../lib/audioInterruption', () => ({
     return () => { mockInterrupt.cb = null; };
   },
 }));
+// `onDisk` is what the session dir actually holds — the recorder now asks IT where the next part
+// goes, because a call can suspend the app between writing a part and remembering that it did.
+const onDisk: { files: string[] } = { files: [] };
 jest.mock('../../lib/recordings', () => ({
   ensureDir: jest.fn().mockResolvedValue(undefined),
   partPath: (s: string, i: number) => `file:///doc/haoji/${s}/part-${i}.m4a`,
-  moveToPart: jest.fn((s: string, i: number) => Promise.resolve(`file:///doc/haoji/${s}/part-${i}.m4a`)),
+  moveToPart: jest.fn((s: string, i: number, _src: string, ext = 'm4a') => {
+    const uri = `haoji/${s}/part-${i}.${ext}`;
+    if (!onDisk.files.includes(uri)) onDisk.files.push(uri);
+    return Promise.resolve(uri);
+  }),
+  listPartsOnDisk: jest.fn(async () => [...onDisk.files]),
+  nextPartIndex: jest.fn(async () => onDisk.files.length === 0 ? 0
+    : Math.max(...onDisk.files.map((f) => Number(/part-(\d+)\./.exec(f)![1]))) + 1),
 }));
 import { useRecorder } from '../useRecorder';
 import Sound from 'react-native-nitro-sound';
@@ -37,11 +47,16 @@ const S = Sound as unknown as Record<string, jest.Mock>;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  onDisk.files = [];
   mockInterrupt.cb = null;
   S.startRecorder.mockResolvedValue('file:///tmp/rec.m4a');
   S.stopRecorder.mockResolvedValue('file:///tmp/rec.m4a');
   const { moveToPart } = require('../../lib/recordings');
-  moveToPart.mockImplementation((s: string, i: number) => Promise.resolve(`file:///doc/haoji/${s}/part-${i}.m4a`));
+  moveToPart.mockImplementation((s: string, i: number, _src: string, ext = 'm4a') => {
+    const uri = `haoji/${s}/part-${i}.${ext}`;
+    if (!onDisk.files.includes(uri)) onDisk.files.push(uri);
+    return Promise.resolve(uri);
+  });
 });
 
 test('start records with metering enabled', async () => {
@@ -83,7 +98,8 @@ test('stop finalizes a part and returns parts array', async () => {
   await act(async () => { await result.current.start(); });
   let parts: any;
   await act(async () => { parts = await result.current.stop(); });
-  expect(parts).toEqual([{ uri: 'file:///doc/haoji/s/part-0.m4a', durationMs: expect.any(Number) }]);
+  // the RELATIVE path the real moveToPart returns, with the extension actually recorded
+  expect(parts).toEqual([{ uri: 'haoji/s/part-0.wav', durationMs: expect.any(Number) }]);
 });
 
 // C1: interruption event finalizes the current part and flags wasInterrupted
@@ -213,6 +229,7 @@ test('parts that arrive after the first render are still continued, not overwrit
     { uri: 'haoji/s/part-0.wav', durationMs: 1000 },
     { uri: 'haoji/s/part-1.wav', durationMs: 2000 },
   ];
+  onDisk.files = existing.map((p) => p.uri);   // an appended meeting's parts are real files
 
   // first render knows nothing (still loading), like the real screen
   const { result, rerender } = await renderHook(
@@ -240,4 +257,69 @@ test('existing parts arriving mid-take never disturb what is being recorded', as
   await act(async () => { rerender({ parts: [{ uri: 'haoji/s/part-9.wav', durationMs: 1 }] }); });
   expect(result.current.state).toBe('recording');    // still recording, unaffected
   expect(result.current.parts).toHaveLength(0);      // the in-flight take's own list is untouched
+});
+
+// THE data-loss case. A phone call suspends the app; iOS can freeze us between writing a part to
+// disk and recording in memory that we wrote it. The file survives, the bookkeeping does not — and
+// the next part used to reuse index 0, which moveToPart deletes before writing. Everything recorded
+// before the call was gone. Disk is what survives suspension, so disk decides where the next part goes.
+test('a part on disk that memory forgot is never overwritten by the next one', async () => {
+  const { moveToPart } = require('../../lib/recordings');
+  onDisk.files = ['haoji/s/part-0.wav'];          // written just before the app was suspended
+
+  const { result } = await renderHook(() => useRecorder('s'));   // memory knows nothing about it
+  await act(async () => { await result.current.start(); });
+
+  // the new take must go to part-1; part-0 is somebody's meeting
+  expect(S.startRecorder.mock.calls[0][0]).toMatch(/rec-s-1\./);
+  await act(async () => { await result.current.stop(); });
+  expect(moveToPart).toHaveBeenCalledWith('s', 1, expect.anything(), expect.any(String));
+
+  // and the forgotten part is picked back up rather than left orphaned
+  expect(result.current.parts.map((p) => p.uri)).toEqual(['haoji/s/part-0.wav', 'haoji/s/part-1.wav']);
+});
+
+test('interrupt → resume keeps both parts, in order', async () => {
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  await act(async () => { mockInterrupt.cb?.({ type: 'began' }); });   // the call arrives
+  expect(result.current.parts.map((p) => p.uri)).toEqual(['haoji/s/part-0.wav']);
+
+  await act(async () => { await result.current.resume(); });           // 繼續
+  await act(async () => { await result.current.stop(); });
+
+  expect(result.current.parts.map((p) => p.uri))
+    .toEqual(['haoji/s/part-0.wav', 'haoji/s/part-1.wav']);
+});
+
+// After a call, resuming the SAME part can fail — the audio session was taken away. It used to fail
+// silently (native reported success regardless), leaving the app "recording" into nothing.
+test('a failed manual resume closes the part and opens a new one instead of recording into nothing', async () => {
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  await act(async () => { await result.current.pause(); });
+
+  S.resumeRecorder.mockRejectedValueOnce(new Error('無法恢復錄音（錄音器拒絕繼續）'));
+  await act(async () => { await result.current.resume(); });
+
+  expect(result.current.state).toBe('recording');
+  // what was captured before the pause is safe, and the new audio goes to its own part
+  expect(result.current.parts.map((p) => p.uri)).toEqual(['haoji/s/part-0.wav']);
+  expect(S.startRecorder).toHaveBeenCalledTimes(2);
+  expect(S.startRecorder.mock.calls[1][0]).toMatch(/rec-s-1\./);
+});
+
+// The path that actually loses meetings: resume fails, the UI falls back to idle, and the record
+// button becomes "start" — which resets the part list, so the next take reuses index 0.
+test('a resume that cannot restart stays PAUSED, never idle', async () => {
+  const { result } = await renderHook(() => useRecorder('s'));
+  await act(async () => { await result.current.start(); });
+  await act(async () => { mockInterrupt.cb?.({ type: 'began' }); });
+
+  S.startRecorder.mockRejectedValue(new Error('Audio session setup failed: busy'));
+  await act(async () => { await result.current.resume(); });
+
+  expect(result.current.state).toBe('paused');        // not 'idle'
+  expect(result.current.wasInterrupted).toBe(true);   // the 繼續 prompt stays put
+  expect(result.current.parts.map((p) => p.uri)).toEqual(['haoji/s/part-0.wav']);   // still ours
 });

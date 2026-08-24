@@ -1,6 +1,7 @@
 import RNFS from 'react-native-fs';
 import type { SavedSession } from './store';
 import * as audioMerge from './audioMerge';
+import { AUDIO_EXTS } from './importMedia';
 
 // RNFS wants bare POSIX paths; the rest of the app wants file:// URIs. Convert at the edges.
 //
@@ -65,7 +66,38 @@ export async function partExists(stored: string): Promise<boolean> {
 }
 
 const partIndex = (name: string) => Number(/part-(\d+)\./.exec(name)?.[1] ?? 0);
-const PART_FILE = /^part-\d+\.(m4a|wav)$/;
+// EVERY extension a part can legitimately have. Imports keep their own (mp3, caf, …), so a list of
+// just m4a|wav would make an imported part invisible to the scans below — and something that can't
+// see a file will happily conclude the session doesn't have it.
+const PART_FILE = new RegExp(`^part-\\d+\\.(${AUDIO_EXTS.join('|')})$`);
+
+/** The parts that actually exist for a session, as stored (relative) uris, ordered by index. */
+export async function listPartsOnDisk(sid: string): Promise<string[]> {
+  try {
+    const entries = await RNFS.readDir(sessionDir(sid));
+    return entries
+      .filter((f) => PART_FILE.test(f.name) && (f.size ?? 1) > 0)
+      .sort((a, b) => partIndex(a.name) - partIndex(b.name))
+      .map((f) => `haoji/${sid}/${f.name}`);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The next free part index, decided by what is ON DISK rather than by what the recorder remembers.
+ *
+ * This is the difference between losing a recording and not. Finalising a part writes the file and
+ * THEN updates the in-memory list; an incoming call suspends the app, and iOS can freeze us between
+ * those two steps. The file is on disk, the bookkeeping never happened — so the next part reused
+ * index 0 and moveToPart deleted the audio that was already there. Disk is the thing that survives
+ * suspension, so disk decides.
+ */
+export async function nextPartIndex(sid: string): Promise<number> {
+  const files = await listPartsOnDisk(sid);
+  if (files.length === 0) return 0;
+  return Math.max(...files.map((f) => partIndex(f))) + 1;
+}
 
 // A recording in progress writes to Caches as `rec-<sid>-<index>.m4a` and is moved into the per-
 // session dir only when the part is finalized. A crash mid-recording (e.g. an incoming call) can
@@ -79,7 +111,13 @@ export async function scavengeTempParts(): Promise<void> {
     if (!m) continue;
     try {
       if ((e.size ?? 0) <= 0) { await RNFS.unlink(e.path).catch(() => {}); continue; }
-      await moveToPart(m[1], Number(m[2]), e.path, m[3]);
+      // Never land on top of a part that already exists: the index embedded in a leftover temp is
+      // only what was true when it was created. Disk decides, exactly as it does while recording.
+      const sid = m[1];
+      const wanted = Number(m[2]);
+      const taken = await listPartsOnDisk(sid);
+      const free = taken.some((u) => partIndex(u) === wanted) ? await nextPartIndex(sid) : wanted;
+      await moveToPart(sid, free, e.path, m[3]);
     } catch { /* leave it for next time — best-effort */ }
   }
 }
@@ -227,10 +265,10 @@ export async function mergeSessionParts(
   const allWav = parts.every((p) => p.uri.endsWith('.wav'));
   const ext = allWav ? 'wav' : 'm4a';
 
-  // Merge into the CACHE under the name the launch scavenger recognises: if the app dies between
-  // deleting the originals and moving this into place, the next launch folds it back in as part-0
-  // rather than losing the meeting.
-  const tmp = `${RNFS.CachesDirectoryPath}/rec-${sid}-0.${ext}`;
+  // NOT named `rec-<sid>-N`: the launch scavenger claims those, and a half-written merge picked up
+  // that way would be moved straight over a good part. This name is invisible to it, so a crash
+  // mid-merge leaves nothing but a scrap in the cache.
+  const tmp = `${RNFS.CachesDirectoryPath}/merge-${sid}.tmp`;
   const srcs = parts.map((p) => bare(resolvePartUri(p.uri)));
   try {
     if (allWav) await audioMerge.concatWav(srcs, tmp);   // recordings: lossless byte copy
@@ -242,8 +280,11 @@ export async function mergeSessionParts(
     return null;                                                   // keep the parts exactly as they were
   }
 
+  // Move the merged file into a FRESH index first, and only then delete the sources. Deleting first
+  // means a failure in between destroys the meeting; this way the worst case is the originals and
+  // the merge both existing for a moment, which is visible and recoverable rather than fatal.
+  const rel = await moveToPart(sid, await nextPartIndex(sid), tmp, ext);
   for (const p of parts) { try { await RNFS.unlink(bare(resolvePartUri(p.uri))); } catch {} }
-  const rel = await moveToPart(sid, 0, tmp, ext);
   const durationMs = parts.reduce((a, p) => a + (p.durationMs || 0), 0);
   return [{ uri: rel, durationMs }];
 }

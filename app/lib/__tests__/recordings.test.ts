@@ -203,7 +203,7 @@ describe('mergeSessionParts', () => {
   beforeEach(() => {
     (audioMerge.concatWav as jest.Mock).mockClear();   // calls must not leak between tests
     (audioMerge.concatToM4A as jest.Mock).mockClear();
-    (audioMerge.concatWav as jest.Mock).mockResolvedValue('/cache/rec-abc-0.wav');
+    (audioMerge.concatWav as jest.Mock).mockResolvedValue('/cache/merge-abc.tmp');
     const fs = require('react-native-fs');
     fs.stat.mockResolvedValue({ size: 50000 });
     fs.exists.mockResolvedValue(false);
@@ -215,7 +215,7 @@ describe('mergeSessionParts', () => {
     const out = await rec.mergeSessionParts('abc', twoParts);
     expect(audioMerge.concatWav).toHaveBeenCalledWith(
       ['/doc/haoji/abc/part-0.wav', '/doc/haoji/abc/part-1.wav'],
-      '/cache/rec-abc-0.wav',   // named so the launch scavenger recovers it if we die mid-swap
+      '/cache/merge-abc.tmp',   // NOT a scavenger name: a half-written merge must never become a part
     );
     expect(out).toEqual([{ uri: 'haoji/abc/part-0.wav', durationMs: 3500 }]);
   });
@@ -227,12 +227,12 @@ describe('mergeSessionParts', () => {
 
   test('compressed / mixed formats go through the re-encoding path, not the byte copy', async () => {
     // Imports are usually m4a or mp3 and may not share a format, so a lossless byte copy is invalid.
-    (audioMerge.concatToM4A as jest.Mock).mockResolvedValue('/cache/rec-abc-0.m4a');
+    (audioMerge.concatToM4A as jest.Mock).mockResolvedValue('/cache/merge-abc.tmp');
     const mixed = [twoParts[0], { uri: 'haoji/abc/part-1.m4a', durationMs: 1500 }];
     const out = await rec.mergeSessionParts('abc', mixed);
     expect(audioMerge.concatWav).not.toHaveBeenCalled();
     expect(audioMerge.concatToM4A).toHaveBeenCalledWith(
-      ['/doc/haoji/abc/part-0.wav', '/doc/haoji/abc/part-1.m4a'], '/cache/rec-abc-0.m4a');
+      ['/doc/haoji/abc/part-0.wav', '/doc/haoji/abc/part-1.m4a'], '/cache/merge-abc.tmp');
     expect(out).toEqual([{ uri: 'haoji/abc/part-0.m4a', durationMs: 2500 }]);
   });
 
@@ -273,4 +273,111 @@ test('moveToPart imports a Chinese filename (was: "the former doesn\'t exist")',
   // the DECODED path is what the filesystem actually has
   expect(fs.moveFile).toHaveBeenCalledWith('/cache/趨勢面試 1.m4a', '/doc/haoji/abc/part-0.m4a');
   expect(out).toBe('haoji/abc/part-0.m4a');
+});
+
+// --- where the next part goes ------------------------------------------------------------------
+// A call suspends the app, and iOS can freeze us between writing a part and recording that we wrote
+// it. Disk survives that; memory does not — so disk decides where the next part goes.
+describe('nextPartIndex / listPartsOnDisk', () => {
+  const withDir = (files: any[]) => {
+    const fs = require('react-native-fs');
+    fs.readDir.mockImplementation((p: string) =>
+      p === '/doc/haoji/abc' ? Promise.resolve(files) : Promise.resolve([]));
+  };
+
+  test('an empty session starts at 0', async () => {
+    withDir([]);
+    expect(await rec.nextPartIndex('abc')).toBe(0);
+  });
+
+  test('a part already on disk means the next one is 1 — NOT 0, which would overwrite it', async () => {
+    withDir([file('part-0.wav', '/doc/haoji/abc/part-0.wav', 44100)]);
+    expect(await rec.nextPartIndex('abc')).toBe(1);
+  });
+
+  test('a gap never causes a reused index', async () => {
+    withDir([
+      file('part-0.wav', '/doc/haoji/abc/part-0.wav', 100),
+      file('part-2.wav', '/doc/haoji/abc/part-2.wav', 100),
+    ]);
+    expect(await rec.nextPartIndex('abc')).toBe(3);
+  });
+
+  test('zero-byte and non-part files are ignored', async () => {
+    withDir([
+      file('part-0.wav', '/doc/haoji/abc/part-0.wav', 0),        // aborted start
+      file('notes.txt', '/doc/haoji/abc/notes.txt', 100),
+    ]);
+    expect(await rec.nextPartIndex('abc')).toBe(0);
+    expect(await rec.listPartsOnDisk('abc')).toEqual([]);
+  });
+
+  test('listPartsOnDisk returns stored uris in index order', async () => {
+    withDir([
+      file('part-10.wav', '/doc/haoji/abc/part-10.wav', 100),
+      file('part-2.wav', '/doc/haoji/abc/part-2.wav', 100),
+    ]);
+    expect(await rec.listPartsOnDisk('abc')).toEqual([
+      'haoji/abc/part-2.wav', 'haoji/abc/part-10.wav',           // 10 sorts after 2, not before
+    ]);
+  });
+
+  test('an unreadable session dir is treated as empty, never as an error', async () => {
+    const fs = require('react-native-fs');
+    fs.readDir.mockRejectedValue(new Error('nope'));
+    expect(await rec.nextPartIndex('abc')).toBe(0);
+  });
+});
+
+test('an imported part keeps its own extension and is still seen as a part', async () => {
+  const fs = require('react-native-fs');
+  fs.readDir.mockImplementation((p: string) =>
+    p === '/doc/haoji/abc' ? Promise.resolve([
+      file('part-0.mp3', '/doc/haoji/abc/part-0.mp3', 900),   // an import, not a recording
+    ]) : Promise.resolve([]));
+  // A part list that only knew about wav/m4a would report 0 here and let the next take overwrite it
+  expect(await rec.listPartsOnDisk('abc')).toEqual(['haoji/abc/part-0.mp3']);
+  expect(await rec.nextPartIndex('abc')).toBe(1);
+});
+
+test('scavengeTempParts never lands on top of an existing part', async () => {
+  const fs = require('react-native-fs');
+  fs.readDir.mockImplementation((p: string) => {
+    if (p === '/cache') return Promise.resolve([file('rec-s5-0.wav', '/cache/rec-s5-0.wav', 500)]);
+    // index 0 is already taken by a real recording
+    if (p === '/doc/haoji/s5') return Promise.resolve([file('part-0.wav', '/doc/haoji/s5/part-0.wav', 800)]);
+    return Promise.resolve([]);
+  });
+  fs.moveFile.mockClear();
+  await rec.scavengeTempParts();
+  // the leftover's embedded index was only true when it was written — it must not clobber part-0
+  expect(fs.moveFile).toHaveBeenCalledWith('/cache/rec-s5-0.wav', '/doc/haoji/s5/part-1.wav');
+});
+
+test('a merge writes the joined file before deleting any source', async () => {
+  const fs = require('react-native-fs');
+  const order: string[] = [];
+  fs.readDir.mockImplementation((p: string) =>
+    p === '/doc/haoji/abc' ? Promise.resolve([
+      file('part-0.wav', '/doc/haoji/abc/part-0.wav', 100),
+      file('part-1.wav', '/doc/haoji/abc/part-1.wav', 100),
+    ]) : Promise.resolve([]));
+  fs.stat.mockResolvedValue({ size: 50000 });
+  fs.exists.mockResolvedValue(false);
+  fs.moveFile.mockImplementation((from: string) => { order.push(`move:${from}`); return Promise.resolve(); });
+  fs.unlink.mockImplementation((p: string) => { order.push(`unlink:${p}`); return Promise.resolve(); });
+  (audioMerge.concatWav as jest.Mock).mockClear().mockResolvedValue('/cache/merge-abc.tmp');
+
+  await rec.mergeSessionParts('abc', [
+    { uri: 'haoji/abc/part-0.wav', durationMs: 1000 },
+    { uri: 'haoji/abc/part-1.wav', durationMs: 1000 },
+  ]);
+
+  // the merge temp is invisible to the launch scavenger, so a crash mid-merge can't overwrite a part
+  expect(audioMerge.concatWav).toHaveBeenCalledWith(expect.anything(), '/cache/merge-abc.tmp');
+  // and the joined audio is in place BEFORE anything is deleted — the other order loses the meeting
+  const firstMove = order.findIndex((o) => o.startsWith('move:'));
+  const firstUnlinkOfSource = order.findIndex((o) => o.startsWith('unlink:/doc/haoji/abc/part-'));
+  expect(firstMove).toBeGreaterThanOrEqual(0);
+  expect(firstMove).toBeLessThan(firstUnlinkOfSource);
 });

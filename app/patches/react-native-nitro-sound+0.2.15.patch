@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-nitro-sound/ios/Sound.swift b/node_modules/react-native-nitro-sound/ios/Sound.swift
-index 65cd4df..c0952de 100644
+index 65cd4df..db8da1c 100644
 --- a/node_modules/react-native-nitro-sound/ios/Sound.swift
 +++ b/node_modules/react-native-nitro-sound/ios/Sound.swift
 @@ -56,9 +56,12 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
@@ -74,7 +74,30 @@ index 65cd4df..c0952de 100644
              }
  
              // Start recording on main queue
-@@ -415,11 +452,16 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -386,7 +423,21 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+         let promise = Promise<String>()
+ 
+         if let recorder = self.audioRecorder, !recorder.isRecording {
+-            recorder.record()
++            // HAOJI_FIX: reactivate the session and CHECK the result. An interruption (a call) leaves
++            // the session inactive, so record() returns false — and the stock code ignored that and
++            // reported success, leaving JS "recording" into nothing while the meeting was lost. The
++            // caller can only fall back to starting a fresh part if it is told the truth.
++            do {
++                try (self.recordingSession ?? AVAudioSession.sharedInstance()).setActive(true)
++            } catch {
++                promise.reject(withError: RuntimeError.error(
++                    withMessage: "無法恢復錄音（音訊被佔用）：\(error.localizedDescription)"))
++                return promise
++            }
++            guard recorder.record() else {
++                promise.reject(withError: RuntimeError.error(withMessage: "無法恢復錄音（錄音器拒絕繼續）"))
++                return promise
++            }
+             DispatchQueue.main.async {
+                 self.startRecordTimer()
+             }
+@@ -415,11 +466,16 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
                  DispatchQueue.main.async {
                      recorder.stop()
                      self.stopRecordTimer()
@@ -93,7 +116,7 @@ index 65cd4df..c0952de 100644
                          // Deactivate audio session
                          try? self.recordingSession?.setActive(false)
                          self.recordingSession = nil
-@@ -771,6 +813,35 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -771,6 +827,35 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
              }
          }
  

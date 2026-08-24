@@ -6,7 +6,7 @@
 // though its transcript came out fine.
 
 /** Extensions we keep as-is: the on-device player can open all of these directly. */
-const AUDIO_EXTS = ['m4a', 'mp3', 'wav', 'aac', 'caf', 'aiff', 'aif', 'mp4a'];
+export const AUDIO_EXTS = ['m4a', 'mp3', 'wav', 'aac', 'caf', 'aiff', 'aif', 'mp4a'];
 /** Containers that hold a video track — the audio has to be extracted before it can be played. */
 const VIDEO_EXTS = ['mov', 'mp4', 'm4v', 'avi', 'mkv', '3gp', 'webm', 'mpg', 'mpeg'];
 

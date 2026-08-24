@@ -8,7 +8,7 @@ import Sound, {
   AudioSourceAndroidType,
 } from 'react-native-nitro-sound';
 import type { AVLinearPCMBitDepthKeyIOSType } from 'react-native-nitro-sound';
-import { moveToPart } from '../lib/recordings';
+import { moveToPart, nextPartIndex, listPartsOnDisk } from '../lib/recordings';
 import { onAudioInterruption } from '../lib/audioInterruption';
 
 export type Part = { uri: string; durationMs: number };
@@ -99,6 +99,9 @@ export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS)
   const unsubRef = useRef<null | (() => void)>(null);
   const [state, setState] = useState<RecorderState>('idle');
   const [durationMs, setDurationMs] = useState(0);
+  // The interruption handler is registered once, so the `finalize` it captures would read the
+  // durationMs of that first render — every interrupted part was being stored with a duration of 0.
+  const durationRef = useRef(0);
   const [meteringLevel, setMeteringLevel] = useState(0);
   const [parts, setParts] = useState<Part[]>([]);
   const [wasInterrupted, setWasInterrupted] = useState(false);
@@ -110,7 +113,9 @@ export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS)
   const goto = (s: RecorderState) => { stateRef.current = s; setState(s); };
 
   async function beginPart() {
-    const idx = partsRef.current.length;
+    // Ask the DISK where we are, not memory: a call can suspend the app between writing a part and
+    // recording that we wrote it, and reusing an index overwrites audio that is already there.
+    const idx = await nextPartIndex(sessionId);
     // meteringEnabled (3rd arg) MUST be true or currentMetering is undefined and the waveform stays flat
     const attempt = async (ext: PartExt, set: AudioSet) => {
       const tmp = `${RNFS.CachesDirectoryPath}/rec-${sessionId}-${idx}.${ext}`;
@@ -127,7 +132,8 @@ export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS)
       await attempt('m4a', AAC_FALLBACK_SET);
     }
     Sound.addRecordBackListener((e) => {
-      setDurationMs(e.currentPosition ?? 0);
+      durationRef.current = e.currentPosition ?? 0;
+      setDurationMs(durationRef.current);
       setMeteringLevel(dbToLevel(e.currentMetering));
     });
     goto('recording');
@@ -140,10 +146,30 @@ export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS)
     Sound.removeRecordBackListener();
     const src = uri || tmpPathRef.current;
     tmpPathRef.current = null;
-    const moved = await moveToPart(sessionId, partsRef.current.length, src, extRef.current); // persist out of cache
-    const part = { uri: moved, durationMs };
+    const moved = await moveToPart(sessionId, await nextPartIndex(sessionId), src, extRef.current);
+    const part = { uri: moved, durationMs: durationRef.current };
     partsRef.current = [...partsRef.current, part]; setParts(partsRef.current);
-    return part;
+    // Re-read the session's files: a part whose bookkeeping was lost to a suspension is still on
+    // disk, and this is what puts it back into the recording instead of leaving it orphaned.
+    await reconcileWithDisk();
+    return partsRef.current[partsRef.current.length - 1] ?? part;
+  }
+
+  /**
+   * Fold what is on disk into the in-memory list. A UNION, never a replacement: anything we already
+   * know about stays, so a part this scan cannot see (an import under some other extension, a file
+   * momentarily missing) is never quietly dropped from the recording.
+   */
+  async function reconcileWithDisk() {
+    const onDisk = await listPartsOnDisk(sessionId);
+    if (onDisk.length === 0) return;
+    const known = new Map(partsRef.current.map((p) => [p.uri, p.durationMs]));
+    for (const uri of onDisk) if (!known.has(uri)) known.set(uri, 0);
+    const idx = (u: string) => Number(/part-(\d+)\./.exec(u)?.[1] ?? 0);
+    partsRef.current = [...known.entries()]
+      .map(([uri, durationMs]) => ({ uri, durationMs }))
+      .sort((a, b) => idx(a.uri) - idx(b.uri));
+    setParts(partsRef.current);
   }
 
   async function onInterrupted() {
@@ -175,8 +201,11 @@ export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS)
         const g = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
         if (g !== PermissionsAndroid.RESULTS.GRANTED) throw new Error('microphone permission denied');
       }
-      // Keep what the meeting already has — start() only resets the state of THIS take.
+      // Keep what the meeting already has — start() only resets the state of THIS take. Then fold in
+      // whatever is on disk: if a previous take's bookkeeping was lost (a failed resume, a kill),
+      // this is what stops the next part reusing an index and deleting audio that is already there.
       partsRef.current = existingPartsRef.current; setParts(existingPartsRef.current);
+      await reconcileWithDisk();
       setWasInterrupted(false); interruptedRef.current = false;
       unsubRef.current?.();
       // interrupted → finalize the current part; resume() then starts a fresh part
@@ -198,11 +227,33 @@ export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS)
       // interrupted → new part; surface a failure instead of hanging on the "繼續" prompt
       setWasInterrupted(false); interruptedRef.current = false; setError(null); goto('starting');
       try { await beginPart(); }
-      catch (e) { setError(recorderErrorMessage(e)); goto('idle'); }
-    } else { await Sound.resumeRecorder(); goto('recording'); } // manual → same part
+      catch (e) {
+        // Stay PAUSED, not idle. Dropping to idle turns the record button back into "start", and
+        // start() resets the part list — which is how a meeting recorded before the call got
+        // overwritten. Paused keeps the 繼續 prompt and keeps the parts we already have.
+        setError(recorderErrorMessage(e));
+        interruptedRef.current = true; setWasInterrupted(true); goto('paused');
+      }
+      return;
+    }
+    // Manual pause → same part. resumeRecorder can fail silently after the audio session was taken
+    // (a call), leaving us "recording" into nothing; if it does, close this part and open a new one
+    // rather than pretending it worked.
+    try {
+      await Sound.resumeRecorder();
+      goto('recording');
+    } catch (e) {
+      try {
+        await finalize();
+        await beginPart();
+      } catch (e2) {
+        setError(recorderErrorMessage(e2));
+        interruptedRef.current = true; setWasInterrupted(true); goto('paused');
+      }
+    }
   }
   async function stop() {
-    goto('stopped'); await finalize(); setMeteringLevel(0);
+    goto('stopped'); await finalize(); await reconcileWithDisk(); setMeteringLevel(0);
     unsubRef.current?.(); unsubRef.current = null;
     return partsRef.current;
   }
