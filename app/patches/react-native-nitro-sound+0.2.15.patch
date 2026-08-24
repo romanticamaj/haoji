@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-nitro-sound/ios/Sound.swift b/node_modules/react-native-nitro-sound/ios/Sound.swift
-index 65cd4df..db8da1c 100644
+index 65cd4df..a144ec9 100644
 --- a/node_modules/react-native-nitro-sound/ios/Sound.swift
 +++ b/node_modules/react-native-nitro-sound/ios/Sound.swift
 @@ -56,9 +56,12 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
@@ -16,7 +16,7 @@ index 65cd4df..db8da1c 100644
                  try self.recordingSession?.setActive(true)
  
                  print("🎙️ Audio session set up successfully")
-@@ -119,12 +122,42 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -119,12 +122,48 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
              print("🎙️ Directory exists and is writable: \(directory.path)")
  
              // Setup audio settings
@@ -31,6 +31,12 @@ index 65cd4df..db8da1c 100644
 +            // impossible. The extension is unambiguous, so it decides.
 +            if fileURL.pathExtension.lowercased() == "wav" {
 +                settings[AVFormatIDKey] = Int(kAudioFormatLinearPCM)
++                // Rate and channels have to be forced here too. The AudioSet from JS never survives
++                // the interop, so these silently fell back to the 44.1 kHz STEREO preset — 5.5x the
++                // bytes of the 16 kHz mono the app asks for and the backend transcribes at, which is
++                // pure cost in disk and upload time for no gain in quality.
++                settings[AVSampleRateKey] = 16000.0
++                settings[AVNumberOfChannelsKey] = 1
 +                settings[AVLinearPCMBitDepthKey] = 16
 +                settings[AVLinearPCMIsFloatKey] = false
 +                settings[AVLinearPCMIsBigEndianKey] = false
@@ -61,7 +67,7 @@ index 65cd4df..db8da1c 100644
              print("🎙️ AVAudioRecorder created successfully")
  
              self.audioRecorder?.isMeteringEnabled = meteringEnabled ?? false
-@@ -135,7 +168,11 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -135,7 +174,11 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
              print("🎙️ Recorder prepared: \(prepared)")
  
              if !prepared {
@@ -74,7 +80,7 @@ index 65cd4df..db8da1c 100644
              }
  
              // Start recording on main queue
-@@ -386,7 +423,21 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -386,7 +429,21 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
          let promise = Promise<String>()
  
          if let recorder = self.audioRecorder, !recorder.isRecording {
@@ -97,7 +103,7 @@ index 65cd4df..db8da1c 100644
              DispatchQueue.main.async {
                  self.startRecordTimer()
              }
-@@ -415,11 +466,16 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -415,11 +472,16 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
                  DispatchQueue.main.async {
                      recorder.stop()
                      self.stopRecordTimer()
@@ -116,7 +122,7 @@ index 65cd4df..db8da1c 100644
                          // Deactivate audio session
                          try? self.recordingSession?.setActive(false)
                          self.recordingSession = nil
-@@ -771,6 +827,35 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+@@ -771,6 +833,35 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
              }
          }
  
