@@ -74,6 +74,10 @@ const AAC_FALLBACK_SET: AudioSet = {
  */
 const NO_PARTS: Part[] = [];   // stable identity: a `= []` default would be a fresh array on every render
 
+// Monotonic, so two takes in the same millisecond still get different files. A wall clock alone is
+// not a uniqueness guarantee — and this name existing twice is what destroys audio.
+let tmpSeq = 0;
+
 export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS): RecorderApi {
   const partsRef = useRef<Part[]>(existingParts);
   const stateRef = useRef<RecorderState>('idle');
@@ -118,7 +122,11 @@ export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS)
     const idx = await nextPartIndex(sessionId);
     // meteringEnabled (3rd arg) MUST be true or currentMetering is undefined and the waveform stays flat
     const attempt = async (ext: PartExt, set: AudioSet) => {
-      const tmp = `${RNFS.CachesDirectoryPath}/rec-${sessionId}-${idx}.${ext}`;
+      // Unique per attempt. Reusing `rec-<sid>-<idx>` meant a take that never got finalised (an
+      // interruption we failed to hear) sat in the cache under exactly the name the NEXT take would
+      // open — and startRecorder truncates what it opens. That is what destroyed the audio recorded
+      // before a call, before anything had a chance to recover it.
+      const tmp = `${RNFS.CachesDirectoryPath}/rec__${sessionId}__${idx}__${Date.now()}_${++tmpSeq}.${ext}`;
       tmpPathRef.current = tmp;
       extRef.current = ext;
       await Sound.startRecorder(tmp, set, true);

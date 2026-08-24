@@ -107,7 +107,10 @@ export async function scavengeTempParts(): Promise<void> {
   let entries: RNFS.ReadDirItem[];
   try { entries = await RNFS.readDir(RNFS.CachesDirectoryPath); } catch { return; }
   for (const e of entries) {
-    const m = /^rec-(.+)-(\d+)\.(m4a|wav)$/.exec(e.name);
+    // Both shapes: the unique `rec__<sid>__<idx>__<ts>.<ext>` written now, and the older
+    // `rec-<sid>-<idx>.<ext>` that may still be sitting in a cache from a previous version.
+    const m = /^rec__(.+?)__(\d+)__[\d_]+\.(m4a|wav)$/.exec(e.name)
+      ?? /^rec-(.+)-(\d+)\.(m4a|wav)$/.exec(e.name);
     if (!m) continue;
     try {
       if ((e.size ?? 0) <= 0) { await RNFS.unlink(e.path).catch(() => {}); continue; }

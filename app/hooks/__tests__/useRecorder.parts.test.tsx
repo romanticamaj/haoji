@@ -63,7 +63,7 @@ test('start records with metering enabled', async () => {
   const { result } = await renderHook(() => useRecorder('s'));
   await act(async () => { await result.current.start(); });
   // startRecorder(path, audioSet, meteringEnabled=true)
-  expect(S.startRecorder).toHaveBeenCalledWith(expect.stringContaining('rec-s-0'), expect.any(Object), true);
+  expect(S.startRecorder).toHaveBeenCalledWith(expect.stringContaining('rec__s__0__'), expect.any(Object), true);
 });
 
 // The reported bug: a failed startRecorder must NOT leave the UI silently idle with no feedback.
@@ -150,7 +150,7 @@ test('WAV is attempted first and the part is stored as .wav', async () => {
   const { result } = await renderHook(() => useRecorder('s'));
   await act(async () => { await result.current.start(); });
   expect(S.startRecorder).toHaveBeenCalledTimes(1);
-  expect(S.startRecorder.mock.calls[0][0]).toMatch(/rec-s-0\.wav$/);
+  expect(S.startRecorder.mock.calls[0][0]).toMatch(/rec__s__0__.*\.wav$/);
   await act(async () => { await result.current.stop(); });
   expect(moveToPart).toHaveBeenCalledWith('s', 0, expect.anything(), 'wav');
 });
@@ -241,7 +241,7 @@ test('parts that arrive after the first render are still continued, not overwrit
 
   await act(async () => { await result.current.start(); });
   // the new take must be part-2 — NOT part-0, which would clobber the original audio
-  expect(S.startRecorder.mock.calls[0][0]).toMatch(/rec-s-2\./);
+  expect(S.startRecorder.mock.calls[0][0]).toMatch(/rec__s__2__/);
 
   await act(async () => { await result.current.stop(); });
   expect(moveToPart).toHaveBeenCalledWith('s', 2, expect.anything(), expect.any(String));
@@ -271,7 +271,7 @@ test('a part on disk that memory forgot is never overwritten by the next one', a
   await act(async () => { await result.current.start(); });
 
   // the new take must go to part-1; part-0 is somebody's meeting
-  expect(S.startRecorder.mock.calls[0][0]).toMatch(/rec-s-1\./);
+  expect(S.startRecorder.mock.calls[0][0]).toMatch(/rec__s__1__/);
   await act(async () => { await result.current.stop(); });
   expect(moveToPart).toHaveBeenCalledWith('s', 1, expect.anything(), expect.any(String));
 
@@ -306,7 +306,7 @@ test('a failed manual resume closes the part and opens a new one instead of reco
   // what was captured before the pause is safe, and the new audio goes to its own part
   expect(result.current.parts.map((p) => p.uri)).toEqual(['haoji/s/part-0.wav']);
   expect(S.startRecorder).toHaveBeenCalledTimes(2);
-  expect(S.startRecorder.mock.calls[1][0]).toMatch(/rec-s-1\./);
+  expect(S.startRecorder.mock.calls[1][0]).toMatch(/rec__s__1__/);
 });
 
 // The path that actually loses meetings: resume fails, the UI falls back to idle, and the record

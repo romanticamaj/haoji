@@ -10,12 +10,21 @@ import React
 @objc(AudioInterruption)
 class AudioInterruption: RCTEventEmitter {
   private var hasListeners = false
+  private var selfRegistered = false
 
   override func supportedEvents() -> [String]! { ["audioInterruption"] }
   override static func requiresMainQueueSetup() -> Bool { false }
 
-  override func startObserving() {
-    hasListeners = true
+  // Observe from the moment the module exists, NOT from startObserving().
+  //
+  // RCTEventEmitter only calls startObserving() when JS subscribes THROUGH THE MODULE. We subscribe
+  // with a bare DeviceEventEmitter (the New-Architecture-safe route), which never touches the module
+  // — so startObserving() was never called, the notification was never observed, and audio
+  // interruptions did not reach the app at all. A call froze the recording on screen with no pause,
+  // no auto-resume, and no part finalised. Registering here removes that dependency entirely.
+  override init() {
+    super.init()
+    NSLog("[AudioInterruption] module created; observing interruptions")
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleInterruption(_:)),
@@ -23,15 +32,30 @@ class AudioInterruption: RCTEventEmitter {
       object: nil)
   }
 
-  override func stopObserving() {
-    hasListeners = false
-    NotificationCenter.default.removeObserver(self)
+  deinit { NotificationCenter.default.removeObserver(self) }
+
+  /// Called once from JS at startup for the side effect of EXISTING.
+  ///
+  /// React Native creates native modules lazily, on first use from JS. We listen for the event with
+  /// a bare DeviceEventEmitter and never call into the module, so nothing ever caused it to be
+  /// created — init() never ran, the notification was never observed, and a phone call did not
+  /// reach the app at all. One no-op call at startup is what makes the observer exist.
+  @objc func prepare() {
+    // RCTEventEmitter DROPS every event while its listener count is zero, and that count only rises
+    // when JS subscribes through the module. We subscribe with DeviceEventEmitter, so the count
+    // stayed at zero and each interruption was discarded on the native side after being observed.
+    // Registering ourselves as the listener — once, never removed — is what lets the event through.
+    if !selfRegistered { selfRegistered = true; addListener("audioInterruption") }
   }
 
+  override func startObserving() { hasListeners = true }
+  override func stopObserving() { hasListeners = false }
+
   @objc private func handleInterruption(_ notification: Notification) {
-    guard hasListeners,
-          let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+    // No hasListeners guard: it depends on the same startObserving() that never runs for us.
+    guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
           let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+    NSLog("[AudioInterruption] interruption \(type == .began ? "began" : "ended") → JS")
 
     switch type {
     case .began:
