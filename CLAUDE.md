@@ -26,6 +26,7 @@ npm run pods                             # cd ios && pod install (after native d
 npm test                                 # jest (react-native preset)
 npx jest path/to/file.test.tsx          # single file
 npx jest -t "test name substring"       # single test
+npm run e2e:recording                    # recording + call interruption on a simulator
 cd ios && fastlane beta                  # archive + sign + upload to TestFlight (ASC API key)
 ```
 
@@ -82,7 +83,11 @@ Stack-based navigation (`App.tsx` / `navigation.tsx`): Home → Record → Proce
 
 ### App testing
 
-Jest (`react-native` preset) with native modules mocked (`jest-setup.js` mocks AsyncStorage, reanimated, react-native-config, react-native-fs; nitro-sound / clipboard / share / picker are mocked per-suite). This means logic and component behavior are covered in CI but device-only behavior is not — `app/MANUAL-QA.md` is the checklist to run on a real device (or TestFlight) before shipping (mic permission, real recording, **call interruption → new part**, upload→processing→results, offline persistence, IAP unlock).
+Jest (`react-native` preset) with native modules mocked (`jest-setup.js` mocks AsyncStorage, reanimated, react-native-config, react-native-fs; nitro-sound / clipboard / share / picker are mocked per-suite). Logic and component behaviour are covered in CI.
+
+**Recording and call interruption run on a simulator, not a real device** — `npm run e2e:recording`. `ios/HaojiUITests/` drives the real UI while `ios/Haoji/E2EHooks.swift` (simulator-only, triggered by Darwin notification or `haoji://e2e/…`) posts a genuine `AVAudioSession.interruptionNotification`; `scripts/e2e-recording.mjs` then verifies the audio on disk with ffprobe. **Both layers are required**: a silently deleted recording still leaves a convincing UI behind, and a frozen screen can sit on top of perfectly good files. Assuming these needed real hardware is what let a recording-loss bug survive three TestFlight cycles. See `app/scripts/README-sim.md`.
+
+`app/MANUAL-QA.md` is what genuinely still needs hardware before shipping (mic permission, waveform scrubbing by touch, a real phone call taking the audio hardware, background upload, IAP unlock).
 
 ## Docs
 

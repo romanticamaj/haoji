@@ -1,15 +1,24 @@
 # 好記 App — Manual QA (dev build / TestFlight)
 
-Jest covers logic + component behaviour with native modules mocked. Recording, playback, and
-call-interruption behaviour can only be verified on a **real device** — run a local dev build
-(`npm run ios` on a connected device) or install the TestFlight build. The backend URL comes
+Jest covers logic + component behaviour with native modules mocked. The backend URL comes
 from `.env` (`react-native-config`), defaulting to the Tailscale IP `100.106.118.45:7780`.
+
+**Recording and call interruption are no longer on this list.** They run on a simulator:
+
+```bash
+npm run e2e:recording     # XCUITest drives the UI; ffprobe checks the audio on disk
+```
+
+Believing those needed a real device is what let a bug that silently discarded recordings survive
+three TestFlight cycles. See `scripts/README-sim.md`. What is left below genuinely needs hardware.
 
 - [ ] Mic permission prompt appears on first record.
 - [ ] Big red button records; timer counts up; button shows stop (square) while recording.
 - [ ] Pause then 繼續 resumes; level/animation responds to voice.
-- [ ] **Interruption:** take a phone call (or trigger Siri) mid-record → recording finalizes that
-      part; on 繼續 a NEW part starts; final transcript still covers everything.
+- [ ] **Interruption on real hardware:** take an actual phone call mid-record. The simulator posts
+      the same system notification, but a real call also takes the audio hardware away — so this
+      confirms the one thing `npm run e2e:recording` cannot: that 繼續 still works afterwards, and
+      the transcript covers both sides of the call.
 - [ ] Stop → uploads → Processing shows progress → Results opens.
 - [ ] Upload 音檔/影片 picker works; same flow to Results.
 - [ ] **Player (react-native-audio-waveform):** each part shows a real full-width waveform; ▶ plays,

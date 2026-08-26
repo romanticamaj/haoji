@@ -192,3 +192,30 @@ test('without appendTo a brand-new meeting id is minted (unchanged behaviour)', 
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review',
     { sessionId: expect.stringMatching(/^local-/) }));
 });
+
+// An interruption FINALISES the part being recorded, so what the meeting holds grows mid-session.
+// Counting only the parts present when the screen opened made the clock jump backwards the moment a
+// call ended — 00:11 became 00:03 — which reads exactly like the earlier audio had been wiped.
+test('the timer keeps counting parts finalised by an interruption', async () => {
+  mockRecApi.state = 'recording';
+  mockRecApi.wasInterrupted = false;
+  mockRecApi.parts = [{ uri: 'file:///part-0.wav', durationMs: 11_000 }] as any;  // closed by the call
+  mockRecApi.durationMs = 3_000;                                                  // the take after it
+
+  const { findByText } = await render(<RecordScreen />);
+  await findByText('00:14');            // 11 + 3, not 00:03
+});
+
+test('before recording starts, an appended meeting shows what it already holds', async () => {
+  mockRouteParams.current = { appendTo: 'sess123' };
+  mockStore.get.mockResolvedValue({
+    id: 'sess123', createdAt: 0, title: 't', names: {}, unlocked: false,
+    parts: [{ uri: 'file:///part-0.wav', durationMs: 33_000 }],
+  });
+  mockRecApi.state = 'idle';
+  mockRecApi.parts = [] as any;          // the hook has not adopted them yet
+  mockRecApi.durationMs = 0;
+
+  const { findByText } = await render(<RecordScreen />);
+  await findByText('00:33');
+});

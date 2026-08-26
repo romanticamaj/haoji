@@ -29,6 +29,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
       launchOptions: launchOptions
     )
 
+    // Simulator-only: lets a UI test drive a real audio interruption from its own process.
+    E2EHooks.registerDarwinTriggers()
+
     return true
   }
 

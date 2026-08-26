@@ -13,15 +13,28 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		16318103530447E514B7E620 /* BackgroundUpload.m in Sources */ = {isa = PBXBuildFile; fileRef = 11F03FB4B158BD862B403485 /* BackgroundUpload.m */; };
 		52897DB7DF26C30C80E9B873 /* AudioExtract.m in Sources */ = {isa = PBXBuildFile; fileRef = 3DB97975D866E73F6E058ADC /* AudioExtract.m */; };
+		537AAF080ED454F9FE24CA0E /* RecordingInterruptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC6EB8BDAB7318BF858BABB2 /* RecordingInterruptionTests.swift */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		7CC1EFF6EEB0813FD2763664 /* AudioMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4553F2283237B4E581E9A295 /* AudioMerge.swift */; };
+		802B244228CA084A8279CA28 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2F25FB27F8A27B4C0203E23 /* Foundation.framework */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		93CAAAE70B8C4DB225EB070A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		9969B21539DC8CB474585749 /* AudioInterruption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854A7F53DA365F2D0A86405D /* AudioInterruption.swift */; };
 		A25BF26A5F1F824B474534D6 /* AudioInterruption.m in Sources */ = {isa = PBXBuildFile; fileRef = 4350D8E71B5D0AA33E62F377 /* AudioInterruption.m */; };
+		AB3326065933B154452C5911 /* E2ETrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B37DB2A5A0D5FC3F3F9E79 /* E2ETrigger.swift */; };
 		E3CC3708C133365D270295FB /* AudioExtract.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A17C21E24BA311CA8F0A19 /* AudioExtract.swift */; };
 		F5E444D17767B36A51C1028C /* BackgroundUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61160A32D4EABF15AA1C25D4 /* BackgroundUpload.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		004421133FC27538E00496DD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 13B07F861A680F5B00A75B9A;
+			remoteInfo = Haoji;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		0E953F075B7CF294B089CB5C /* E2EHooks.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Haoji/E2EHooks.swift; sourceTree = "<group>"; };
@@ -32,6 +45,7 @@
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = Haoji/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-Haoji.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Haoji.debug.xcconfig"; path = "Target Support Files/Pods-Haoji/Pods-Haoji.debug.xcconfig"; sourceTree = "<group>"; };
 		3DB97975D866E73F6E058ADC /* AudioExtract.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Haoji/AudioExtract.m; sourceTree = "<group>"; };
+		3F2FC70467C2B9C79D57CD87 /* HaojiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HaojiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4350D8E71B5D0AA33E62F377 /* AudioInterruption.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Haoji/AudioInterruption.m; sourceTree = "<group>"; };
 		4553F2283237B4E581E9A295 /* AudioMerge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Haoji/AudioMerge.swift; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-Haoji.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Haoji.release.xcconfig"; path = "Target Support Files/Pods-Haoji/Pods-Haoji.release.xcconfig"; sourceTree = "<group>"; };
@@ -40,12 +54,23 @@
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Haoji/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Haoji/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		854A7F53DA365F2D0A86405D /* AudioInterruption.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Haoji/AudioInterruption.swift; sourceTree = "<group>"; };
+		A2F25FB27F8A27B4C0203E23 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		B4B37DB2A5A0D5FC3F3F9E79 /* E2ETrigger.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = E2ETrigger.swift; sourceTree = "<group>"; };
 		B6A17C21E24BA311CA8F0A19 /* AudioExtract.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Haoji/AudioExtract.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		EEAC0C01E539D9F92126D63B /* AudioMerge.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Haoji/AudioMerge.m; sourceTree = "<group>"; };
+		FC6EB8BDAB7318BF858BABB2 /* RecordingInterruptionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecordingInterruptionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		0F1C7718AAC6FD7AF3FE9514 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				802B244228CA084A8279CA28 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		13B07F8C1A680F5B00A75B9A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -83,8 +108,19 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				5DCACB8F33CDC322A6C60F78 /* libPods-Haoji.a */,
+				CF7E8B8AAD5095C8C868D559 /* iOS */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		2FA1E394258CC01FE0EF6F60 /* HaojiUITests */ = {
+			isa = PBXGroup;
+			children = (
+				B4B37DB2A5A0D5FC3F3F9E79 /* E2ETrigger.swift */,
+				FC6EB8BDAB7318BF858BABB2 /* RecordingInterruptionTests.swift */,
+			);
+			name = HaojiUITests;
+			path = HaojiUITests;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -102,6 +138,7 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				2FA1E394258CC01FE0EF6F60 /* HaojiUITests */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -112,6 +149,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* Haoji.app */,
+				3F2FC70467C2B9C79D57CD87 /* HaojiUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -123,6 +161,14 @@
 				5709B34CF0A7D63546082F79 /* Pods-Haoji.release.xcconfig */,
 			);
 			path = Pods;
+			sourceTree = "<group>";
+		};
+		CF7E8B8AAD5095C8C868D559 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				A2F25FB27F8A27B4C0203E23 /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -148,6 +194,24 @@
 			productName = Haoji;
 			productReference = 13B07F961A680F5B00A75B9A /* Haoji.app */;
 			productType = "com.apple.product-type.application";
+		};
+		5A7C75F20E03556DB5095D66 /* HaojiUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8C2BBE120157006D9C48D800 /* Build configuration list for PBXNativeTarget "HaojiUITests" */;
+			buildPhases = (
+				3565793541D443822B9B5D6E /* Sources */,
+				0F1C7718AAC6FD7AF3FE9514 /* Frameworks */,
+				E4E35DD668245F41D9F75403 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2EB279C806281E99DE6674B3 /* PBXTargetDependency */,
+			);
+			name = HaojiUITests;
+			productName = HaojiUITests;
+			productReference = 3F2FC70467C2B9C79D57CD87 /* HaojiUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -176,6 +240,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* Haoji */,
+				5A7C75F20E03556DB5095D66 /* HaojiUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -188,6 +253,13 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				93CAAAE70B8C4DB225EB070A /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4E35DD668245F41D9F75403 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -286,7 +358,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3565793541D443822B9B5D6E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB3326065933B154452C5911 /* E2ETrigger.swift in Sources */,
+				537AAF080ED454F9FE24CA0E /* RecordingInterruptionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2EB279C806281E99DE6674B3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Haoji;
+			target = 13B07F861A680F5B00A75B9A /* Haoji */;
+			targetProxy = 004421133FC27538E00496DD /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -347,6 +437,41 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
+		};
+		1E11CB227A3FE050DF4249D6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = HaojiUITests;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.garyhsieh.haoji.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Haoji;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		2A72E803726B5FCC25CAFFF2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = HaojiUITests;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.garyhsieh.haoji.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Haoji;
+			};
+			name = Debug;
 		};
 		83CBBA201A601CBA00E9B192 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -509,6 +634,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8C2BBE120157006D9C48D800 /* Build configuration list for PBXNativeTarget "HaojiUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1E11CB227A3FE050DF4249D6 /* Release */,
+				2A72E803726B5FCC25CAFFF2 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

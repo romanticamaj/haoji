@@ -57,7 +57,14 @@ export default function RecordScreen() {
   const existingMs = useMemo(() => existingParts.reduce((a, p) => a + (p.durationMs || 0), 0), [existingParts]);
   // Append mode is a CONTINUATION: show the meeting's running total, not this take's clock, so the
   // timer reads as one recording carrying on rather than a separate second recording.
-  const shownMs = existingMs + rec.durationMs;
+  //
+  // rec.parts — not existingParts — because an interruption FINALISES a part mid-session. Counting
+  // only what the meeting held on entry made the clock jump backwards the moment a call ended
+  // (00:11 → 00:03), which reads exactly like the earlier audio was wiped. It never was; the timer
+  // was just no longer counting it.
+  const recordedMs = useMemo(
+    () => rec.parts.reduce((a, p) => a + (p.durationMs || 0), 0), [rec.parts]);
+  const shownMs = (rec.parts.length ? recordedMs : existingMs) + rec.durationMs;
   // Don't let a take start before we know what the meeting already holds — starting early is exactly
   // how a continued recording used to overwrite part-0.
   const loading = appendTo != null && existing === null;
@@ -302,8 +309,8 @@ export default function RecordScreen() {
           <View style={styles.resumeCard}>
             <Text style={styles.resumeText}>錄音被中斷，要接著錄嗎？</Text>
             <View style={styles.resumeRow}>
-              <Pressable style={styles.resumeBtnPrimary} onPress={rec.resume}><Text style={styles.resumeBtnPrimaryText}>繼續</Text></Pressable>
-              <Pressable style={styles.resumeBtnGhost} onPress={onStop}><Text style={styles.resumeBtnGhostText}>結束</Text></Pressable>
+              <Pressable style={styles.resumeBtnPrimary} onPress={rec.resume} accessibilityRole="button" accessibilityLabel="繼續"><Text style={styles.resumeBtnPrimaryText}>繼續</Text></Pressable>
+              <Pressable style={styles.resumeBtnGhost} onPress={onStop} accessibilityRole="button" accessibilityLabel="結束"><Text style={styles.resumeBtnGhostText}>結束</Text></Pressable>
             </View>
           </View>
         )}
