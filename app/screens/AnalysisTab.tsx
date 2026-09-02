@@ -94,7 +94,20 @@ export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
   // Queue generation on the backend and let the job own it. The notes, their version history and the
   // title promotion are applied by lib/notesJob.ts when the result lands — including when that only
   // happens on a later launch because the app was closed while the LLM was running.
-  function generate() { void restartNotesJob(session.id, store, { model }); }
+  // `starting` covers the gap between the tap and the job actually registering: restartNotesJob
+  // awaits whatever is in flight before it writes a stage, and until then `busy` is still false —
+  // so the tap looked like it did nothing while the old notes sat there unchanged.
+  const [starting, setStarting] = useState(false);
+  useEffect(() => { if (busy) setStarting(false); }, [busy]);
+  // Generation outlives this screen — leaving mid-run is normal and supported — so the settle
+  // handler must not touch state once we are gone.
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  function generate() {
+    setStarting(true);
+    void restartNotesJob(session.id, store, { model })
+      .finally(() => { if (mounted.current) setStarting(false); });
+  }
   // Regenerating costs a real LLM run and replaces what is on screen, so confirm first. The job
   // archives the previous notes to 版本紀錄 on the way, so nothing is lost either way.
   function confirmRegenerate() {
@@ -151,7 +164,7 @@ export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
     },
   }), [session]);
 
-  if (!session.notes) {
+  if (busy || starting || !session.notes) {
     // Flow gate: meeting notes are generated FROM the transcript, so block generation until a
     // transcript exists (e.g. the backend died mid-transcription and never produced one).
     if (!hasTranscript) {
@@ -166,7 +179,7 @@ export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
     }
     return (
       <View style={styles.center}>
-        {busy ? (
+        {busy || starting ? (
           <>
             <ActivityIndicator color={colors.brand} />
             <Text style={styles.hint}>{session.notesJob?.message || '本機 LLM 生成中…'}</Text>
@@ -211,6 +224,9 @@ export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
             <Pressable style={[styles.chip, styles.chipPrimary]} onPress={() => setEditing(true)} accessibilityRole="button" accessibilityLabel="編輯會議記錄">
               <IconPencil size={14} color="#fff" /><Text style={styles.chipPrimaryText}>編輯</Text>
             </Pressable>
+            <Pressable style={styles.chip} onPress={confirmRegenerate} accessibilityRole="button" accessibilityLabel="重新分析">
+              <Text style={styles.chipText}>重新分析</Text>
+            </Pressable>
             <Pressable style={styles.chip} onPress={() => setKwOpen(true)}><Text style={styles.chipText}>修正關鍵字</Text></Pressable>
             <Pressable style={[styles.chip, copied === 'plain' && styles.chipDone]} onPress={copyPlainText}>
               {copied === 'plain'
@@ -226,9 +242,6 @@ export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
               <Pressable style={styles.chip} onPress={() => setHistoryOpen(true)}><Text style={styles.chipText}>版本紀錄（{historyCount}）</Text></Pressable>
             )}
             <Pressable style={styles.chip} onPress={exportMd}><Text style={styles.chipText}>匯出</Text></Pressable>
-            <Pressable style={styles.chip} onPress={confirmRegenerate} accessibilityRole="button" accessibilityLabel="重新分析">
-              <Text style={styles.chipText}>重新分析</Text>
-            </Pressable>
           </ScrollView>
       </View>
 

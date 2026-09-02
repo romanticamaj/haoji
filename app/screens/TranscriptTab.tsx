@@ -114,30 +114,56 @@ export default function TranscriptTab(
         automaticallyAdjustKeyboardInsets
       >
         <View style={styles.toolbar}>
-          <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
-          {stats.length > 0 && (
-            <Pressable
-              testID="open-speakers"
-              style={styles.copyChip}
-              onPress={() => setEditing('')}
-              accessibilityRole="button"
-              accessibilityLabel="管理講者"
-            >
-              <Text style={styles.copyChipText}>講者 {namedCount}/{stats.length}</Text>
-            </Pressable>
-          )}
-          <Pressable
-            testID="copy-transcript"
-            style={[styles.copyChip, copied && styles.copyChipDone]}
-            onPress={copyTranscript}
-            accessibilityRole="button"
-            accessibilityLabel="複製逐字稿"
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.toolbarRow}
+            keyboardShouldPersistTaps="handled"
           >
-            {copied
-              ? <><IconCheck size={14} color={colors.good} /><Text style={styles.copyChipDoneText}>已複製</Text></>
-              : <><IconCopy size={14} color={colors.brand} /><Text style={styles.copyChipText}>複製</Text></>}
-          </Pressable>
+            {stats.length > 0 && (
+              <Pressable
+                testID="open-speakers"
+                style={styles.chip}
+                onPress={() => setEditing('')}
+                accessibilityRole="button"
+                accessibilityLabel="管理講者"
+              >
+                <Text style={styles.chipText}>講者 {namedCount}/{stats.length}</Text>
+              </Pressable>
+            )}
+            <Pressable
+              testID="copy-transcript"
+              style={[styles.chip, copied && styles.chipDone]}
+              onPress={copyTranscript}
+              accessibilityRole="button"
+              accessibilityLabel="複製逐字稿"
+            >
+              {copied
+                ? <><IconCheck size={14} color={colors.good} /><Text style={styles.chipDoneText}>已複製</Text></>
+                : <><IconCopy size={14} color={colors.brand} /><Text style={styles.chipText}>複製</Text></>}
+            </Pressable>
+            {busy && onViewProgress ? (
+              <Pressable
+                testID="view-progress"
+                style={styles.chip}
+                onPress={onViewProgress}
+                accessibilityRole="button"
+              >
+                <Text style={styles.chipText}>查看進度（{busyPct}%）</Text>
+              </Pressable>
+            ) : hasParts && onRegenerate ? (
+              <Pressable
+                testID="regenerate-transcript"
+                style={styles.chip}
+                onPress={onRegenerate}
+                accessibilityRole="button"
+              >
+                <Text style={styles.chipText}>重新生成逐字稿</Text>
+              </Pressable>
+            ) : null}
+          </ScrollView>
         </View>
+        <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
         {turns.map((p, i) => {
           const idx = speakerIndex[p.speaker] ?? 0;
           const color = speakerColor(idx);
@@ -215,15 +241,6 @@ export default function TranscriptTab(
             </View>
           );
         })}
-        {busy && onViewProgress ? (
-          <Pressable style={styles.regenFooter} onPress={onViewProgress} accessibilityRole="button">
-            <Text style={styles.regenText}>查看進度（{busyPct}%）</Text>
-          </Pressable>
-        ) : hasParts && onRegenerate ? (
-          <Pressable style={styles.regenFooter} onPress={onRegenerate} accessibilityRole="button">
-            <Text style={styles.regenText}>重新生成逐字稿</Text>
-          </Pressable>
-        ) : null}
       </ScrollView>
 
       {editing != null && (
@@ -249,17 +266,15 @@ const styles = StyleSheet.create({
   primary: { backgroundColor: colors.brand, borderRadius: radius.control, paddingVertical: 13, paddingHorizontal: 28, alignItems: 'center' },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  regenFooter: { marginTop: 20, marginBottom: 8, paddingVertical: 10, alignItems: 'center' },
-  regenText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
-
   // header row: gesture hint on the left, copy button on the right
-  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, paddingBottom: 2, gap: 8 },
+  toolbar: { marginHorizontal: -18, borderBottomWidth: 1, borderBottomColor: colors.hairline },
+  toolbarRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingVertical: 10 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.chipBg },
+  chipText: { color: colors.ink, fontWeight: '600', fontSize: 13.5 },
+  chipDone: { backgroundColor: colors.goodSoft },
+  chipDoneText: { color: colors.good, fontWeight: '600', fontSize: 13.5 },
   // teaches the two paragraph gestures (tap = seek, long-press = edit)
-  howto: { flex: 1, fontSize: 11.5, color: colors.ink3 },
-  copyChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: colors.brandSoft },
-  copyChipText: { fontSize: 13, fontWeight: '600', color: colors.brand },
-  copyChipDone: { backgroundColor: colors.goodSoft },
-  copyChipDoneText: { fontSize: 13, fontWeight: '600', color: colors.good },
+  howto: { fontSize: 11.5, color: colors.ink3, paddingTop: 10, paddingBottom: 2 },
 
   // turns
   turn: { paddingVertical: 12 },

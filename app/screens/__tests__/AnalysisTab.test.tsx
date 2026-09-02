@@ -21,6 +21,7 @@ jest.mock('react-native-fs', () => ({
   unlink: jest.fn().mockResolvedValue(undefined),
 }));
 import AnalysisTab from '../AnalysisTab';
+import { isNotesRunning } from '../../lib/jobRunner';
 import { StoreProvider } from '../../lib/store-context';
 import { createMemoryStore, SavedSession, SessionStore } from '../../lib/store';
 import Share from 'react-native-share';
@@ -47,6 +48,15 @@ const renderTab = async (session: SavedSession, props: any = {}) => {
     </StoreProvider>);
   return { store, ...utils };
 };
+
+// jobRunner keeps in-flight jobs in module state. A run still settling when the NEXT test mounts
+// updates React outside act() and leaves that render empty — which reads as "the component is
+// broken" when it is work leaking across the test boundary. Drain before moving on.
+afterEach(async () => {
+  for (let i = 0; i < 50 && (isNotesRunning('s') || isNotesRunning('s-order') || isNotesRunning('s-inflight')); i++) {
+    await act(async () => { await new Promise<void>((r) => setImmediate(() => r())); });
+  }
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -203,6 +213,40 @@ test('進階 model list: selecting a model passes it to analyze', async () => {
     expect.objectContaining({ model: 'phi4:mini', names: { SPEAKER_00: 'Gary' } })));
 });
 
+// The chip row scrolls horizontally, so anything past the third chip is off-screen until dragged.
+// 重新分析 sat seventh — reachable only by someone who already knew to look for it.
+test('重新分析 sits early in the toolbar, not buried past the scroll edge', async () => {
+  const s = { ...base, id: 's-order', notes: '## 會議摘要\n摘要內容' };
+  const r = await renderTab(s, { onUpdate: () => {} });
+  // Serialised tree order is render order, which for a row is left-to-right.
+  const tree = JSON.stringify(r.toJSON());
+  const at = (label: string) => tree.indexOf(`"${label}"`);
+  expect(at('重新分析')).toBeGreaterThan(-1);
+  expect(at('重新分析')).toBeLessThan(at('修正關鍵字'));
+  expect(at('重新分析')).toBeLessThan(at('複製 Markdown'));
+  expect(at('編輯')).toBeLessThan(at('重新分析'));
+});
+
+// A job already in flight (resumed from a previous launch) must show progress rather than the notes
+// it is about to replace.
+//
+// Keep this and the ordering test ABOVE the 重新分析 tests: those start a real job, and a run still
+// settling when the next test mounts leaves that render empty. The afterEach drain reduces it but
+// does not remove it — the failure reads as "this component is broken" when it is the harness.
+test('a notes job in flight shows progress even though notes already exist', async () => {
+  const s = {
+    ...base,
+    // A distinct id: jobRunner keeps in-flight jobs in module state keyed by session id, so reusing
+    // 's' would reattach to the job the previous test started.
+    id: 's-inflight',
+    notes: '## 會議摘要\n舊的記錄',
+    notesJob: { stage: 'generating' as const, pct: 0.4, message: '生成中…', updatedAt: 1 },
+  };
+  const { getByText, queryByText } = await renderTab(s, { onUpdate: () => {} });
+  getByText('生成中…');
+  expect(queryByText(/舊的記錄/)).toBeNull();
+});
+
 // Regenerating is how a meeting gets re-analysed after the speakers have been named, so it has to be
 // reachable from the notes themselves — not only from the empty state before any notes exist.
 test('重新分析 is offered on notes that already exist, and confirms before spending an LLM run', async () => {
@@ -226,5 +270,23 @@ test('cancelling the confirm does not start a run', async () => {
   const [, , buttons] = spy.mock.calls[0] as any[];
   buttons[0].onPress?.();                       // 取消
   expect(mockAnalyzeBg).not.toHaveBeenCalled();
+  spy.mockRestore();
+});
+
+// Tapping 重新分析 used to leave the old notes on screen with no sign anything had happened: the
+// busy view was gated on "there are no notes yet", which a re-run never satisfies.
+test('confirming 重新分析 switches to the generating view straight away', async () => {
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  const s = { ...base, notes: '## 會議摘要\n舊的記錄' };
+  const { getByText, queryByText } = await renderTab(s, { onUpdate: () => {} });
+  getByText(/舊的記錄/);
+
+  fireEvent.press(getByText('重新分析'));
+  const [, , buttons] = spy.mock.calls[0] as any[];
+  await act(async () => { buttons[1].onPress(); });          // 重新分析
+
+  getByText(/生成中|生成會議記錄中|本機 LLM/);
+  expect(queryByText(/舊的記錄/)).toBeNull();
+  await act(async () => { await new Promise<void>((r) => setImmediate(() => r())); });
   spy.mockRestore();
 });

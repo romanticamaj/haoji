@@ -14,7 +14,7 @@ test('empty transcript: shows generate CTA and fires onRegenerate', async () => 
   const { getByText, queryByText } = await render(
     <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
   getByText('還沒有逐字稿');
-  fireEvent.press(getByText('生成逐字稿')); // draft/never-transcribed → "generate" (footer re-run stays "重新生成")
+  fireEvent.press(getByText('生成逐字稿')); // draft/never-transcribed → "generate" (the toolbar chip stays "重新生成")
   expect(onRegenerate).toHaveBeenCalled();
   // no transcript paragraphs to show
   expect(queryByText('00:00')).toBeNull();
@@ -28,7 +28,7 @@ test('empty transcript but no parts: no regenerate button (nothing to re-run)', 
   expect(queryByText('重新生成逐字稿')).toBeNull();
 });
 
-test('with transcript: shows a footer regenerate link that fires onRegenerate', async () => {
+test('with transcript: the toolbar regenerate chip fires onRegenerate', async () => {
   const onRegenerate = jest.fn();
   const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
   const { getByText } = await render(
@@ -59,7 +59,7 @@ test('job in flight: empty state offers 查看進度, never 生成逐字稿', as
   expect(onRegenerate).not.toHaveBeenCalled();
 });
 
-test('job in flight WITH a transcript: footer offers 查看進度 instead of 重新生成', async () => {
+test('job in flight WITH a transcript: the toolbar offers 查看進度 instead of 重新生成', async () => {
   const onRegenerate = jest.fn();
   const onViewProgress = jest.fn();
   const s: SavedSession = {
@@ -81,4 +81,20 @@ test('no job: the normal 生成逐字稿 / 重新生成逐字稿 buttons are unc
       onRegenerate={onRegenerate} onViewProgress={() => {}} />);
   fireEvent.press(getByText('生成逐字稿'));
   expect(onRegenerate).toHaveBeenCalled();
+});
+
+// 重新生成逐字稿 used to sit at the BOTTOM of the transcript: on a long meeting that meant scrolling
+// past every paragraph to reach it. It now lives in the persistent toolbar, like the analysis tab's
+// actions — visible without scrolling, next to 講者 and 複製.
+test('重新生成逐字稿 sits in the toolbar, above the paragraphs', async () => {
+  const onRegenerate = jest.fn();
+  const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
+  const { getByTestId } = await render(
+    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
+
+  const chip = getByTestId('regenerate-transcript');
+  fireEvent.press(chip);
+  expect(onRegenerate).toHaveBeenCalled();
+  getByTestId('copy-transcript');          // the toolbar it shares
+  getByTestId('open-speakers');
 });
