@@ -1,7 +1,7 @@
 import { SavedSession } from './store';
 import { SessionStatus } from './types';
 import { pushNotesVersion } from './notesEdit';
-import { extractNotesTitle, looksLikeAutoTitle } from './notesDoc';
+import { extractNotesTitle, canAdoptAiTitle } from './notesDoc';
 
 // Durable AI-notes generation — the analysis counterpart of lib/job.ts.
 //
@@ -109,9 +109,15 @@ export async function runNotesJob(
         // Archive any prior notes so a regenerate stays revertible from 版本紀錄, and promote the
         // AI's H1 to the meeting name while the title is still a default timestamp.
         const withNotes = pushNotesVersion(cur, st.notes, now());
+        // Re-analysing refreshes a title the app derived last time, but never one the user typed.
         const aiTitle = extractNotesTitle(st.notes);
-        const title = aiTitle && looksLikeAutoTitle(cur.title) ? aiTitle : cur.title;
-        s = { ...withNotes, title, notesJob: { stage: 'done', message: '完成', pct: 1, updatedAt: now() } };
+        const adopt = !!aiTitle && canAdoptAiTitle(cur);
+        s = {
+          ...withNotes,
+          title: adopt ? aiTitle! : cur.title,
+          titleSource: adopt ? 'ai' : cur.titleSource,
+          notesJob: { stage: 'done', message: '完成', pct: 1, updatedAt: now() },
+        };
         await d.save(s);
         return;
       }

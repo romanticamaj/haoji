@@ -117,7 +117,7 @@ export default function ResultsScreen() {
         <TitleSheet
           current={session.title}
           onClose={() => setEditingTitle(false)}
-          onCommit={(name) => { update({ ...session, title: name.trim() || session.title }); setEditingTitle(false); }}
+          onCommit={(name) => { const t = name.trim(); update({ ...session, title: t || session.title, ...(t ? { titleSource: 'user' as const } : {}) }); setEditingTitle(false); }}
         />
       )}
     </View>

@@ -5,6 +5,14 @@ import type { NotesJob } from './notesJob';
 
 export type SavedSession = {
   id: string; createdAt: number; title: string;
+  /**
+   * Where `title` came from. 'user' is set the moment someone renames the meeting themselves and
+   * makes the title permanent — no regeneration may overwrite it. 'ai' (or absent, for meetings
+   * saved before this existed) means the title is still the app's to maintain, so re-analysing
+   * refreshes it. Without this the two are indistinguishable once an AI title has been applied:
+   * the title stops looking like the timestamp default and then freezes for good.
+   */
+  titleSource?: 'ai' | 'user';
   transcript?: Transcript; names: Record<string, string>;
   notes?: string;
   /** Legacy IAP flag. The paywall was removed in 2026-09; kept so stored sessions still parse. */

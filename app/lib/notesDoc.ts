@@ -38,13 +38,25 @@ export function looksLikeAutoTitle(title: string): boolean {
   return /\d/.test(title) && /[:：]/.test(title) && /[/\-年]/.test(title);
 }
 
-// Backfill the meeting title from the AI notes' H1 topic when the title is still a timestamp default.
-// Returns the SAME reference when nothing changes, so callers (Home list / Results open) can cheaply
-// skip a store write. This retitles meetings generated before the feature existed, without regenerating.
+/**
+ * May the AI's title replace the one this meeting is carrying?
+ *
+ * Yes while the title is still the timestamp default, and yes for a title the app itself derived
+ * from earlier notes — re-analysing should refresh that. Never for a title someone typed.
+ */
+export function canAdoptAiTitle(session: SavedSession): boolean {
+  if (session.titleSource === 'user') return false;
+  return session.titleSource === 'ai' || looksLikeAutoTitle(session.title);
+}
+
+// Backfill the meeting title from the AI notes' H1 topic. Returns the SAME reference when nothing
+// changes, so callers (Home list / Results open) can cheaply skip a store write. This retitles
+// meetings generated before the feature existed, without regenerating.
 export function promoteTitleFromNotes(session: SavedSession): SavedSession {
-  if (!session.notes || !looksLikeAutoTitle(session.title)) return session;
+  if (!session.notes || !canAdoptAiTitle(session)) return session;
   const title = extractNotesTitle(session.notes);
-  return title ? { ...session, title } : session;
+  if (!title || title === session.title) return session;
+  return { ...session, title, titleSource: 'ai' };
 }
 
 export type TaskItem = { done: boolean; text: string; owner?: string };
