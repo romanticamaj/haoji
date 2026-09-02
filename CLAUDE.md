@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-好記 Haoji — an account-free Traditional-Chinese meeting recorder. Record/upload audio → diarized transcript (speaker separation) → AI meeting notes. Results live only on the user's phone; no audio is retained server-side. Free transcript + free notes preview; full notes unlock via IAP.
+好記 Haoji — an account-free Traditional-Chinese meeting recorder. Record/upload audio → diarized transcript (speaker separation) → AI meeting notes. Results live only on the user's phone; no audio is retained server-side. Free transcript + full notes. (The IAP paywall was removed in 2026-09; `SavedSession.unlocked` remains in stored data but nothing reads it.)
 
 Two independently-deployed pieces, in one repo:
 
@@ -76,8 +76,7 @@ Stack-based navigation (`App.tsx` / `navigation.tsx`): Home → Record → Proce
   - `api.ts` — typed wrappers over the backend endpoints above.
   - `store.ts` / `store-context.tsx` — `SessionStore` interface with two impls: `createAsyncStorageStore` (production, AsyncStorage) and `createMemoryStore` (tests/seeding). Components get the store via `useStore()`; tests inject a memory store through `StoreProvider`'s `store` prop. **All session data — transcript, notes, speaker renames, unlock state, raw parts — persists locally; the device is the source of truth.**
   - `recordings.ts` — moves finished recordings (`react-native-fs`) out of the recorder's temp cache into the persistent per-session document dir so raw parts survive app restarts; `partPath`/`moveToPart` both return `file://` URIs (strip to bare paths only at RNFS calls).
-  - `gating.ts` — `splitNotesForPreview()` defines the IAP paywall: preview = everything up to and including the `## 會議摘要` section; the rest is locked.
-  - `transcript.ts` — `mergedParagraphs()` / `mmss()` / `nameOf()` for rendering diarized transcripts with editable speaker names.
+  - `transcript.ts` — `mergedParagraphs()` / `mmss()` / `nameOf()` for rendering diarized transcripts with editable speaker names, plus `speakerStats()` (speaking time + turn count per speaker, ranked by time) which drives the speaker sheet.
 - `hooks/useRecorder.ts` — the trickiest piece. Manages multi-part recording (pause/resume, interruption handling) on `react-native-nitro-sound` (`startRecorder(..., meteringEnabled=true)` — the `true` is required or the waveform is flat). It keeps a `stateRef` mirror of React state so the interruption handler never reads a stale closure; an OS interruption (via the `lib/audioInterruption.ts` → native `AudioInterruption` event) finalizes the current part and starts a new one on resume. Comments tagged `C1`/`I2` mark these fixes — preserve that ordering logic when editing.
 - `screens/` + `components/` (`Waveform`, `BreathingRing` — reanimated v4 visuals during recording).
 
@@ -87,7 +86,7 @@ Jest (`react-native` preset) with native modules mocked (`jest-setup.js` mocks A
 
 **Recording and call interruption run on a simulator, not a real device** — `npm run e2e:recording`. `ios/HaojiUITests/` drives the real UI while `ios/Haoji/E2EHooks.swift` (simulator-only, triggered by Darwin notification or `haoji://e2e/…`) posts a genuine `AVAudioSession.interruptionNotification`; `scripts/e2e-recording.mjs` then verifies the audio on disk with ffprobe. **Both layers are required**: a silently deleted recording still leaves a convincing UI behind, and a frozen screen can sit on top of perfectly good files. Assuming these needed real hardware is what let a recording-loss bug survive three TestFlight cycles. See `app/scripts/README-sim.md`.
 
-`app/MANUAL-QA.md` is what genuinely still needs hardware before shipping (mic permission, waveform scrubbing by touch, a real phone call taking the audio hardware, background upload, IAP unlock).
+`app/MANUAL-QA.md` is what genuinely still needs hardware before shipping (mic permission, waveform scrubbing by touch, a real phone call taking the audio hardware, background upload).
 
 ## Docs
 

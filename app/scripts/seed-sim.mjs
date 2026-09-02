@@ -78,6 +78,23 @@ const transcript = (texts) => ({
     start: i * 4, end: i * 4 + 3.5, speaker: i % 2 ? 'SPEAKER_01' : 'SPEAKER_00', text,
   })),
 });
+// The case the speaker sheet exists for: diarisation finds far more people than anyone wants to
+// hunt through a transcript for. Speaking time is deliberately lopsided — two people carry the
+// meeting and the rest drop one line each — so the ranking has something real to sort.
+const manySpeakers = () => {
+  const n = 9;
+  const speakers = Array.from({ length: n }, (_, i) => `SPEAKER_0${i}`);
+  const segments = [];
+  let t = 0;
+  const say = (i, secs, text) => { segments.push({ start: t, end: t + secs, speaker: speakers[i], text }); t += secs; };
+  say(0, 40, '今天主要確認下一季的方向');
+  say(1, 25, '我這邊補充一下時程');
+  say(0, 35, '那我們就照這個排');
+  for (let i = 2; i < n; i++) say(i, 3 + i * 0.5, `第 ${i + 1} 位講者的一句話`);
+  say(1, 20, '好，那就這樣定案');
+  return { speakers, segments };
+};
+
 const NOTES = '# 會議記錄：產品方向討論\n\n## 會議摘要\n\n- 確認下一季的產品方向與時程。\n\n## 討論重點\n\n- 先做原型驗證\n\n## 待辦事項\n\n- [ ] 彙整需求\n';
 const day = (n) => Date.now() - n * 86400000;
 
@@ -88,6 +105,14 @@ const SCENARIOS = {
     session: (id) => ({ id, createdAt: day(0), title: '新錄音（未生成）', names: {}, unlocked: false,
       parts: [{ uri: `haoji/${id}/part-0.wav`, durationMs: 6000 }] }),
     files: (id) => [[`haoji/${id}/part-0.wav`, wav(6)]],
+  },
+  manyspeakers: {
+    why: '9 位講者 → 測「講者 N/M」彈窗：依說話時間排序、一次命名多人、清單可捲動不被完成鍵擋住',
+    session: (id) => ({ id, createdAt: day(0), title: '跨部門週會（9 位講者）', names: {}, unlocked: false,
+      transcript: manySpeakers(), backendId: 'seed-backend-many',
+      job: { stage: 'done', uploaded: 1, pct: 1, message: '完成', updatedAt: day(0) },
+      parts: [{ uri: `haoji/${id}/part-0.wav`, durationMs: 150000 }] }),
+    files: (id) => [[`haoji/${id}/part-0.wav`, wav(20, 480)]],
   },
   analysed: {
     why: '已有逐字稿與會議記錄 → 測編輯、複製、關鍵字取代、版本紀錄',

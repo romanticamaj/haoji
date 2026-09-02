@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView, View, Text, Pressable, ActivityIndicator, StyleSheet, TextInput, Modal,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Share from 'react-native-share';
@@ -9,7 +9,6 @@ import RNFS from 'react-native-fs';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getModels } from '../lib/api';
-import { splitNotesForPreview } from '../lib/gating';
 import { markdownToPlainText } from '../lib/notes';
 import { cleanNotesMarkdown } from '../lib/notesClean';
 import { pushNotesVersion } from '../lib/notesEdit';
@@ -18,7 +17,7 @@ import { applyRulesToSession, countMatches, KeywordRule } from '../lib/keywords'
 import KeywordSheet from '../components/KeywordSheet';
 import { relativeDay } from '../lib/sessionList';
 import { speakerColor, colors, radius, tabularNums } from '../lib/theme';
-import { IconLock, IconCheck, IconPencil } from '../components/icons';
+import { IconCheck, IconPencil } from '../components/icons';
 import { SavedSession } from '../lib/store';
 import { useStore } from '../lib/store-context';
 import { ensureNotesJob, restartNotesJob } from '../lib/jobRunner';
@@ -54,8 +53,8 @@ const mdStyles = StyleSheet.create({
   bullet_list_icon: { color: colors.ink3, fontSize: 22, lineHeight: 22, marginRight: 8, marginLeft: 2 },
 });
 
-export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscript }:
-  { session: SavedSession; onUpdate(s: SavedSession): void; onUnlock(): void; onGoToTranscript?(): void }) {
+export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
+  { session: SavedSession; onUpdate(s: SavedSession): void; onGoToTranscript?(): void }) {
   const hasTranscript = (session.transcript?.segments?.length ?? 0) > 0;
   const store = useStore();
   // Generation state lives on the session (lib/notesJob.ts), not in local state: the LLM run happens
@@ -96,6 +95,15 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
   // title promotion are applied by lib/notesJob.ts when the result lands — including when that only
   // happens on a later launch because the app was closed while the LLM was running.
   function generate() { void restartNotesJob(session.id, store, { model }); }
+  // Regenerating costs a real LLM run and replaces what is on screen, so confirm first. The job
+  // archives the previous notes to 版本紀錄 on the way, so nothing is lost either way.
+  function confirmRegenerate() {
+    Alert.alert(
+      '重新分析這場會議？',
+      '會用目前的逐字稿（含你改過的講者名字）重新產生會議記錄。原本的記錄會存進版本紀錄，可以還原。',
+      [{ text: '取消', style: 'cancel' }, { text: '重新分析', onPress: generate }],
+    );
+  }
 
   // Reattach to a generation that was still running when this screen mounted (e.g. after relaunch),
   // so the spinner reflects real state instead of sitting there forever.
@@ -191,15 +199,14 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
 
   // The stored notes keep their H1 title (so copy/export are self-contained), but the on-screen body
   // drops it — we already show the title in the doc header above, and the raw H1 was overlapping it.
-  const { preview, locked } = splitNotesForPreview(stripLeadingH1(cleaned));
+  const body = stripLeadingH1(cleaned);
   const meta = notesMetaLine(session, Date.now());
   const historyCount = session.notesHistory?.length ?? 0;
   return (
     <View style={styles.screen}>
-      {/* Persistent action toolbar (unlocked only) — always visible, so 編輯 isn't buried at the
-          bottom of a long note. Horizontal-scroll so it never overflows narrow screens. */}
-      {session.unlocked && (
-        <View style={styles.toolbar}>
+      {/* Persistent action toolbar — always visible, so 編輯 isn't buried at the bottom of a long
+          note. Horizontal-scroll so it never overflows narrow screens. */}
+      <View style={styles.toolbar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarRow} keyboardShouldPersistTaps="handled">
             <Pressable style={[styles.chip, styles.chipPrimary]} onPress={() => setEditing(true)} accessibilityRole="button" accessibilityLabel="編輯會議記錄">
               <IconPencil size={14} color="#fff" /><Text style={styles.chipPrimaryText}>編輯</Text>
@@ -219,37 +226,18 @@ export default function AnalysisTab({ session, onUpdate, onUnlock, onGoToTranscr
               <Pressable style={styles.chip} onPress={() => setHistoryOpen(true)}><Text style={styles.chipText}>版本紀錄（{historyCount}）</Text></Pressable>
             )}
             <Pressable style={styles.chip} onPress={exportMd}><Text style={styles.chipText}>匯出</Text></Pressable>
+            <Pressable style={styles.chip} onPress={confirmRegenerate} accessibilityRole="button" accessibilityLabel="重新分析">
+              <Text style={styles.chipText}>重新分析</Text>
+            </Pressable>
           </ScrollView>
-        </View>
-      )}
+      </View>
 
       <ScrollView style={styles.wrap} contentContainerStyle={{ paddingBottom: 48 }}>
         {/* Document header */}
         <Text style={styles.docTitle}>{session.title}</Text>
         {!!meta && <Text style={[styles.docMeta, tabularNums]}>{meta}</Text>}
 
-        <Markdown style={mdStyles} rules={rules}>{preview}</Markdown>
-
-        {session.unlocked ? (
-          !!locked && <Markdown style={mdStyles} rules={rules}>{locked}</Markdown>
-        ) : (
-          <View style={styles.lockWrap}>
-          {/* Locked content sits underneath; the gradient-fade + CTA overlay it. */}
-          <View pointerEvents="none">
-            {!!locked && <Markdown style={mdStyles} rules={rules}>{locked}</Markdown>}
-          </View>
-          {/* Faux gradient: stacked paper Views at increasing opacity fade the locked text out. */}
-          <View style={styles.paywall} pointerEvents="box-none">
-            <View style={[styles.fade, styles.fade1]} pointerEvents="none" />
-            <View style={[styles.fade, styles.fade2]} pointerEvents="none" />
-            <View style={[styles.fade, styles.fade3]} pointerEvents="none" />
-            <Pressable style={styles.unlock} onPress={onUnlock} accessibilityRole="button">
-              <IconLock size={16} color="#fff" />
-              <Text style={styles.unlockText}>解鎖完整會議記錄</Text>
-            </Pressable>
-          </View>
-        </View>
-        )}
+        <Markdown style={mdStyles} rules={rules}>{body}</Markdown>
       </ScrollView>
 
       {editing && <NotesEditor initial={cleaned} onCancel={() => setEditing(false)} onSave={saveEdit} />}
@@ -393,16 +381,6 @@ const styles = StyleSheet.create({
   hintSmall: { color: colors.ink3, fontSize: 12, marginTop: 8, textAlign: 'center' },
   notesBarTrack: { width: 200, height: 5, borderRadius: 3, backgroundColor: colors.chipBg, marginTop: 12, overflow: 'hidden' },
   notesBarFill: { height: 5, borderRadius: 3, backgroundColor: colors.brand },
-
-  lockWrap: { marginTop: 8, position: 'relative' },
-  // Gradient-fade paywall: absolutely positioned over the top of the locked content.
-  paywall: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, justifyContent: 'flex-end', paddingBottom: 20 },
-  fade: { position: 'absolute', left: 0, right: 0, backgroundColor: colors.paper },
-  fade1: { top: 0, height: 120, opacity: 0.55 },
-  fade2: { top: 60, height: 140, opacity: 0.8 },
-  fade3: { top: 150, bottom: 0, opacity: 1 },
-  unlock: { flexDirection: 'row', gap: 8, height: 48, borderRadius: 14, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  unlockText: { color: '#fff', fontSize: 14.5, fontWeight: '700' },
 
 });
 

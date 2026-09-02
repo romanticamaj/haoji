@@ -1,11 +1,11 @@
 import React from 'react';
 import {
-  ScrollView, View, Text, TextInput, Pressable, Modal, Animated, StyleSheet,
-  KeyboardAvoidingView, Platform,
+  ScrollView, View, Text, TextInput, Pressable, StyleSheet,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SavedSession } from '../lib/store';
-import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText } from '../lib/transcript';
+import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText, speakerStats } from '../lib/transcript';
+import SpeakerSheet from '../components/SpeakerSheet';
 import { IconCheck, IconCopy } from '../components/icons';
 import { isActive, overallPct } from '../lib/job';
 import { colors, radius, tabularNums, speakerColor } from '../lib/theme';
@@ -34,8 +34,10 @@ export default function TranscriptTab(
     return m;
   }, [speakers]);
 
-  // Which speaker the rename sheet is editing (null = closed).
+  // The speaker sheet: null = closed, '' = opened from the toolbar, otherwise the speaker to focus.
   const [editing, setEditing] = React.useState<string | null>(null);
+  const stats = React.useMemo(() => speakerStats(segs, speakers), [segs, speakers]);
+  const namedCount = stats.filter((x) => !!session.names[x.speaker]).length;
   // Which paragraph is being edited INLINE (index into `turns`), plus its working draft text. Long-press
   // a paragraph to enter; 完成 writes the correction back into the transcript segments, 取消 discards.
   const [editIdx, setEditIdx] = React.useState<number | null>(null);
@@ -100,12 +102,6 @@ export default function TranscriptTab(
     if (y == null) return;
     scrollRef.current?.scrollTo({ y: Math.max(0, y - 88), animated: true });
   }, [activeIdx]);
-  // Count how many turns each speaker owns — shown in the rename sheet copy ("套用到 N 處").
-  const turnCounts = React.useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const t of turns) c[t.speaker] = (c[t.speaker] ?? 0) + 1;
-    return c;
-  }, [segs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <View style={styles.wrap}>
@@ -119,6 +115,17 @@ export default function TranscriptTab(
       >
         <View style={styles.toolbar}>
           <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
+          {stats.length > 0 && (
+            <Pressable
+              testID="open-speakers"
+              style={styles.copyChip}
+              onPress={() => setEditing('')}
+              accessibilityRole="button"
+              accessibilityLabel="管理講者"
+            >
+              <Text style={styles.copyChipText}>講者 {namedCount}/{stats.length}</Text>
+            </Pressable>
+          )}
           <Pressable
             testID="copy-transcript"
             style={[styles.copyChip, copied && styles.copyChipDone]}
@@ -220,93 +227,15 @@ export default function TranscriptTab(
       </ScrollView>
 
       {editing != null && (
-        <RenameSheet
-          speaker={editing}
-          colorIndex={speakerIndex[editing] ?? 0}
-          currentName={session.names[editing] || ''}
-          turnCount={turnCounts[editing] ?? 0}
+        <SpeakerSheet
+          stats={stats}
+          names={session.names}
+          focus={editing || null}
           onClose={() => setEditing(null)}
-          onCommit={(name) => {
-            onUpdate({ ...session, names: { ...session.names, [editing]: name.trim() } });
-            setEditing(null);
-          }}
+          onCommit={(names) => { onUpdate({ ...session, names }); setEditing(null); }}
         />
       )}
     </View>
-  );
-}
-
-// Bottom sheet built on core RN (Modal + Animated) — no gesture-handler (incompatible with RN 0.81).
-// Slides up on mount; scrim tap or 完成 dismisses. 完成 commits the typed name through onCommit.
-function RenameSheet(
-  { speaker, colorIndex, currentName, turnCount, onClose, onCommit }: {
-    speaker: string;
-    colorIndex: number;
-    currentName: string;
-    turnCount: number;
-    onClose(): void;
-    onCommit(name: string): void;
-  },
-) {
-  const [value, setValue] = React.useState(currentName);
-  const anim = React.useRef(new Animated.Value(0)).current;
-
-  React.useEffect(() => {
-    Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-  }, [anim]);
-
-  const color = speakerColor(colorIndex);
-  const display = value.trim();
-  const initial = display ? display.charAt(0) : String(colorIndex + 1);
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [320, 0] });
-
-  return (
-    <Modal transparent visible animationType="fade" onRequestClose={onClose}>
-      <View style={styles.sheetRoot}>
-        <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="關閉" testID="rename-scrim" />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.sheetKav}
-          pointerEvents="box-none"
-        >
-          <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
-            <View style={styles.grab} />
-            <Text style={styles.sheetTitle}>命名這位講者</Text>
-            <Text style={styles.sheetSub}>名字會自動套用到整份逐字稿與會議記錄</Text>
-
-            <View style={styles.sheetField}>
-              <View style={[styles.avLg, { backgroundColor: color }]}>
-                <Text style={styles.avLgText}>{initial}</Text>
-              </View>
-              <TextInput
-                testID={`rename-input-${speaker}`}
-                autoFocus
-                style={styles.sheetInput}
-                value={value}
-                onChangeText={setValue}
-                placeholder="輸入名字"
-                placeholderTextColor={colors.ink3}
-                returnKeyType="done"
-                onSubmitEditing={() => onCommit(value)}
-              />
-            </View>
-
-            {turnCount > 0 && (
-              <Text style={styles.applyAll}>套用到這位講者的所有段落（{turnCount} 處）</Text>
-            )}
-
-            <Pressable
-              testID={`rename-done-${speaker}`}
-              style={styles.sheetCta}
-              onPress={() => onCommit(value)}
-              accessibilityRole="button"
-            >
-              <Text style={styles.sheetCtaText}>完成</Text>
-            </Pressable>
-          </Animated.View>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
   );
 }
 
@@ -371,25 +300,4 @@ const styles = StyleSheet.create({
   chipUnsetHint: { color: colors.speakerUnsetText, fontWeight: '500' },
 
   // rename sheet
-  sheetRoot: { flex: 1, justifyContent: 'flex-end' },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(10,10,15,0.34)' },
-  sheetKav: { justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet,
-    paddingHorizontal: 22, paddingTop: 10, paddingBottom: 34,
-  },
-  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: colors.neutralSoft, alignSelf: 'center', marginBottom: 16 },
-  sheetTitle: { fontSize: 16, fontWeight: '700', color: colors.ink, textAlign: 'center', marginBottom: 4 },
-  sheetSub: { fontSize: 12.5, color: colors.ink2, textAlign: 'center', marginBottom: 18, lineHeight: 18 },
-  sheetField: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: colors.chipBg, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12, marginBottom: 10,
-  },
-  avLg: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  avLgText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  sheetInput: { flex: 1, fontSize: 17, fontWeight: '600', color: colors.ink, padding: 0 },
-  applyAll: { fontSize: 12.5, color: colors.ink2, paddingHorizontal: 4, paddingBottom: 16 },
-  sheetCta: { height: 48, borderRadius: 14, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
-  sheetCtaText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 
 const mockAnalyze = jest.fn();
@@ -42,7 +43,7 @@ const renderTab = async (session: SavedSession, props: any = {}) => {
   const utils = await render(
     <StoreProvider store={store}>
       <AnalysisTab session={session} onUpdate={props.onUpdate ?? (() => {})}
-        onUnlock={props.onUnlock ?? (() => {})} onGoToTranscript={props.onGoToTranscript} />
+        onGoToTranscript={props.onGoToTranscript} />
     </StoreProvider>);
   return { store, ...utils };
 };
@@ -103,13 +104,14 @@ test('no transcript: blocks generation, shows gate hint + 前往逐字稿', asyn
   expect(onGo).toHaveBeenCalled();
 });
 
-test('locked: shows preview and unlock CTA, hides copy action', async () => {
-  const s = { ...base, notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 機密重點', unlocked: false };
+test('notes are shown in full — no preview split, no unlock gate', async () => {
+  const s = { ...base, notes: '## 會議摘要\n摘要內容\n\n## 討論重點\n- 後段重點', unlocked: false };
   const { getByText, queryByText } = await renderTab(s, { onUpdate: () => {} });
   getByText(/摘要內容/);
-  getByText('解鎖完整會議記錄');
-  expect(queryByText('複製 Markdown')).toBeNull();
-  expect(queryByText('複製純文字')).toBeNull();
+  getByText(/後段重點/);              // used to sit behind the paywall
+  expect(queryByText('解鎖完整會議記錄')).toBeNull();
+  getByText('複製 Markdown');          // actions no longer wait on an unlock
+  getByText('複製純文字');
 });
 
 test('unlocked: 複製 Markdown copies raw markdown to clipboard', async () => {
@@ -199,4 +201,30 @@ test('進階 model list: selecting a model passes it to analyze', async () => {
   fireEvent.press(getByText('生成會議記錄'));
   await waitFor(() => expect(mockAnalyzeBg).toHaveBeenCalledWith('backend-new',
     expect.objectContaining({ model: 'phi4:mini', names: { SPEAKER_00: 'Gary' } })));
+});
+
+// Regenerating is how a meeting gets re-analysed after the speakers have been named, so it has to be
+// reachable from the notes themselves — not only from the empty state before any notes exist.
+test('重新分析 is offered on notes that already exist, and confirms before spending an LLM run', async () => {
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  const s = { ...base, notes: '## 會議摘要\n摘要內容' };
+  const { getByText } = await renderTab(s, { onUpdate: () => {} });
+
+  fireEvent.press(getByText('重新分析'));
+  expect(spy).toHaveBeenCalled();
+  const [title, , buttons] = spy.mock.calls[0] as any[];
+  expect(title).toMatch(/重新分析/);
+  expect(buttons.map((b: any) => b.text)).toEqual(['取消', '重新分析']);
+  spy.mockRestore();
+});
+
+test('cancelling the confirm does not start a run', async () => {
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  const s = { ...base, notes: '## 會議摘要\n摘要內容' };
+  const { getByText } = await renderTab(s, { onUpdate: () => {} });
+  fireEvent.press(getByText('重新分析'));
+  const [, , buttons] = spy.mock.calls[0] as any[];
+  buttons[0].onPress?.();                       // 取消
+  expect(mockAnalyzeBg).not.toHaveBeenCalled();
+  spy.mockRestore();
 });

@@ -6,7 +6,9 @@ import type { NotesJob } from './notesJob';
 export type SavedSession = {
   id: string; createdAt: number; title: string;
   transcript?: Transcript; names: Record<string, string>;
-  notes?: string; unlocked: boolean;
+  notes?: string;
+  /** Legacy IAP flag. The paywall was removed in 2026-09; kept so stored sessions still parse. */
+  unlocked: boolean;
   // Previous versions of `notes`, newest first, pushed each time the user edits/reverts/regenerates.
   // Powers the notes editor's 版本紀錄 (revert). Capped when written (see lib/notesEdit).
   notesHistory?: { notes: string; at: number }[];

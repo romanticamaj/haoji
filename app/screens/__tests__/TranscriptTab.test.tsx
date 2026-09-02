@@ -84,12 +84,12 @@ test('tapping a turn header opens the rename sheet; 完成 commits via onUpdate'
   const { getByTestId, queryByTestId } = await render(
     <TranscriptTab session={session} onUpdate={onUpdate} />);
   // sheet not open initially
-  expect(queryByTestId('rename-input-SPEAKER_00')).toBeNull();
+  expect(queryByTestId('speaker-input-SPEAKER_00')).toBeNull();
   // tap the first speaker's turn header (state-changing press needs an act flush under React 19)
   await act(async () => { fireEvent.press(getByTestId('turn-head-SPEAKER_00')); });
-  const input = getByTestId('rename-input-SPEAKER_00');
+  const input = getByTestId('speaker-input-SPEAKER_00');
   await act(async () => { fireEvent.changeText(input, 'Gary'); });
-  await act(async () => { fireEvent.press(getByTestId('rename-done-SPEAKER_00')); });
+  await act(async () => { fireEvent.press(getByTestId('speakers-done')); });
   expect(onUpdate).toHaveBeenCalledWith(
     expect.objectContaining({ names: expect.objectContaining({ SPEAKER_00: 'Gary' }) }));
 });

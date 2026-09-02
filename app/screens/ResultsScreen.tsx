@@ -105,7 +105,7 @@ export default function ResultsScreen() {
               activeMs={tab === 'transcript' ? playheadMs : 0} />
           </View>
           <View style={{ flex: 1, display: tab === 'analysis' ? 'flex' : 'none' }}>
-            <AnalysisTab session={session} onUpdate={update} onUnlock={() => update({ ...session, unlocked: true })}
+            <AnalysisTab session={session} onUpdate={update}
               onGoToTranscript={() => setTab('transcript')} />
           </View>
         </>

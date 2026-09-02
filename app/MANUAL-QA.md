@@ -28,7 +28,7 @@ three TestFlight cycles. See `scripts/README-sim.md`. What is left below genuine
       position → playback continues from there, no snap back to the head. ⏪15 / ⏩30 seek relative to
       the live position while playing. 1.0×/1.5×/2.0× changes speed live.
 - [ ] Missing audio file → card shows "音檔不存在" instead of a dead player (delete a part file to test).
-- [ ] 逐字稿 tab: paragraphs grouped by speaker; renaming a speaker updates all their lines and persists (re-open from Home).
-- [ ] AI 分析 tab: 生成會議記錄 returns notes in Traditional Chinese; preview (摘要) visible, rest blurred + 解鎖 button.
-- [ ] Tap 解鎖 → full notes show; 複製 copies; 匯出 opens share sheet.
+- [ ] 逐字稿 tab: paragraphs grouped by speaker. 講者 N/M opens one sheet listing every speaker with their speaking time; naming several at once persists after re-opening from Home.
+- [ ] AI 分析 tab: 生成會議記錄 returns notes in Traditional Chinese, shown in full; 複製 copies; 匯出 opens share sheet.
+- [ ] 重新分析 after naming the speakers → the new notes use the real names, and 版本紀錄 can revert to the old ones.
 - [ ] Kill + reopen app → session still listed on Home and fully readable offline.

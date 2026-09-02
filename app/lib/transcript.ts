@@ -56,3 +56,38 @@ export function applyTurnEdit(
   const merged: Segment = { start: first.start, end: last.end, speaker: first.speaker, text: newText };
   return [...segments.slice(0, startIdx), merged, ...segments.slice(endIdx + 1)];
 }
+
+// Who is in this meeting, and how much did each of them say.
+//
+// Ordered by speaking time, most first: with a dozen auto-detected speakers a transcript-order list
+// is unusable for finding anyone, whereas the people who actually carried the meeting are the ones
+// worth naming and they float to the top. `turns` is how many separate times they spoke, `ms` the
+// total they held the floor.
+export type SpeakerStat = { speaker: string; ms: number; turns: number; index: number };
+
+export function speakerStats(segments: Segment[], speakers: string[] = []): SpeakerStat[] {
+  const order = new Map<string, number>();
+  speakers.forEach((s, i) => order.set(s, i));
+
+  const acc = new Map<string, { ms: number; turns: number }>();
+  let prev: string | null = null;
+  for (const s of segments) {
+    const cur = acc.get(s.speaker) ?? { ms: 0, turns: 0 };
+    // A "turn" is a run of consecutive segments by the same speaker — the same grouping the
+    // transcript renders as one paragraph, so the count matches what the reader sees.
+    if (s.speaker !== prev) cur.turns += 1;
+    cur.ms += Math.max(0, (s.end - s.start)) * 1000;
+    acc.set(s.speaker, cur);
+    prev = s.speaker;
+  }
+  // A speaker the backend listed but who never actually says anything still belongs in the list —
+  // otherwise it looks like the app lost them.
+  for (const sp of speakers) if (!acc.has(sp)) acc.set(sp, { ms: 0, turns: 0 });
+
+  return [...acc.entries()]
+    .map(([speaker, v]) => ({
+      speaker, ms: v.ms, turns: v.turns,
+      index: order.has(speaker) ? order.get(speaker)! : 0,
+    }))
+    .sort((a, b) => b.ms - a.ms || a.index - b.index || a.speaker.localeCompare(b.speaker));
+}

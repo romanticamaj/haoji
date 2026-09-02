@@ -14,7 +14,7 @@ const s: SavedSession = { id: 's', createdAt: 1, title: 't', unlocked: true, nam
 test('notes render through react-native-markdown-display (heading text present)', async () => {
   const { getByText } = await render(
     <StoreProvider store={createMemoryStore([s])}>
-      <AnalysisTab session={s} onUpdate={() => {}} onUnlock={() => {}} />
+      <AnalysisTab session={s} onUpdate={() => {}} />
     </StoreProvider>);
   // Markdown renders the heading text as a node (without the literal "## ")
   // If this passes, Markdown is stripping the "## " — plain <Text> would include it
