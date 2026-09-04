@@ -67,7 +67,7 @@ export default function ProcessingScreen() {
         <Pressable style={styles.retry} onPress={() => void restartJob(sessionId, store)} accessibilityRole="button">
           <Text style={styles.retryText}>重試</Text>
         </Pressable>
-        <Pressable style={styles.back} onPress={() => nav.navigate('Home')} accessibilityRole="button">
+        <Pressable style={styles.back} onPress={() => nav.popToTop()} accessibilityRole="button">
           <Text style={styles.backText}>返回</Text>
         </Pressable>
       </View>
@@ -87,7 +87,7 @@ export default function ProcessingScreen() {
           ? '已送出給後端處理，離開 App 也會繼續。'
           : '上傳完成後就會在後端繼續處理。'}
       </Text>
-      <Pressable style={styles.bg} onPress={() => nav.navigate('Home')} accessibilityRole="button">
+      <Pressable style={styles.bg} onPress={() => nav.popToTop()} accessibilityRole="button">
         <Text style={styles.bgText}>在背景繼續</Text>
       </Pressable>
     </View>

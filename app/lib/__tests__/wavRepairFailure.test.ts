@@ -7,7 +7,19 @@ jest.mock('react-native-fs', () => ({
   write: (...a: any[]) => mockWrite(...a),
 }));
 
-import { repairWavHeader, lastWavRepairError } from '../recordings';
+import { repairWavHeader, lastWavRepairError, bytesToB64 } from '../recordings';
+
+/** A crashed header: RIFF/data lengths never backfilled, data chunk pushed past the padding. */
+function truncatedHeader(): string {
+  const h = new Uint8Array(4096);
+  const put = (s: string, o: number) => { for (let i = 0; i < s.length; i++) h[o + i] = s.charCodeAt(i); };
+  const u32 = (n: number, o: number) => { h[o] = n & 255; h[o + 1] = (n >> 8) & 255; h[o + 2] = (n >> 16) & 255; h[o + 3] = (n >>> 24) & 255; };
+  put('RIFF', 0); u32(0x0ff8, 4); put('WAVE', 8);
+  put('fmt ', 12); u32(16, 16);
+  put('FLLR', 36); u32(4044, 40);
+  put('data', 4088); u32(0, 4092);
+  return bytesToB64(h);
+}
 
 beforeEach(() => { jest.clearAllMocks(); jest.spyOn(console, 'warn').mockImplementation(() => {}); });
 afterEach(() => { (console.warn as jest.Mock).mockRestore?.(); });
@@ -30,13 +42,7 @@ test('a read that throws is reported, not swallowed', async () => {
 });
 
 test('a write that throws is reported too', async () => {
-  // A real crashed header: RIFF/data lengths never backfilled, data chunk at 4088.
-  const head = Buffer.alloc(4096);
-  head.write('RIFF', 0); head.writeUInt32LE(0x0ff8, 4); head.write('WAVE', 8);
-  head.write('fmt ', 12); head.writeUInt32LE(16, 16);
-  head.write('FLLR', 36); head.writeUInt32LE(4044, 40);
-  head.write('data', 4088); head.writeUInt32LE(0, 4092);
-  mockRead.mockResolvedValue(head.toString('base64'));
+  mockRead.mockResolvedValue(truncatedHeader());
   mockWrite.mockRejectedValue(new Error('ENOENT: error writing file'));
 
   expect(await repairWavHeader('/doc/haoji/s/part-0.wav')).toBe(false);
@@ -44,12 +50,7 @@ test('a write that throws is reported too', async () => {
 });
 
 test('a successful repair clears the error and writes both lengths', async () => {
-  const head = Buffer.alloc(4096);
-  head.write('RIFF', 0); head.writeUInt32LE(0x0ff8, 4); head.write('WAVE', 8);
-  head.write('fmt ', 12); head.writeUInt32LE(16, 16);
-  head.write('FLLR', 36); head.writeUInt32LE(4044, 40);
-  head.write('data', 4088); head.writeUInt32LE(0, 4092);
-  mockRead.mockResolvedValue(head.toString('base64'));
+  mockRead.mockResolvedValue(truncatedHeader());
   mockWrite.mockResolvedValue(undefined);
 
   expect(await repairWavHeader('/doc/haoji/s/part-0.wav')).toBe(true);
@@ -61,12 +62,7 @@ test('a successful repair clears the error and writes both lengths', async () =>
 
 // iOS returns base64 with a line feed every 76 chars (NSDataBase64EncodingEndLineWithLineFeed).
 test('line-wrapped base64 from iOS still decodes', async () => {
-  const head = Buffer.alloc(4096);
-  head.write('RIFF', 0); head.writeUInt32LE(0x0ff8, 4); head.write('WAVE', 8);
-  head.write('fmt ', 12); head.writeUInt32LE(16, 16);
-  head.write('FLLR', 36); head.writeUInt32LE(4044, 40);
-  head.write('data', 4088); head.writeUInt32LE(0, 4092);
-  mockRead.mockResolvedValue(head.toString('base64').replace(/(.{76})/g, '$1\n'));
+  mockRead.mockResolvedValue(truncatedHeader().replace(/(.{76})/g, '$1\n'));
   mockWrite.mockResolvedValue(undefined);
 
   expect(await repairWavHeader('/doc/haoji/s/part-0.wav')).toBe(true);

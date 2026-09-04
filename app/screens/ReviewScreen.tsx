@@ -38,7 +38,7 @@ export default function ReviewScreen() {
   const generate = () => nav.replace('Processing', { sessionId: id, regen: hasTranscript });
   // Save as a draft and leave: the recording is already persisted (RecordScreen upserts it on stop),
   // so we just go Home. The user can open it later and tap 生成逐字稿 — the work is fully interruptible.
-  const saveDraft = () => nav.navigate('Home');
+  const saveDraft = () => nav.popToTop();
 
   const discard = () => {
     if (hasTranscript) {
@@ -53,7 +53,7 @@ export default function ReviewScreen() {
         onPress: async () => {
           await store.remove(id);
           await deleteSessionFiles(id);
-          nav.navigate('Home');
+          nav.popToTop();
         },
       },
     ]);
