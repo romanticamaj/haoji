@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Animated, { useSharedValue, withTiming, useAnimatedStyle } from 'react-native-reanimated';
+import Animated, { useSharedValue, withTiming, useAnimatedStyle, SharedValue } from 'react-native-reanimated';
 import { colors } from '../lib/theme';
 
 const BAR_COUNT = 48;
@@ -9,18 +9,29 @@ const MAX_HEIGHT = 60;
 const MIN_HEIGHT = 3;
 const ANIM_DURATION = 120; // ms — smooth but still feels live at ~7 Hz updates
 
-/** One animated bar — manages its own reanimated shared value so hooks are at top level */
-function Bar({ target }: { target: number }) {
-  const heightSV = useSharedValue(MIN_HEIGHT);
+const flat = () => Array<number>(BAR_COUNT).fill(MIN_HEIGHT);
 
-  useEffect(() => {
-    heightSV.value = withTiming(target, { duration: ANIM_DURATION });
-  }, [target]);
-
-  const style = useAnimatedStyle(() => ({
-    height: heightSV.value,
-  }));
-
+/**
+ * One bar. Its style worklet is created ONCE and reads the shared arrays every frame, so a new
+ * metering sample costs nothing per bar — no re-render, no new animation, nothing to serialize.
+ *
+ * This is load-bearing, not a micro-optimisation. The previous version gave each bar its own shared
+ * value and started a `withTiming` on every sample, driven by a `setState` that re-rendered all 48
+ * bars — roughly 336 worklet serializations a second. Over a 27-minute meeting that is more than
+ * half a million, and the app died of a Hermes out-of-memory with the recording still open, so the
+ * WAV header was never finalised and the file would not play. Recording longer must not cost more.
+ */
+function Bar({ index, prev, next, t }: {
+  index: number;
+  prev: SharedValue<number[]>;
+  next: SharedValue<number[]>;
+  t: SharedValue<number>;
+}) {
+  const style = useAnimatedStyle(() => {
+    const a = prev.value[index] ?? MIN_HEIGHT;
+    const b = next.value[index] ?? MIN_HEIGHT;
+    return { height: a + (b - a) * t.value };
+  });
   return <Animated.View style={[styles.bar, style]} />;
 }
 
@@ -30,36 +41,46 @@ export interface WaveformProps {
 }
 
 export default function Waveform({ level, active }: WaveformProps) {
-  // Rolling ring buffer stored as plain React state (array of heights in pixels)
-  const historyRef = useRef<number[]>(Array(BAR_COUNT).fill(MIN_HEIGHT));
+  // Ring buffer of bar heights, kept on the UI thread. `t` drives the crossfade from prev to next,
+  // so one sample starts ONE animation for the whole waveform instead of one per bar.
+  const prev = useSharedValue<number[]>(flat());
+  const next = useSharedValue<number[]>(flat());
+  const t = useSharedValue(1);
+
+  const historyRef = useRef<number[]>(flat());
   const cursorRef = useRef(0);
-  const [heights, setHeights] = useState<number[]>(() => Array(BAR_COUNT).fill(MIN_HEIGHT));
 
   useEffect(() => {
     if (!active) {
-      historyRef.current = Array(BAR_COUNT).fill(MIN_HEIGHT);
+      historyRef.current = flat();
       cursorRef.current = 0;
-      setHeights(Array(BAR_COUNT).fill(MIN_HEIGHT));
+      prev.value = flat();
+      next.value = flat();
+      t.value = 1;
       return;
     }
 
-    // Push new sample into ring buffer
-    historyRef.current[cursorRef.current % BAR_COUNT] = MIN_HEIGHT + level * (MAX_HEIGHT - MIN_HEIGHT);
+    historyRef.current[cursorRef.current % BAR_COUNT] =
+      MIN_HEIGHT + level * (MAX_HEIGHT - MIN_HEIGHT);
     cursorRef.current += 1;
 
-    // Re-order so oldest bar is first (left) and newest is last (right)
+    // Oldest bar first (left), newest last (right).
     const cursor = cursorRef.current;
     const ordered = Array.from(
       { length: BAR_COUNT },
       (_, i) => historyRef.current[(cursor + i) % BAR_COUNT],
     );
-    setHeights(ordered);
-  }, [level, active]);
+
+    prev.value = next.value;
+    next.value = ordered;
+    t.value = 0;
+    t.value = withTiming(1, { duration: ANIM_DURATION });
+  }, [level, active]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <View style={styles.container}>
-      {heights.map((h, i) => (
-        <Bar key={i} target={h} />
+      {Array.from({ length: BAR_COUNT }, (_, i) => (
+        <Bar key={i} index={i} prev={prev} next={next} t={t} />
       ))}
     </View>
   );

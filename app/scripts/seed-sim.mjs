@@ -12,7 +12,7 @@
  * anything tried to play or upload them, which is exactly where the bugs have been.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync, openSync, writeSync, closeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -69,6 +69,31 @@ function unclosedWav() {
   const data = buf.indexOf(Buffer.from('data'));
   if (data > 0) buf.writeUInt32LE(0, data + 4);  // data size
   writeFileSync(out, buf);
+  return out;
+}
+
+// A LONG unclosed recording, laid out exactly like the one that came back from TestFlight: the
+// header lengths never written, and the data chunk pushed past 4 KB by the padding CoreAudio writes.
+// Size matters here — the repair reads a fixed window of the header, and a bug that reads the whole
+// file instead only shows up once the file is big.
+function unclosedWavBig(minutes = 27) {
+  const out = join(tmp, `unclosed-big-${minutes}.wav`);
+  const rate = 16000, bytes = rate * 2 * 60 * minutes;
+  const head = Buffer.alloc(4096);
+  head.write('RIFF', 0); head.writeUInt32LE(0x0ff8, 4); head.write('WAVE', 8);
+  head.write('JUNK', 12); head.writeUInt32LE(28, 16);
+  head.write('fmt ', 48); head.writeUInt32LE(16, 52);
+  head.writeUInt16LE(1, 56); head.writeUInt16LE(1, 58);
+  head.writeUInt32LE(rate, 60); head.writeUInt32LE(rate * 2, 64);
+  head.writeUInt16LE(2, 68); head.writeUInt16LE(16, 70);
+  head.write('FLLR', 72); head.writeUInt32LE(4008, 76);
+  head.write('data', 4088); head.writeUInt32LE(0, 4092);   // never backfilled
+  const fd = openSync(out, 'w');
+  writeSync(fd, head);
+  const chunk = Buffer.alloc(1 << 20);
+  for (let i = 0; i < chunk.length; i += 2) chunk.writeInt16LE(Math.round(6000 * Math.sin(i / 40)), i);
+  for (let w = 0; w < bytes; w += chunk.length) writeSync(fd, chunk, 0, Math.min(chunk.length, bytes - w));
+  closeSync(fd);
   return out;
 }
 
@@ -156,6 +181,12 @@ const SCENARIOS = {
     session: (id) => ({ id, createdAt: day(3), title: '未收尾的錄音（WAV）', names: {}, unlocked: false,
       parts: [{ uri: `haoji/${id}/part-0.wav`, durationMs: 4000 }] }),
     files: (id) => [[`haoji/${id}/part-0.wav`, unclosedWav()]],
+  },
+  unclosedbig: {
+    why: '27 分鐘、未收尾的 WAV（TestFlight 實際回報的那支）→ 開 App 應自動修復並可播放',
+    session: (id) => ({ id, createdAt: day(0), title: '未收尾的長錄音（27 分）', names: {}, unlocked: false,
+      parts: [{ uri: `haoji/${id}/part-0.wav`, durationMs: 0 }] }),
+    files: (id) => [[`haoji/${id}/part-0.wav`, unclosedWavBig(27)]],
   },
   orphan: {
     why: '磁碟上有錄音但 store 沒紀錄 → 開 App 應復原成「已復原的錄音」',

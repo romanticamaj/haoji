@@ -211,7 +211,12 @@ export function findDataChunk(head: Uint8Array): number {
 }
 
 // Repair one WAV in place. Returns true only if it actually rewrote the header.
+/** Why the last repair attempt failed, for tests and for surfacing instead of failing silently. */
+let lastRepairError: string | null = null;
+export const lastWavRepairError = () => lastRepairError;
+
 export async function repairWavHeader(storedOrPath: string): Promise<boolean> {
+  lastRepairError = null;
   const path = bare(storedOrPath);
   try {
     const size = Number((await RNFS.stat(path)).size);
@@ -225,7 +230,13 @@ export async function repairWavHeader(storedOrPath: string): Promise<boolean> {
     await RNFS.write(path, bytesToB64(u32le(realRiff)), 4, 'base64');
     await RNFS.write(path, bytesToB64(u32le(realData)), dataOff + 4, 'base64');
     return true;
-  } catch {
+  } catch (e) {
+    // NEVER swallow this silently. A repair that cannot run is a recording that cannot be opened,
+    // and the last failure was invisible for two weeks: RNFS.read() threw on every single call
+    // (its native `length`/`position` were declared as pointers, which the New Architecture's
+    // interop refuses) and this catch turned that into a quiet `false`.
+    lastRepairError = e instanceof Error ? e.message : String(e);
+    console.warn('[haoji] WAV header repair failed:', lastRepairError, path);
     return false;                      // best-effort; never block the app on a repair
   }
 }
