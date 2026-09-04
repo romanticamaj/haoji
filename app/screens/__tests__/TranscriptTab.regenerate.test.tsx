@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { Alert } from 'react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 import TranscriptTab from '../TranscriptTab';
 import { SavedSession } from '../../lib/store';
 
@@ -28,14 +29,33 @@ test('empty transcript but no parts: no regenerate button (nothing to re-run)', 
   expect(queryByText('重新生成逐字稿')).toBeNull();
 });
 
-test('with transcript: the toolbar regenerate chip fires onRegenerate', async () => {
+test('with transcript: confirming from the toolbar chip fires onRegenerate', async () => {
   const onRegenerate = jest.fn();
   const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
   const { getByText } = await render(
     <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
   getByText('你好'); // transcript rendered
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   fireEvent.press(getByText('重新生成逐字稿'));
+  (spy.mock.calls[0] as any[])[2][1].onPress();      // 重新生成
   expect(onRegenerate).toHaveBeenCalled();
+  spy.mockRestore();
+});
+
+// Nothing exists to lose yet, so no dialog — but a double tap must not queue two jobs.
+//
+// Keep this ABOVE the tests that open the confirmation dialog: those leave a spied Alert and a
+// rendered tree behind, and this one then fails to find its button — a harness artefact, not a
+// defect in the screen.
+test('first-time 生成逐字稿 needs no confirmation but still fires once', async () => {
+  const onRegenerate = jest.fn();
+  const s = withParts({ speakers: [], segments: [] });
+  const { getByText } = await render(
+    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
+
+  await act(async () => { fireEvent.press(getByText('生成逐字稿')); });
+  expect(onRegenerate).toHaveBeenCalledTimes(1);
+  getByText('準備中…');
 });
 
 // While a transcription is in flight the "生成逐字稿" path must NOT be offered: it restarts the job
@@ -86,15 +106,69 @@ test('no job: the normal 生成逐字稿 / 重新生成逐字稿 buttons are unc
 // 重新生成逐字稿 used to sit at the BOTTOM of the transcript: on a long meeting that meant scrolling
 // past every paragraph to reach it. It now lives in the persistent toolbar, like the analysis tab's
 // actions — visible without scrolling, next to 講者 and 複製.
-test('重新生成逐字稿 sits in the toolbar, above the paragraphs', async () => {
+test('重新生成逐字稿 sits in the toolbar, alongside 講者 and 複製', async () => {
   const onRegenerate = jest.fn();
   const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
   const { getByTestId } = await render(
     <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
 
-  const chip = getByTestId('regenerate-transcript');
-  fireEvent.press(chip);
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  fireEvent.press(getByTestId('regenerate-transcript'));
+  (spy.mock.calls[0] as any[])[2][1].onPress();      // 重新生成
   expect(onRegenerate).toHaveBeenCalled();
   getByTestId('copy-transcript');          // the toolbar it shares
   getByTestId('open-speakers');
+  spy.mockRestore();
+});
+
+// Re-running the transcript is destructive in a way regenerating the notes is not: the notes are
+// archived to 版本紀錄 first, a transcript is simply overwritten — inline text corrections included.
+test('重新生成逐字稿 asks first, and says the current transcript cannot be recovered', async () => {
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  const onRegenerate = jest.fn();
+  const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
+  const { getByTestId } = await render(
+    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
+
+  fireEvent.press(getByTestId('regenerate-transcript'));
+  expect(onRegenerate).not.toHaveBeenCalled();               // nothing happens without confirming
+
+  const [title, body, buttons] = spy.mock.calls[0] as any[];
+  expect(title).toMatch(/重新生成逐字稿/);
+  expect(body).toMatch(/無法還原/);
+  buttons[1].onPress();
+  expect(onRegenerate).toHaveBeenCalledTimes(1);
+  spy.mockRestore();
+});
+
+test('cancelling leaves the transcript alone', async () => {
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  const onRegenerate = jest.fn();
+  const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
+  const { getByTestId } = await render(
+    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
+
+  fireEvent.press(getByTestId('regenerate-transcript'));
+  const [, , buttons] = spy.mock.calls[0] as any[];
+  buttons[0].onPress?.();                                    // 取消
+  expect(onRegenerate).not.toHaveBeenCalled();
+  spy.mockRestore();
+});
+
+// The screen is replaced by 分析中 right after, but a second tap lands inside that window.
+test('confirming twice still starts only one run', async () => {
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  const onRegenerate = jest.fn();
+  const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
+  const { getByTestId } = await render(
+    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
+
+  fireEvent.press(getByTestId('regenerate-transcript'));
+  await act(async () => { (spy.mock.calls[0] as any[])[2][1].onPress(); });
+  fireEvent.press(getByTestId('regenerate-transcript'));     // second tap before the screen changes
+  fireEvent.press(getByTestId('regenerate-transcript'));
+
+  expect(onRegenerate).toHaveBeenCalledTimes(1);
+  expect(spy).toHaveBeenCalledTimes(1);                      // and no second dialog
+  spy.mockRestore();
 });

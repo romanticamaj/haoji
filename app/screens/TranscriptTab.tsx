@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  ScrollView, View, Text, TextInput, Pressable, StyleSheet,
+  ScrollView, View, Text, TextInput, Pressable, StyleSheet, Alert,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SavedSession } from '../lib/store';
@@ -37,6 +37,32 @@ export default function TranscriptTab(
   // The speaker sheet: null = closed, '' = opened from the toolbar, otherwise the speaker to focus.
   const [editing, setEditing] = React.useState<string | null>(null);
   const stats = React.useMemo(() => speakerStats(segs, speakers), [segs, speakers]);
+  // One trigger only. The chip stays disabled from the moment it is confirmed until this screen is
+  // replaced by 分析中 — without it a second tap in that window starts the whole job twice.
+  // A ref, not just state: taps arrive faster than React re-renders, so a state read inside the
+  // handler is still false on the second tap and both would fire. The state exists only to redraw
+  // the button as disabled.
+  const [regenStarted, setRegenStarted] = React.useState(false);
+  const regenStartedRef = React.useRef(false);
+  const confirmOpenRef = React.useRef(false);   // one dialog at a time
+  const startRegenerate = () => {
+    if (regenStartedRef.current) return;
+    regenStartedRef.current = true;
+    setRegenStarted(true);
+    onRegenerate?.();
+  };
+  // Unlike the meeting notes, a transcript has NO version history: re-running overwrites it, taking
+  // any text corrections with it. Say so rather than discovering it afterwards.
+  const confirmRegenerate = () => {
+    if (regenStartedRef.current || confirmOpenRef.current) return;
+    confirmOpenRef.current = true;
+    Alert.alert(
+      '重新生成逐字稿？',
+      '會用原本的錄音重新辨識一次。目前的逐字稿會被取代，包含你修改過的文字；逐字稿沒有版本紀錄，無法還原。',
+      [{ text: '取消', style: 'cancel', onPress: () => { confirmOpenRef.current = false; } },
+       { text: '重新生成', style: 'destructive', onPress: startRegenerate }],
+    );
+  };
   const namedCount = stats.filter((x) => !!session.names[x.speaker]).length;
   // Which paragraph is being edited INLINE (index into `turns`), plus its working draft text. Long-press
   // a paragraph to enter; 完成 writes the correction back into the transcript segments, 取消 discards.
@@ -79,8 +105,13 @@ export default function TranscriptTab(
             </Pressable>
           )
         ) : hasParts && onRegenerate && (
-          <Pressable style={styles.primary} onPress={onRegenerate} accessibilityRole="button">
-            <Text style={styles.primaryText}>生成逐字稿</Text>
+          <Pressable
+            style={[styles.primary, regenStarted && styles.chipDisabled]}
+            onPress={startRegenerate}
+            disabled={regenStarted}
+            accessibilityRole="button"
+          >
+            <Text style={styles.primaryText}>{regenStarted ? '準備中…' : '生成逐字稿'}</Text>
           </Pressable>
         )}
       </View>
@@ -105,6 +136,59 @@ export default function TranscriptTab(
 
   return (
     <View style={styles.wrap}>
+      {/* Sticky: the transcript scrolls under these. Burying 講者 / 複製 / 重新生成 in the scroll
+          meant they vanished as soon as you started reading, which is exactly when they are wanted. */}
+      <View style={styles.toolbar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.toolbarRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {stats.length > 0 && (
+            <Pressable
+              testID="open-speakers"
+              style={styles.chip}
+              onPress={() => setEditing('')}
+              accessibilityRole="button"
+              accessibilityLabel="管理講者"
+            >
+              <Text style={styles.chipText}>講者 {namedCount}/{stats.length}</Text>
+            </Pressable>
+          )}
+          <Pressable
+            testID="copy-transcript"
+            style={[styles.chip, copied && styles.chipDone]}
+            onPress={copyTranscript}
+            accessibilityRole="button"
+            accessibilityLabel="複製逐字稿"
+          >
+            {copied
+              ? <><IconCheck size={14} color={colors.good} /><Text style={styles.chipDoneText}>已複製</Text></>
+              : <><IconCopy size={14} color={colors.brand} /><Text style={styles.chipText}>複製</Text></>}
+          </Pressable>
+          {busy && onViewProgress ? (
+            <Pressable
+              testID="view-progress"
+              style={styles.chip}
+              onPress={onViewProgress}
+              accessibilityRole="button"
+            >
+              <Text style={styles.chipText}>查看進度（{busyPct}%）</Text>
+            </Pressable>
+          ) : hasParts && onRegenerate ? (
+            <Pressable
+              testID="regenerate-transcript"
+              style={[styles.chip, regenStarted && styles.chipDisabled]}
+              onPress={confirmRegenerate}
+              disabled={regenStarted}
+              accessibilityRole="button"
+            >
+              <Text style={styles.chipText}>{regenStarted ? '準備中…' : '重新生成逐字稿'}</Text>
+            </Pressable>
+          ) : null}
+        </ScrollView>
+      </View>
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
@@ -113,56 +197,6 @@ export default function TranscriptTab(
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >
-        <View style={styles.toolbar}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.toolbarRow}
-            keyboardShouldPersistTaps="handled"
-          >
-            {stats.length > 0 && (
-              <Pressable
-                testID="open-speakers"
-                style={styles.chip}
-                onPress={() => setEditing('')}
-                accessibilityRole="button"
-                accessibilityLabel="管理講者"
-              >
-                <Text style={styles.chipText}>講者 {namedCount}/{stats.length}</Text>
-              </Pressable>
-            )}
-            <Pressable
-              testID="copy-transcript"
-              style={[styles.chip, copied && styles.chipDone]}
-              onPress={copyTranscript}
-              accessibilityRole="button"
-              accessibilityLabel="複製逐字稿"
-            >
-              {copied
-                ? <><IconCheck size={14} color={colors.good} /><Text style={styles.chipDoneText}>已複製</Text></>
-                : <><IconCopy size={14} color={colors.brand} /><Text style={styles.chipText}>複製</Text></>}
-            </Pressable>
-            {busy && onViewProgress ? (
-              <Pressable
-                testID="view-progress"
-                style={styles.chip}
-                onPress={onViewProgress}
-                accessibilityRole="button"
-              >
-                <Text style={styles.chipText}>查看進度（{busyPct}%）</Text>
-              </Pressable>
-            ) : hasParts && onRegenerate ? (
-              <Pressable
-                testID="regenerate-transcript"
-                style={styles.chip}
-                onPress={onRegenerate}
-                accessibilityRole="button"
-              >
-                <Text style={styles.chipText}>重新生成逐字稿</Text>
-              </Pressable>
-            ) : null}
-          </ScrollView>
-        </View>
         <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
         {turns.map((p, i) => {
           const idx = speakerIndex[p.speaker] ?? 0;
@@ -267,11 +301,12 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
   // header row: gesture hint on the left, copy button on the right
-  toolbar: { marginHorizontal: -18, borderBottomWidth: 1, borderBottomColor: colors.hairline },
+  toolbar: { borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.paper },
   toolbarRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingVertical: 10 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.chipBg },
   chipText: { color: colors.ink, fontWeight: '600', fontSize: 13.5 },
   chipDone: { backgroundColor: colors.goodSoft },
+  chipDisabled: { opacity: 0.5 },
   chipDoneText: { color: colors.good, fontWeight: '600', fontSize: 13.5 },
   // teaches the two paragraph gestures (tap = seek, long-press = edit)
   howto: { fontSize: 11.5, color: colors.ink3, paddingTop: 10, paddingBottom: 2 },
