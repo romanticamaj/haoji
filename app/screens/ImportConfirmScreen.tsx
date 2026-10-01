@@ -18,6 +18,8 @@ import { mmss } from '../lib/transcript';
 import { IconCheck, IconAlert, IconPlay, IconPause, IconGrip } from '../components/icons';
 import { colors, radius } from '../lib/theme';
 
+const ROW_GAP = 8;
+
 const makeLocalId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 /**
@@ -39,9 +41,9 @@ export default function ImportConfirmScreen() {
   // Only one preview plays at a time — otherwise checking the order turns into a mess of overlapping
   // audio. Holding it here (not per row) is what makes starting one stop the others.
   const [playingUri, setPlayingUri] = useState<string | null>(null);
-  // Measured once from a real row so the drag knows how far a slot is; the list is locked while
-  // dragging so the two gestures never fight.
-  const [rowH, setRowH] = useState(96);
+  // Every row's measured height, so a drag knows how far each neighbour's slot is — rows differ (an
+  // unusable file has no waveform). The list is locked while dragging so the two gestures never fight.
+  const rowHeights = useRef<Record<string, number>>({});
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
@@ -120,13 +122,14 @@ export default function ImportConfirmScreen() {
             key={c.uri}
             candidate={c}
             index={i}
-            total={list.length}
             playingUri={playingUri}
             onPlayingChange={setPlayingUri}
             onToggle={() => setList(toggle(list, c.uri))}
-            onMove={(dir: -1 | 1) => setList(move(list, c.uri, dir))}
-            rowH={rowH}
-            onMeasure={setRowH}
+            // Functional update: a drag fires several moves before React re-renders, and each must
+            // apply to the list the previous one produced, not the one this render saw.
+            onMove={(dir: -1 | 1) => setList((l) => l && move(l, c.uri, dir))}
+            order={list.map((x) => x.uri)}
+            rowHeights={rowHeights.current}
             onDragChange={setDragging}
           />
         ))}
@@ -162,16 +165,15 @@ export default function ImportConfirmScreen() {
  * order is the merge order, and the only way to know the order is right is to listen.
  */
 function CandidateRow(
-  { candidate: c, index, total, playingUri, onPlayingChange, onToggle, onMove, rowH, onMeasure, onDragChange }: {
+  { candidate: c, index, playingUri, onPlayingChange, onToggle, onMove, order, rowHeights, onDragChange }: {
     candidate: ImportCandidate;
     index: number;
-    total: number;
     playingUri: string | null;
     onPlayingChange: (uri: string | null) => void;
     onToggle: () => void;
     onMove: (dir: -1 | 1) => void;
-    rowH: number;
-    onMeasure: (h: number) => void;
+    order: string[];
+    rowHeights: Record<string, number>;
     onDragChange: (dragging: boolean) => void;
   },
 ) {
@@ -183,40 +185,59 @@ function CandidateRow(
   // Drag-to-reorder on core RN (PanResponder + Animated) — gesture-handler is incompatible with this
   // RN version, and SwipeRow already establishes this approach in the app.
   //
-  // The row is reordered LIVE as the finger passes each row height, and `shift` records how far the
-  // row has already been moved in the list so the lift stays under the finger instead of jumping.
+  // The row is reordered LIVE as the finger passes each neighbour, and `shiftPx` records how far the
+  // row has already moved down the list so the lift stays under the finger instead of jumping.
+  //
+  // The responder is created once, so it must never read props directly — they'd be frozen at the
+  // first render (which is exactly how every drag used to restart from the original order). It reads
+  // `latest` instead, and tracks the order it has produced itself during a drag, since several moves
+  // can land before the next render.
   const [dragging, setDragging] = useState(false);
   const lift = useRef(new Animated.Value(0)).current;
-  const shift = useRef(0);
-  const rowHRef = useRef(rowH);
-  rowHRef.current = rowH;
-  const idxRef = useRef(index);
-  idxRef.current = index;
-  const totalRef = useRef(total);
-  totalRef.current = total;
+  const latest = useRef({ order, rowHeights, onMove, onDragChange });
+  latest.current = { order, rowHeights, onMove, onDragChange };
+  const drag = useRef({ order: [] as string[], shiftPx: 0 });
+
+  // One slot = the neighbour's height plus the gap between rows.
+  const slotOf = (uri: string) => (latest.current.rowHeights[uri] ?? 96) + ROW_GAP;
 
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 2,
-      onPanResponderGrant: () => { shift.current = 0; setDragging(true); onDragChange(true); },
+      // Don't let the ScrollView take the gesture back mid-drag.
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        drag.current = { order: [...latest.current.order], shiftPx: 0 };
+        setDragging(true); latest.current.onDragChange(true);
+      },
       onPanResponderMove: (_e, g) => {
-        const h = rowHRef.current || 96;
-        const offset = g.dy - shift.current * h;
+        const d = drag.current;
         // Crossed into the next slot: reorder now so the list under the finger matches what it will be.
-        if (offset > h * 0.6 && idxRef.current < totalRef.current - 1) {
-          onMove(1); shift.current += 1;
-        } else if (offset < -h * 0.6 && idxRef.current > 0) {
-          onMove(-1); shift.current -= 1;
+        // Loop, because a quick flick can cover more than one slot between two move events.
+        for (;;) {
+          const i = d.order.indexOf(c.uri);
+          const offset = g.dy - d.shiftPx;
+          const below = d.order[i + 1];
+          const above = d.order[i - 1];
+          if (below && offset > slotOf(below) * 0.6) {
+            latest.current.onMove(1);
+            d.shiftPx += slotOf(below);
+            [d.order[i], d.order[i + 1]] = [below, c.uri];
+          } else if (above && offset < -slotOf(above) * 0.6) {
+            latest.current.onMove(-1);
+            d.shiftPx -= slotOf(above);
+            [d.order[i], d.order[i - 1]] = [above, c.uri];
+          } else break;
         }
-        lift.setValue(g.dy - shift.current * h);
+        lift.setValue(g.dy - d.shiftPx);
       },
       onPanResponderRelease: () => {
-        setDragging(false); onDragChange(false);
+        setDragging(false); latest.current.onDragChange(false);
         Animated.spring(lift, { toValue: 0, useNativeDriver: false, bounciness: 0 }).start();
       },
       onPanResponderTerminate: () => {
-        setDragging(false); onDragChange(false);
+        setDragging(false); latest.current.onDragChange(false);
         lift.setValue(0);
       },
     }),
@@ -236,7 +257,7 @@ function CandidateRow(
 
   return (
     <Animated.View
-      onLayout={(e) => onMeasure(e.nativeEvent.layout.height)}
+      onLayout={(e) => { rowHeights[c.uri] = e.nativeEvent.layout.height; }}
       style={[
         styles.row,
         !c.ok && styles.rowBad,
@@ -335,7 +356,7 @@ const styles = StyleSheet.create({
   sub: { fontSize: 13, color: colors.ink2, marginTop: 5 },
 
   list: { flex: 1, paddingHorizontal: 16 },
-  row: { backgroundColor: colors.card, borderRadius: radius.card, padding: 14, marginBottom: 8 },
+  row: { backgroundColor: colors.card, borderRadius: radius.card, padding: 14, marginBottom: ROW_GAP },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   tick: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   seq: { fontSize: 12, fontWeight: '700', color: colors.ink3, width: 14, textAlign: 'center' },

@@ -78,6 +78,47 @@ test('reordering changes the ORDER the files are written in — the merge order'
   expect(mockMerge).toHaveBeenCalled();
 });
 
+// PanResponder reads the gesture from the responder's touch history, so a test drag has to supply one.
+function touch(prevY: number, y: number, t: number) {
+  const bank = { touchActive: true, startPageX: 0, startPageY: 0, startTimeStamp: 0, currentPageX: 0,
+    currentPageY: y, currentTimeStamp: t, previousPageX: 0, previousPageY: prevY, previousTimeStamp: t - 1 };
+  return {
+    nativeEvent: { touches: [{}], changedTouches: [{}], pageX: 0, pageY: y, timestamp: t },
+    touchHistory: { numberActiveTouches: 1, indexOfSingleActiveTouch: 0, mostRecentTimeStamp: t, touchBank: [bank] },
+  };
+}
+async function dragGrip(grip: any, dys: number[]) {
+  await act(async () => { fireEvent(grip, 'responderGrant', touch(0, 0, 1)); });
+  for (let i = 0; i < dys.length; i++) {
+    await act(async () => { fireEvent(grip, 'responderMove', touch(i ? dys[i - 1] : 0, dys[i], i + 2)); });
+  }
+  await act(async () => { fireEvent(grip, 'responderRelease', touch(dys[dys.length - 1], dys[dys.length - 1], dys.length + 2)); });
+}
+
+test('a drag can carry a row past several slots, and a later drag starts from the new order', async () => {
+  const { getByTestId, findByText, getByText } = await render(<ImportConfirmScreen />);
+  await findByText('one.m4a');
+
+  // Rows aren't laid out under jest, so a slot is the 96 default + the 8 gap = 104.
+  await dragGrip(getByTestId('grip-one.m4a'), [40, 80, 120, 160, 200, 230]);   // two, doc, one
+  expect(getByTestId('grip-one.m4a').props.accessibilityLabel).toContain('目前第 3 個');
+
+  await dragGrip(getByTestId('grip-one.m4a'), [-40, -80]);                     // two, one, doc
+  expect(getByTestId('grip-one.m4a').props.accessibilityLabel).toContain('目前第 2 個');
+
+  await act(async () => { fireEvent.press(getByText('合併成一段並繼續')); });
+  await waitFor(() => expect(mockMoveToPart).toHaveBeenCalledTimes(2));
+  expect(mockMoveToPart.mock.calls[0][2]).toBe('file:///c/two.m4a');
+  expect(mockMoveToPart.mock.calls[1][2]).toBe('file:///c/one.m4a');
+});
+
+test('a quick flick past two slots in one move event still lands two slots down', async () => {
+  const { getByTestId, findByText } = await render(<ImportConfirmScreen />);
+  await findByText('one.m4a');
+  await dragGrip(getByTestId('grip-one.m4a'), [215]);
+  expect(getByTestId('grip-one.m4a').props.accessibilityLabel).toContain('目前第 3 個');
+});
+
 test('保持分開 imports the selected files without joining them', async () => {
   const { getByText, findByText } = await render(<ImportConfirmScreen />);
   await findByText('one.m4a');
