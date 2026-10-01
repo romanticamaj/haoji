@@ -22,7 +22,9 @@ def init_db():
         cols = [r[1] for r in c.execute("PRAGMA table_info(sessions)").fetchall()]
         for col, decl in (("client_id", "TEXT"), ("notes_status", "TEXT"),
                           ("notes_error", "TEXT"), ("expected_parts", "INTEGER"),
-                          ("notes_pct", "REAL"), ("notes_message", "TEXT")):
+                          ("notes_pct", "REAL"), ("notes_message", "TEXT"),
+                          # push_*: where to say "done" once transcription ends. Cleared after use.
+                          ("push_token", "TEXT"), ("push_env", "TEXT"), ("push_title", "TEXT")):
             if col not in cols:
                 c.execute(f"ALTER TABLE sessions ADD COLUMN {col} {decl}")
 

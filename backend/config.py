@@ -33,6 +33,13 @@ LLM_NUM_CTX_MAX = 32768
 LLM_OUTPUT_TOKENS = 4096
 LLM_THINK = True
 
+# Push notifications (APNs, token-based .p8 auth). All three of key/key-id/team must be set or push is
+# a no-op — see push.py. The topic is the app's bundle id.
+APNS_KEY_PATH = os.environ.get("APNS_KEY_PATH") or ""
+APNS_KEY_ID = os.environ.get("APNS_KEY_ID") or ""
+APNS_TEAM_ID = os.environ.get("APNS_TEAM_ID") or ""
+APNS_TOPIC = os.environ.get("APNS_TOPIC") or "com.garyhsieh.haoji"
+
 MEDIA_EXTS = {
     ".mp4", ".mov", ".mkv", ".avi", ".m4v", ".webm", ".flv", ".ts", ".mpg", ".mpeg", ".wmv",
     ".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma",

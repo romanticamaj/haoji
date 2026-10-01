@@ -42,3 +42,6 @@ backend/deploy/docker-compose.override.yml
 
 # local backend test venv (not part of the Docker deploy)
 backend/.venv/
+
+# APNs key mounted into the backend container
+backend/deploy/secrets/

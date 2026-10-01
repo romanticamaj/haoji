@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 import config
-import asr, sessions, llm, media
+import asr, sessions, llm, media, push
 from fastapi import Request
 
 # --- logging: rotating file (backend/logs/haoji.log) + console ---------------
@@ -88,17 +88,54 @@ async def create_session(req: Request):
     # starts transcription itself, so an upload completed by the OS (background URLSession, app
     # closed) is still processed without the client calling /transcribe.
     expected = body.get("expected_parts") if isinstance(body, dict) else None
+    # The phone's APNs token: the job finishes here, server-side, typically with the app suspended, so
+    # this is the only way to tell the user it is done. Used once, then cleared (_notify_done).
+    push_fields = _push_fields(body)
     if client_id:
         existing = sessions.get_session_by_client(client_id)
         if existing:
             if expected and not existing.get("expected_parts"):
                 sessions.update_session(existing["id"], expected_parts=int(expected))
+            if push_fields:
+                sessions.update_session(existing["id"], **push_fields)
             log.info("[%s] session reused (client_id)", existing["id"])
             return {"session_id": existing["id"], "reused": True}
     sid = sessions.create_session("recording", client_id=client_id,
                                   expected_parts=int(expected) if expected else None)
-    log.info("[%s] session created", sid)
+    if push_fields:
+        sessions.update_session(sid, **push_fields)
+    log.info("[%s] session created%s", sid, " (push)" if push_fields else "")
     return {"session_id": sid}
+
+
+_PUSH_TOKEN_RE = re.compile(r"^[0-9a-fA-F]{32,200}$")
+
+
+def _push_fields(body):
+    if not isinstance(body, dict):
+        return {}
+    token = body.get("push_token")
+    if not isinstance(token, str) or not _PUSH_TOKEN_RE.match(token):
+        return {}
+    env = "sandbox" if body.get("push_env") == "sandbox" else "production"
+    title = body.get("push_title") if isinstance(body.get("push_title"), str) else ""
+    return {"push_token": token, "push_env": env, "push_title": title[:80]}
+
+
+def _notify_done(sid):
+    """Tell the phone the transcription ended (done or failed), then forget its token."""
+    s = sessions.get_session(sid)
+    if not s or not s.get("push_token"):
+        return
+    sessions.update_session(sid, push_token=None, push_env=None, push_title=None)
+    name = s.get("push_title") or "會議"
+    if s.get("status") == "done":
+        title, body = "逐字稿完成", f"「{name}」的逐字稿好了，點一下查看。"
+    else:
+        title, body = "逐字稿失敗", f"「{name}」轉譯沒有成功，點一下重試。"
+    ok = push.send(s["push_token"], s.get("push_env"), title, body,
+                   {"session": s.get("client_id") or "", "kind": "transcript"})
+    log.info("[%s] push %s", sid, "sent" if ok else "not sent")
 
 @app.post("/api/sessions/{sid}/parts")
 async def add_part(sid: str, index: Optional[int] = None, file: UploadFile = File(...)):
@@ -304,6 +341,7 @@ def _run_transcribe(sid):
             except OSError: pass
         with _submit_lock:
             _submitted.discard(sid)
+        _notify_done(sid)
 
 @app.post("/api/sessions/{sid}/transcribe")
 def transcribe(sid: str):

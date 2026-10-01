@@ -10,8 +10,13 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       LLM_MODEL: ${LLM_MODEL:-gemma4:e4b-it-qat}
       DATA_DIR: /data
+      # Push "逐字稿完成" to the phone (APNs). Blank APNS_KEY_ID = push off; see DEPLOY.md §3.
+      APNS_KEY_PATH: /secrets/apns.p8
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
     volumes:
       - data:/data
+      - ./secrets:/secrets:ro
     depends_on:
       ollama:
         condition: service_started

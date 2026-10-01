@@ -73,10 +73,21 @@ curl -s "http://127.0.0.1:7780/api/sessions/$SID"    # 期望 "status":"done"（
 `http://<部署機>:7780`，並同步 iOS ATS 例外（`ios/Haoji/Info.plist`）與 Android
 `network_security_config.xml` 的位址。
 
+### 推播通知（逐字稿完成）
+
+轉錄在伺服器上跑完時 App 通常已被 iOS 暫停，所以「逐字稿完成」由後端透過 APNs 推給手機。
+
+1. 把 APNs 金鑰（`.p8`）放到 `backend/deploy/secrets/apns.p8`（已被 `.gitignore` 排除，勿提交）。
+2. `.env` 設定 `APNS_KEY_ID`（金鑰 ID）與 `APNS_TEAM_ID`（`64N77Z6TV3`）。
+3. `docker compose up -d --build`。轉錄結束後 log 會出現 `push sent`。
+
+`APNS_KEY_ID` 留空＝不推播，其他功能照常。
+
 ## 4. 資料與隱私
 
 - **音檔轉錄完即刪**（後端 `finally` 保證）；伺服器不保留任何錄音。
 - `data` volume 只存 SQLite（session 狀態/逐字稿/記錄暫存）。
+- 推播用的裝置 token 只在轉錄進行中保存，推送後立即清除。
 - 清空重來：`docker compose down && docker volume rm haoji_data`。
 - 模型 volume（`haoji_models-*`）可保留，重建不必重新下載。
 
