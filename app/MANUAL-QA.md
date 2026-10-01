@@ -32,3 +32,7 @@ three TestFlight cycles. See `scripts/README-sim.md`. What is left below genuine
 - [ ] AI 分析 tab: 生成會議記錄 returns notes in Traditional Chinese, shown in full; 複製 copies; 匯出 opens share sheet.
 - [ ] 重新分析 after naming the speakers → the new notes use the real names, and 版本紀錄 can revert to the old ones.
 - [ ] Kill + reopen app → session still listed on Home and fully readable offline.
+- [ ] **Push (needs a real device + the deployed backend with the APNs key):** first 生成逐字稿 asks for
+      notification permission. Lock the phone → when transcription ends a 「逐字稿完成」 notification
+      arrives; tapping it opens that meeting. A failed job sends 「逐字稿失敗」. Declining permission
+      must not affect transcription.

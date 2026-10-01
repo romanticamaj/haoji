@@ -4,6 +4,7 @@ import * as bgUpload from './backgroundUpload';
 import { SessionStore } from './store';
 import { runJob, isActive } from './job';
 import { runNotesJob, isNotesActive } from './notesJob';
+import * as push from './push';
 
 // Process-wide registry of in-flight transcription jobs.
 //
@@ -30,7 +31,7 @@ export function ensureJob(sessionId: string, store: SessionStore): Promise<void>
   if (existing) return existing;
 
   const p = runJob(sessionId, {
-    createSession: api.createSession,
+    createSession: (clientId, expectedParts) => createSessionWithPush(clientId, expectedParts, store),
     uploadPart: api.uploadPart,
     transcribe: api.transcribe,
     getSession: api.getSession,
@@ -51,6 +52,34 @@ export function ensureJob(sessionId: string, store: SessionStore): Promise<void>
   running.set(sessionId, p);
   notify();
   return p;
+}
+
+// How long the job waits on the push token before carrying on without it. The first time, this is
+// the system permission prompt — a person reading it — so it is generous.
+export const PUSH_WAIT_MS = 30000;
+
+/**
+ * Create the backend session with this phone's push token, so the backend can say "逐字稿完成" when
+ * it finishes — by then the app is usually suspended and could not say it itself.
+ *
+ * Push is a courtesy and must never hold the transcription hostage: if the token isn't there within
+ * PUSH_WAIT_MS the session is created without it, and the token is attached when it does arrive
+ * (createSession is idempotent on the client id, and the backend accepts a token on a reused session).
+ */
+async function createSessionWithPush(clientId: string, expectedParts: number | undefined, store: SessionStore) {
+  const title = (await store.get(clientId))?.title;
+  const pending = push.register();
+  const timedOut = Symbol('timeout');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const got = await Promise.race([
+    pending,
+    new Promise<typeof timedOut>((r) => { timer = setTimeout(() => r(timedOut), PUSH_WAIT_MS); }),
+  ]).finally(() => { if (timer) clearTimeout(timer); });
+  if (got === timedOut) {
+    void pending.then((t) => t && api.createSession(clientId, expectedParts, { ...t, title })).catch(() => {});
+    return api.createSession(clientId, expectedParts);
+  }
+  return got ? api.createSession(clientId, expectedParts, { ...got, title }) : api.createSession(clientId, expectedParts);
 }
 
 /**

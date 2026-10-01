@@ -25,7 +25,11 @@ async function asJson(res: Response) {
 
 // clientId is an idempotency/task key (the local session id). Passing it lets the backend return the
 // SAME server session if the pipeline is (re)tried, so a duplicated upload can't spawn extra sessions.
-export async function createSession(clientId?: string, expectedParts?: number): Promise<string> {
+export async function createSession(
+  clientId?: string, expectedParts?: number,
+  // Where to push "逐字稿完成": the job ends server-side, usually with this app suspended.
+  push?: { token: string; env: string; title?: string },
+): Promise<string> {
   // expectedParts tells the backend how many parts to wait for: once they have all arrived it starts
   // transcription ITSELF, so an upload finished by the OS with the app closed still gets processed.
   const res = await timedFetch(`${API_BASE}/api/sessions`, {
@@ -34,6 +38,7 @@ export async function createSession(clientId?: string, expectedParts?: number): 
     body: JSON.stringify({
       ...(clientId ? { client_id: clientId } : {}),
       ...(expectedParts ? { expected_parts: expectedParts } : {}),
+      ...(push ? { push_token: push.token, push_env: push.env, push_title: push.title ?? '' } : {}),
     }),
   }, 20000);
   return ((await asJson(res)) as any).session_id;

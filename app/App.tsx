@@ -1,8 +1,11 @@
-import React from 'react';
-import { NavigationContainer, DefaultTheme, type Theme } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import {
+  NavigationContainer, DefaultTheme, type Theme, createNavigationContainerRef,
+} from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Stack } from './navigation';
-import { StoreProvider } from './lib/store-context';
+import { Stack, RootStackParamList } from './navigation';
+import { StoreProvider, useStore } from './lib/store-context';
+import * as push from './lib/push';
 import { colors } from './lib/theme';
 import HomeScreen from './screens/HomeScreen';
 import RecordScreen from './screens/RecordScreen';
@@ -26,11 +29,31 @@ const navTheme: Theme = {
   },
 };
 
+const navRef = createNavigationContainerRef<RootStackParamList>();
+
+/**
+ * Tapping "逐字稿完成" opens that meeting — whether the tap launched the app or arrived while it was
+ * running. A meeting deleted since the push was sent is simply ignored.
+ */
+function PushOpener({ ready }: { ready: boolean }) {
+  const store = useStore();
+  useEffect(() => {
+    if (!ready) return;           // attach only once navigation can take us there
+    return push.onOpen(async (sessionId) => {
+      const s = await store.get(sessionId);
+      if (s && navRef.isReady()) navRef.navigate('Results', { sessionId, session: s });
+    });
+  }, [ready, store]);
+  return null;
+}
+
 export default function App() {
+  const [navReady, setNavReady] = React.useState(false);
   return (
     <SafeAreaProvider>
       <StoreProvider>
-        <NavigationContainer theme={navTheme}>
+        <PushOpener ready={navReady} />
+        <NavigationContainer theme={navTheme} ref={navRef} onReady={() => setNavReady(true)}>
           <Stack.Navigator
             screenOptions={{
               headerShadowVisible: false,
