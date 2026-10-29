@@ -1,14 +1,22 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, SectionList, Pressable, TextInput, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, SectionList, Pressable, TextInput, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
 import { deleteSessionFiles, recoverOrphanedRecordings, repairWavParts } from '../lib/recordings';
 import { RootStackParamList } from '../navigation';
 import SwipeRow from '../components/SwipeRow';
-import { IconSearch } from '../components/icons';
-import { colors, radius, tabularNums, cardShadow, speakerColor } from '../lib/theme';
+import { AppText } from '../components/AppText';
+import { BrandHeader } from '../components/BrandHeader';
+import { BottomActionBar } from '../components/BottomActionBar';
+import { EmptyState } from '../components/EmptyState';
+import { UndoSnackbar } from '../components/UndoSnackbar';
+import {
+  IconAlert, IconAudioLines, IconCheck, IconFile, IconImage, IconLoader, IconSearch,
+} from '../components/icons';
+import { colors, layout, radius, spacing, tabularNums, speakerColor, typography } from '../lib/theme';
 import {
   groupSessions, relativeDay, durationLabel, speakerCount, avatarSpec, hasTranscript, hasNotes,
 } from '../lib/sessionList';
@@ -16,6 +24,7 @@ import { promoteTitleFromNotes } from '../lib/notesDoc';
 import { resumeAllJobs, onJobChange } from '../lib/jobRunner';
 import { isActive, overallPct } from '../lib/job';
 import { isNotesActive } from '../lib/notesJob';
+import { useImport } from '../hooks/useImport';
 
 // Repair crash-truncated WAV headers once per app launch (not on every screen focus).
 let wavRepairDone = false;
@@ -23,13 +32,25 @@ let wavRepairDone = false;
 export default function HomeScreen() {
   const store = useStore();
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<SavedSession[]>([]);
-  // Free-text filter over the meeting list (matches the title, case-insensitive).
+  const [loaded, setLoaded] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
+  const imp = useImport({ leave: 'navigate' });
 
-  // On load, auto-replace any still-default (timestamp) title with the AI notes' topic, then persist
-  // the ones that changed (sequential writes — AsyncStorage upsert is read-modify-write of the whole
-  // map, so parallel writes would clobber each other).
+  // Soft delete: the meeting disappears at once and 復原 brings it back; only when the snackbar
+  // times out (or another delete / leaving the screen supersedes it) are its files actually removed.
+  const [pending, setPending] = useState<SavedSession | null>(null);
+  const pendingRef = useRef<SavedSession | null>(null);
+  pendingRef.current = pending;
+
+  const commitDelete = useCallback(async (s: SavedSession | null) => {
+    if (!s) return;
+    await store.remove(s.id);
+    await deleteSessionFiles(s.id);
+  }, [store]);
+
   // Reload + resume. Resuming is the other half of durable jobs (lib/job.ts): a transcription that
   // was still uploading or still being processed when the app was backgrounded / killed gets picked
   // back up here, so progress keeps advancing across launches instead of being silently dropped.
@@ -44,8 +65,11 @@ export default function HomeScreen() {
     const recovered = await recoverOrphanedRecordings(new Set(list.map((s) => s.id)));
     for (const r of recovered) await store.upsert(r);
     const full = recovered.length ? await store.list() : list;
+    // Auto-replace any still-default (timestamp) title with the notes' topic, then persist the ones
+    // that changed (sequential writes — AsyncStorage upsert is read-modify-write of the whole map).
     const promoted = full.map(promoteTitleFromNotes);
     setItems(promoted);
+    setLoaded(true);
     for (let i = 0; i < full.length; i++) {
       if (promoted[i] !== full[i]) await store.upsert(promoted[i]);
     }
@@ -54,59 +78,97 @@ export default function HomeScreen() {
 
   useFocusEffect(useCallback(() => {
     void load();
-    // Live-refresh the list while a job runs in the background (progress badge on the card).
-    return onJobChange(() => { void load(); });
-  }, [load]));
+    // Live-refresh the list while a job runs in the background (progress on the card).
+    const off = onJobChange(() => { void load(); });
+    return () => {
+      off();
+      // Leaving Home makes a pending delete final — the 復原 offer is gone with the snackbar.
+      if (pendingRef.current) { void commitDelete(pendingRef.current); setPending(null); }
+    };
+  }, [load, commitDelete]));
 
-  // Permanently remove a recording: drop it from the list immediately, then delete its audio files
-  // and the stored entry. The device is the source of truth, so this frees the on-device storage.
-  const onDelete = async (id: string) => {
-    setItems((prev) => prev.filter((s) => s.id !== id));
-    await store.remove(id);
-    await deleteSessionFiles(id);
+  const onDelete = (s: SavedSession) => {
+    // A second delete supersedes the first offer, so the first becomes permanent now.
+    if (pendingRef.current) void commitDelete(pendingRef.current);
+    setPending(s);
   };
+  const onTimeout = useCallback(() => {
+    void commitDelete(pendingRef.current);
+    setPending(null);
+  }, [commitDelete]);
 
-  // Apply the search filter (title contains the query, case-insensitive) before grouping.
+  // Import failures are stated plainly: what failed, that the original is untouched, what to do.
+  useEffect(() => {
+    if (!imp.err) return;
+    Alert.alert('沒有匯入', imp.err, [{ text: '好', onPress: () => imp.setErr(null) }]);
+  }, [imp.err]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const visible = useMemo(() => items.filter((s) => s.id !== pending?.id), [items, pending]);
+
+  // Search matches the title, case-insensitive.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((s) => s.title.toLowerCase().includes(q));
-  }, [items, query]);
+    if (!q) return visible;
+    return visible.filter((s) => s.title.toLowerCase().includes(q));
+  }, [visible, query]);
 
-  // Bucket into 今天 / 本週 / 更早 for the section headers. `now` is captured per render; groupSessions
-  // preserves the store's newest-first order within each group.
+  // Bucket into 今天 / 本週 / 更早. `now` is captured per render; order within a group is newest-first.
   const sections = useMemo(() => {
     const now = Date.now();
     return groupSessions(filtered, now).map((g) => ({ title: g.key, data: g.items, now }));
   }, [filtered]);
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.head}>
-        <Text style={styles.h1}>好記</Text>
-        {items.length > 0 && <Text style={styles.count}>{items.length} 場會議</Text>}
-      </View>
+  const toggleSearch = () => {
+    setSearching((on) => { if (on) setQuery(''); return !on; });
+  };
 
-      {items.length > 0 && (
+  if (imp.busyMsg) {
+    return (
+      <View style={[styles.center, { paddingTop: insets.top }]}>
+        <ActivityIndicator color={colors.primary} size="large" />
+        <AppText variant="body" color="muted" style={styles.busy}>{imp.busyMsg}</AppText>
+      </View>
+    );
+  }
+
+  const barBottom = layout.bottomBarHeight + Math.max(insets.bottom, spacing.sm) + spacing.md;
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <BrandHeader onSearch={visible.length > 0 ? toggleSearch : undefined} searching={searching} />
+
+      {searching && (
         <View style={styles.searchWrap}>
-          <IconSearch size={17} color={colors.ink3} />
+          <IconSearch size={18} color={colors.muted} />
           <TextInput
             style={styles.searchInput}
             value={query}
             onChangeText={setQuery}
             placeholder="搜尋會議"
-            placeholderTextColor={colors.ink3}
+            placeholderTextColor={colors.hint}
             returnKeyType="search"
             clearButtonMode="while-editing"
             autoCorrect={false}
+            autoFocus
+            accessibilityLabel="搜尋會議"
           />
         </View>
       )}
 
-      {items.length === 0 ? (
-        <Text style={styles.empty} accessibilityRole="text">還沒有錄音，點下面開始第一筆。</Text>
+      {!loaded ? (
+        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+      ) : visible.length === 0 ? (
+        <EmptyState
+          icon={<IconAudioLines size={30} color={colors.primaryDark} />}
+          title="還沒有任何會議"
+          description="按下方的「記下來」開始錄音，或匯入一段音檔。"
+        />
       ) : filtered.length === 0 ? (
-        <Text style={styles.empty} accessibilityRole="text">找不到符合「{query.trim()}」的會議。</Text>
+        <EmptyState
+          icon={<IconSearch size={28} color={colors.muted} />}
+          title={`找不到「${query.trim()}」`}
+          description="換個關鍵字試試，或清除搜尋看全部會議。"
+        />
       ) : (
         <SectionList
           sections={sections}
@@ -116,19 +178,21 @@ export default function HomeScreen() {
           keyboardDismissMode="on-drag"
           stickySectionHeadersEnabled={false}
           renderSectionHeader={({ section }) => (
-            <Text style={styles.dayGroup}>{section.title}</Text>
+            <AppText variant="section" color="heading" style={styles.group} accessibilityRole="header">
+              {section.title}
+            </AppText>
           )}
           renderItem={({ item, section }) => (
             <SwipeRow
               testID={`session-${item.id}`}
-              confirmTitle={`刪除「${item.title}」`}
-              onDelete={() => onDelete(item.id)}
+              deleteLabel={`刪除「${item.title}」`}
+              onDelete={() => onDelete(item)}
+              style={styles.rowGap}
             >
               <SessionCard
                 session={item}
                 now={section.now}
-                // Pass the already-loaded session so Results renders instantly during the push (no
-                // empty-loading flash mid-transition on device).
+                // Pass the already-loaded session so Results renders instantly during the push.
                 onPress={() => nav.navigate('Results', { sessionId: item.id, session: item })}
               />
             </SwipeRow>
@@ -136,11 +200,18 @@ export default function HomeScreen() {
         />
       )}
 
-      <View style={styles.fabbar}>
-        <Pressable style={styles.primary} onPress={() => nav.navigate('Record')} accessibilityRole="button">
-          <Text style={styles.primaryText}>新會議</Text>
-        </Pressable>
-      </View>
+      <UndoSnackbar
+        title={pending?.title ?? null}
+        onUndo={() => setPending(null)}
+        onTimeout={onTimeout}
+        bottom={barBottom}
+      />
+
+      <BottomActionBar
+        left={{ label: '匯入', a11y: '匯入音檔', Icon: IconFile, onPress: imp.pickFiles, testID: 'home-import' }}
+        onRecord={() => nav.navigate('Record')}
+        right={{ label: '影片', a11y: '從相簿選影片', Icon: IconImage, onPress: imp.pickVideo, testID: 'home-video' }}
+      />
     </View>
   );
 }
@@ -151,135 +222,110 @@ function SessionCard({ session, now, onPress }: { session: SavedSession; now: nu
   const { initials, overflow } = avatarSpec(session);
   const transcribed = hasTranscript(session);
   const noted = hasNotes(session);
+  const meta = [relativeDay(session.createdAt, now), dur, speakers > 0 ? `${speakers} 位講者` : null]
+    .filter(Boolean).join(' · ');
 
   return (
-    <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
-      <View style={styles.cardTop}>
-        <Text style={styles.cardTitle} numberOfLines={1}>{session.title}</Text>
-        <Text style={styles.chev}>›</Text>
-      </View>
-
-      <View style={styles.meta}>
-        <Text style={[styles.metaText, tabularNums]}>{relativeDay(session.createdAt, now)}</Text>
-        {dur && (
-          <>
-            <Text style={styles.metaSep}>·</Text>
-            <Text style={[styles.metaText, tabularNums]}>{dur}</Text>
-          </>
-        )}
-        {speakers > 0 && (
-          <>
-            <Text style={styles.metaSep}>·</Text>
-            <Text style={styles.metaText}>{speakers} 位講者</Text>
-          </>
-        )}
-      </View>
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${session.title}，${meta}`}
+    >
+      <AppText variant="cardTitle" color="heading" numberOfLines={1} style={styles.cardTitle}>{session.title}</AppText>
+      <AppText variant="small" color="muted" style={tabularNums}>{meta}</AppText>
 
       <View style={styles.foot}>
-        <View style={styles.avatars}>
-          {initials.map((ch, i) => (
-            <View key={i} style={[styles.av, { backgroundColor: speakerColor(i), marginLeft: i === 0 ? 0 : -7 }]}>
-              <Text style={styles.avText}>{ch}</Text>
-            </View>
-          ))}
-          {overflow > 0 && (
-            <View style={[styles.av, styles.avMore, { marginLeft: initials.length === 0 ? 0 : -7 }]}>
-              <Text style={styles.avMoreText}>+{overflow}</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.pills}>
-          {isActive(session.job) && (
-            <View style={[styles.pill, styles.pillBusy]}>
-              <Text style={styles.pillBusyText}>處理中 {Math.round(overallPct(session.job!) * 100)}%</Text>
-            </View>
-          )}
-          {/* Notes generation is the slowest step, so surface its progress right here in the list
-              rather than making the user open the meeting to find out whether anything is happening. */}
-          {isNotesActive(session.notesJob) && (
-            <View style={[styles.pill, session.notesJob?.stage === 'queued' ? styles.pillWait : styles.pillBusy]}>
-              <Text style={session.notesJob?.stage === 'queued' ? styles.pillWaitText : styles.pillBusyText}>
-                {session.notesJob?.stage === 'queued'
-                  ? (session.notesJob.message || '排隊中…')
-                  : `生成記錄中${typeof session.notesJob?.pct === 'number' ? ` ${Math.round(session.notesJob.pct * 100)}%` : ''}`}
-              </Text>
-            </View>
-          )}
-          {transcribed && <DonePill label="逐字稿" />}
-          {noted ? <DonePill label="記錄" /> : transcribed ? <TodoPill label="未生成記錄" /> : null}
+        {initials.length > 0 && (
+          <View style={styles.avatars}>
+            {initials.map((ch, i) => (
+              <View key={i} style={[styles.av, { backgroundColor: speakerColor(i), marginLeft: i === 0 ? 0 : -6 }]}>
+                <AppText variant="small" color="onPrimary" style={styles.avText}>{ch}</AppText>
+              </View>
+            ))}
+            {overflow > 0 && (
+              <View style={[styles.av, styles.avMore, { marginLeft: -6 }]}>
+                <AppText variant="small" color="muted" style={styles.avText}>+{overflow}</AppText>
+              </View>
+            )}
+          </View>
+        )}
+        <View style={styles.statuses}>
+          <SessionStatus session={session} transcribed={transcribed} noted={noted} />
         </View>
       </View>
     </Pressable>
   );
 }
 
-function DonePill({ label }: { label: string }) {
+// Inline icon + text statuses — never coloured pills (GUIDELINE §7 Card).
+function SessionStatus({ session, transcribed, noted }: { session: SavedSession; transcribed: boolean; noted: boolean }) {
+  if (isActive(session.job)) {
+    return <Status icon={<IconLoader size={13} />} text={`整理中 ${Math.round(overallPct(session.job!) * 100)}%`} tone="primaryDark" />;
+  }
+  if (session.job?.stage === 'error' && !transcribed) {
+    return <Status icon={<IconAlert size={13} />} text="整理沒有完成" tone="danger" />;
+  }
   return (
-    <View style={[styles.pill, styles.pillDone]}>
-      <View style={styles.tick}><Text style={styles.tickText}>✓</Text></View>
-      <Text style={styles.pillDoneText}>{label}</Text>
-    </View>
+    <>
+      {isNotesActive(session.notesJob) && (
+        // Notes are the slowest step, so their progress shows right here rather than inside the meeting.
+        <Status
+          icon={<IconLoader size={13} />}
+          text={session.notesJob?.stage === 'queued' ? '排隊中…' : '正在寫會議記錄…'}
+          tone="primaryDark"
+        />
+      )}
+      {transcribed && <Status icon={<IconCheck size={13} />} text="逐字稿" tone="primaryDark" />}
+      {noted ? <Status icon={<IconCheck size={13} />} text="會議記錄" tone="primaryDark" />
+        : transcribed && !isNotesActive(session.notesJob) ? <Status text="還沒有會議記錄" tone="muted" />
+        : !transcribed ? <Status text="還沒有逐字稿" tone="muted" /> : null}
+    </>
   );
 }
 
-function TodoPill({ label }: { label: string }) {
+function Status({ icon, text, tone }: { icon?: React.ReactNode; text: string; tone: 'primaryDark' | 'muted' | 'danger' }) {
   return (
-    <View style={[styles.pill, styles.pillTodo]}>
-      <Text style={styles.pillTodoText}>{label}</Text>
+    <View style={styles.status}>
+      {icon}
+      <AppText variant="small" color={tone}>{text}</AppText>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper, paddingTop: 60 },
-  head: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 8 },
-  h1: { fontSize: 28, fontWeight: '800', color: colors.ink, letterSpacing: -0.5 },
-  count: { fontSize: 13, color: colors.ink3, fontWeight: '500' },
-  empty: { color: colors.ink3, fontSize: 15, marginTop: 40, textAlign: 'center' },
+  container: { flex: 1, backgroundColor: colors.background },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  busy: { marginTop: spacing.md },
 
   searchWrap: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginHorizontal: 16, marginTop: 4, marginBottom: 4,
-    backgroundColor: colors.card, borderRadius: radius.control,
-    paddingHorizontal: 12, height: 40,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginHorizontal: layout.screenPaddingH, marginTop: spacing.lg,
+    backgroundColor: colors.surface, borderRadius: radius.input,
+    borderWidth: layout.border, borderColor: colors.outline,
+    paddingHorizontal: spacing.md, height: 48,
   },
-  searchInput: { flex: 1, fontSize: 15, color: colors.ink, padding: 0 },
+  searchInput: { flex: 1, ...typography.body, lineHeight: undefined, color: colors.heading, padding: 0 },
 
-  listContent: { paddingHorizontal: 16, paddingBottom: 12 },
-  dayGroup: { fontSize: 12, fontWeight: '700', letterSpacing: 0.6, color: colors.ink3, paddingHorizontal: 4, paddingTop: 12, paddingBottom: 8 },
+  listContent: { paddingHorizontal: layout.screenPaddingH, paddingBottom: spacing.xxl },
+  group: { marginTop: spacing.xxl, marginBottom: spacing.md },
+  rowGap: { marginBottom: layout.itemGap },
 
-  card: { backgroundColor: colors.card, borderRadius: radius.card, padding: 15, marginBottom: 10, ...cardShadow },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: colors.ink, letterSpacing: -0.2 },
-  chev: { color: colors.ink3, fontSize: 20, marginLeft: 8 },
+  card: {
+    backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.lg, gap: spacing.xs,
+    borderWidth: layout.border, borderColor: colors.outline,
+  },
+  cardPressed: { opacity: 0.8 },
+  cardTitle: { fontWeight: '600' },
 
-  meta: { flexDirection: 'row', alignItems: 'center', marginTop: 4, flexWrap: 'wrap' },
-  metaText: { fontSize: 12.5, color: colors.ink2 },
-  metaSep: { fontSize: 12.5, color: colors.ink3, marginHorizontal: 7 },
-
-  foot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 },
+  foot: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, gap: spacing.md },
   avatars: { flexDirection: 'row', alignItems: 'center' },
-  av: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.card },
-  avText: { fontSize: 11, fontWeight: '700', color: '#fff' },
-  avMore: { backgroundColor: colors.neutralSoft },
-  avMoreText: { fontSize: 11, fontWeight: '700', color: colors.ink2 },
-
-  pills: { flexDirection: 'row', alignItems: 'center' },
-  pill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 9, borderRadius: radius.pill, marginLeft: 6 },
-  pillDone: { backgroundColor: colors.goodSoft },
-  pillDoneText: { fontSize: 11, fontWeight: '600', color: colors.good },
-  tick: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.good, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
-  tickText: { fontSize: 8, color: '#fff', fontWeight: '700', lineHeight: 10 },
-  pillBusy: { backgroundColor: colors.brandSoft },
-  // waiting for a worker — deliberately quieter than the active-work badge
-  pillWait: { backgroundColor: colors.chipBg },
-  pillWaitText: { fontSize: 11, fontWeight: '600', color: colors.ink2 },
-  pillBusyText: { fontSize: 11, fontWeight: '700', color: colors.brand },
-  pillTodo: { backgroundColor: colors.chipBg },
-  pillTodoText: { fontSize: 11, fontWeight: '600', color: colors.ink3 },
-
-  fabbar: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 22 },
-  primary: { flexDirection: 'row', backgroundColor: colors.brand, borderRadius: radius.card, height: 50, alignItems: 'center', justifyContent: 'center' },
-  primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  av: {
+    width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: colors.surface,
+  },
+  avText: { fontSize: 11, lineHeight: 13, fontWeight: '600' },
+  avMore: { backgroundColor: colors.primarySoft },
+  statuses: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: spacing.md },
+  status: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
 });

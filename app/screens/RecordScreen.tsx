@@ -6,13 +6,9 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'r
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { pick, keepLocalCopy, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
-import { launchImageLibrary } from 'react-native-image-picker';
 import { useRecorder } from '../hooks/useRecorder';
-import RNFS from 'react-native-fs';
-import { moveToPart, mergeSessionParts, fsPath } from '../lib/recordings';
-import { isVideo, storageExtFor } from '../lib/importMedia';
-import * as audioExtract from '../lib/audioExtract';
+import { useImport } from '../hooks/useImport';
+import { mergeSessionParts } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
 import Waveform from '../components/Waveform';
@@ -35,8 +31,10 @@ export default function RecordScreen() {
   const appendTo: string | undefined = route.params?.appendTo;
   // Non-null while an upload/import is in flight — its text is shown full-screen so the user always
   // has feedback (picking a big video can spend many seconds copying with the picker already gone).
-  const [busyMsg, setBusyMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [stopBusy, setBusyMsg] = useState<string | null>(null);
+  const imp = useImport({ leave: 'replace' });
+  const busyMsg = stopBusy ?? imp.busyMsg;
+  const err = imp.err;
 
   // Local id available immediately — recording works fully offline. NOTE: we deliberately do NOT
   // persist a session on mount. Doing so left a blank record every time the user opened this screen
@@ -115,119 +113,6 @@ export default function RecordScreen() {
     // Don't jump straight into analysis — land on Review so the user can listen back and decide
     // whether to analyze or discard (a bad take shouldn't force a transcription round-trip).
     nav.replace('Review', { sessionId: sid });
-  }
-
-  // Shared ingest for the upload sources: move each (already app-local) file into the persistent
-  // per-session dir as a sequential RELATIVE part, then hand off to ProcessingScreen. No backend call
-  // here — ProcessingScreen owns all backend work (C2). Multiple files become multiple PARTS of ONE
-  // session, so the backend concatenates them (part-0, part-1, …) into a single combined transcript +
-  // analysis — this is how importing several Voice Memos "依次" into one meeting works. The backend
-  // re-encodes whatever we send to 16 kHz mono WAV via ffmpeg, so a video container works too.
-  async function ingestLocalFiles(localUris: string[]) {
-    const id = makeLocalId();
-    const createdAt = Date.now();
-    const title = new Date().toLocaleString();
-    const parts: { uri: string; durationMs: number }[] = [];
-    for (let i = 0; i < localUris.length; i++) {
-      const src = localUris[i];
-      let rel: string;
-      if (isVideo(src) && audioExtract.available) {
-        // A video's bytes can be transcribed but not PLAYED by an audio player, so pull its audio
-        // track out once here — that makes the import behave like a recording in the preview.
-        const tmp = `${RNFS.CachesDirectoryPath}/extract-${id}-${i}.m4a`;
-        setBusyMsg(localUris.length > 1 ? `擷取音訊中… ${i + 1}/${localUris.length}` : '擷取音訊中…');
-        try {
-          // decode first: the native side takes a filesystem path, not a percent-encoded URI
-          await audioExtract.extractAudio(fsPath(src), tmp);
-          rel = await moveToPart(id, i, tmp, 'm4a');
-        } catch {
-          // Extraction failed (no audio track, odd codec) — keep the original so transcription still
-          // works; only the on-device preview is lost.
-          rel = await moveToPart(id, i, src, 'm4a');
-        }
-      } else {
-        // Keep a real audio file's own extension: storing everything as .m4a was what made an
-        // imported .wav/.mp3 unplayable even though nothing was wrong with it.
-        rel = await moveToPart(id, i, src, storageExtFor(src));
-      }
-      parts.push({ uri: rel, durationMs: 0 });
-    }
-    await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts });
-
-    // NOTE: imports are deliberately NOT auto-joined (recordings are — those are our own files, all
-    // identical PCM). A picked file may not be audio at all, may be the wrong file, or may not belong
-    // with the others, and silently welding them together is the kind of thing you cannot undo. The
-    // user confirms which files to join first; until that step exists they stay separate.
-    setBusyMsg(null);
-    nav.replace('Review', { sessionId: id });
-  }
-
-  // Pick a video from the Photos library (圖庫). Videos shot on the phone live in Photos, not the
-  // Files app, so the document picker below can't see them.
-  //
-  // IMPORTANT: on iOS the picker sheet dismisses the instant you tap a video, but launchImageLibrary
-  // does NOT resolve until it has finished COPYING that video into the app's tmp dir — seconds for a
-  // big clip. So we show the busy screen BEFORE awaiting; otherwise the screen just sits there with
-  // no feedback during the copy (looked like "縮小了然後完全沒反應"). We reset it only on cancel/error.
-  async function onPickVideo() {
-    setErr(null);
-    setBusyMsg('讀取影片中…');
-    let res;
-    try {
-      res = await launchImageLibrary({ mediaType: 'video', selectionLimit: 1 });
-    } catch { setBusyMsg(null); setErr('選取失敗'); return; }
-    if (res.didCancel) { setBusyMsg(null); return; }
-    const asset = res.assets?.[0];
-    const uri = asset?.uri || asset?.originalPath; // uri is the tmp copy; fall back to the source path
-    if (!uri) {
-      setBusyMsg(null);
-      setErr(res.errorMessage || '無法讀取這支影片，可能是 iCloud 尚未下載或格式不支援，請改用「從檔案上傳」。');
-      return;
-    }
-    setBusyMsg('準備中…');
-    try { await ingestLocalFiles([uri]); }
-    catch (e: any) { setBusyMsg(null); setErr(e?.message || '上傳失敗'); }
-  }
-
-  // Pick one OR MORE audio/video files from the Files app (iCloud Drive, On My iPhone, and — once
-  // saved to Files — Voice Memos 語音備忘錄). Multi-selected files become sequential PARTS of one
-  // session, so they're transcribed + analysed together as a single meeting.
-  async function onPickFile() {
-    let files: { uri: string; name?: string | null }[];
-    try {
-      files = await pick({ allowMultiSelection: true, type: [types.audio, types.video] });
-    } catch (e) {
-      if (isErrorWithCode(e) && e.code === errorCodes.OPERATION_CANCELED) return; // user dismissed picker
-      setErr('選取失敗');
-      return;
-    }
-    if (!files || files.length === 0) return;
-    setBusyMsg(files.length > 1 ? `讀取 ${files.length} 個檔案中…` : '讀取檔案中…'); setErr(null);
-    try {
-      // The picker hands back security-scoped iOS uris whose access is released once we navigate away
-      // — ProcessingScreen then can't read them to upload. Copy them all into the app's cache first,
-      // then ingestLocalFiles moves them into the persistent per-session dir as ordered parts.
-      const reqs = files.map((f, i) => ({ uri: f.uri, fileName: f.name || `upload-${Date.now()}-${i}.m4a` }));
-      const copied = await keepLocalCopy({
-        files: [reqs[0], ...reqs.slice(1)],
-        destination: 'cachesDirectory',
-      });
-      const localUris: string[] = [];
-      for (const c of copied) {
-        if (c.status !== 'success') throw new Error(c.copyError || '檔案複製失敗，請再試一次');
-        localUris.push(c.localUri);
-      }
-      // More than one file is a decision, not a formality: they may not all be audio, and joining
-      // them is not undoable. Confirm what was actually picked before committing to it.
-      if (localUris.length > 1) {
-        setBusyMsg(null);
-        nav.navigate('ImportConfirm', {
-          files: localUris.map((uri, i) => ({ uri, name: files[i]?.name || `檔案 ${i + 1}` })),
-        });
-        return;
-      }
-      await ingestLocalFiles(localUris);
-    } catch (e: any) { setBusyMsg(null); setErr(e?.message || '上傳失敗'); }
   }
 
   const isRec = rec.state === 'recording';
@@ -317,11 +202,11 @@ export default function RecordScreen() {
 
         {rec.state === 'idle' && (
           <View style={styles.uploadRow}>
-            <Pressable style={styles.uploadBtn} onPress={onPickVideo} accessibilityRole="button">
+            <Pressable style={styles.uploadBtn} onPress={imp.pickVideo} accessibilityRole="button">
               <IconImage size={18} color="#fff" />
               <Text style={styles.uploadText}>從圖庫選影片</Text>
             </Pressable>
-            <Pressable style={styles.uploadBtn} onPress={onPickFile} accessibilityRole="button">
+            <Pressable style={styles.uploadBtn} onPress={imp.pickFiles} accessibilityRole="button">
               <IconFile size={18} color="#fff" />
               <Text style={styles.uploadText}>匯入音檔（可多選）</Text>
             </Pressable>

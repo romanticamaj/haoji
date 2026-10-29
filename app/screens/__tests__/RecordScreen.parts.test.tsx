@@ -137,7 +137,7 @@ test('upload surfaces an error (not a hang) when the local copy fails', async ()
   (keepLocalCopy as jest.Mock).mockResolvedValueOnce([{ status: 'error', sourceUri: 'file:///u.m4a', copyError: 'boom' }]);
   const { getByText } = await render(<RecordScreen />);
   fireEvent.press(getByText('匯入音檔（可多選）'));
-  await waitFor(() => getByText('boom'));
+  await waitFor(() => getByText(/檔案複製失敗，原本的檔案沒有變動/));
   expect(mockReplace).not.toHaveBeenCalled();
 });
 
