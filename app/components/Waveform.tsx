@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   },
   bar: {
     width: BAR_WIDTH,
-    backgroundColor: colors.brand,
+    backgroundColor: colors.primary,
     borderRadius: 2,
   },
 });

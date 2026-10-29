@@ -55,7 +55,7 @@ beforeEach(() => { jest.clearAllMocks(); mockNavigate.mockClear(); mockRoutePara
 test('shows interruption prompt when wasInterrupted is true', async () => {
   mockRecApi.wasInterrupted = true;
   const { getByText } = await render(<RecordScreen />);
-  getByText('錄音被中斷，要接著錄嗎？');
+  getByText('錄音被中斷了');
   getByText('繼續');
   getByText('結束');
 });

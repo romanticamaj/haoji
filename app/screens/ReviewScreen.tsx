@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Pressable, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
 import { deleteSessionFiles } from '../lib/recordings';
 import RecordingsList from './RecordingsList';
+import { AppText } from '../components/AppText';
 import { IconTrash } from '../components/icons';
-import { colors, radius } from '../lib/theme';
+import { colors, layout, radius, spacing } from '../lib/theme';
 
 // Sits between recording and analysis: listen back to what was just captured, then either kick off
 // transcription (開始分析) or throw the take away (捨棄). Nothing is transcribed until the user opts in,
@@ -15,6 +17,7 @@ export default function ReviewScreen() {
   const route = useRoute<any>();
   const nav = useNavigation<any>();
   const store = useStore();
+  const insets = useSafeAreaInsets();
   const id: string = route.params.sessionId;
   const [session, setSession] = useState<SavedSession | null>(null);
   const parts = useMemo(() => session?.parts ?? [], [session?.parts]);
@@ -43,10 +46,10 @@ export default function ReviewScreen() {
   const discard = () => {
     if (hasTranscript) {
       // This meeting has earlier content — never let 捨棄 delete the whole thing from here.
-      Alert.alert('保留這場會議', '這場會議已經有逐字稿，補錄的段落已存在其中。若要刪除整場，請回到列表左滑刪除。');
+      Alert.alert('這場會議會保留', '它已經有逐字稿，補錄的段落也存進去了。要刪除整場會議，請回到首頁左滑刪除。');
       return;
     }
-    Alert.alert('捨棄這段錄音？', '刪除後無法復原。', [
+    Alert.alert('捨棄這段錄音？', '錄音會從這支手機移除，捨棄後無法復原。', [
       { text: '取消', style: 'cancel' },
       {
         text: '捨棄', style: 'destructive',
@@ -59,38 +62,57 @@ export default function ReviewScreen() {
     ]);
   };
 
-  if (!session) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
+  if (!session) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>;
 
   return (
     <View style={styles.container}>
       <View style={styles.head}>
-        <Text style={styles.title}>{hasTranscript ? '補錄好了' : '錄好了，先聽聽看'}</Text>
-        <Text style={styles.sub}>
+        <AppText variant="screenTitle" color="heading" accessibilityRole="header">
+          {hasTranscript ? '補錄好了' : '錄好了，先聽聽看'}
+        </AppText>
+        <AppText variant="body" color="muted">
           {hasTranscript
-            ? '新的段落已加進這場會議。重新辨識會把整場（含先前的段落）一起處理，之後再重新生成會議記錄。'
-            : '確認沒問題就生成逐字稿；也可以先存起來稍後再生成，或直接捨棄重錄。'}
-        </Text>
+            ? '新的段落已經加進這場會議。重新辨識會把整場一起整理，之後再重新寫會議記錄。'
+            : '沒問題就生成逐字稿。也可以先存起來，之後再生成。'}
+        </AppText>
       </View>
 
       <View style={styles.player}>
         {ready ? (
           <RecordingsList parts={parts} />
         ) : (
-          <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>
+          <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
         )}
       </View>
 
-      <View style={styles.actions}>
-        <Pressable style={styles.primary} onPress={generate} accessibilityRole="button">
-          <Text style={styles.primaryText}>{hasTranscript ? '重新辨識整場' : '生成逐字稿'}</Text>
+      {/* Sticky CTA (KEEPLACE FormScreen): one primary on the canvas, a hairline rule above it. */}
+      <View style={[styles.actions, { paddingBottom: insets.bottom + spacing.md }]}>
+        <Pressable
+          style={({ pressed }) => [styles.primary, pressed && styles.pressedFill]}
+          onPress={generate}
+          accessibilityRole="button"
+        >
+          <AppText variant="cardTitle" color="onPrimary" style={styles.bold}>{hasTranscript ? '重新辨識整場' : '生成逐字稿'}</AppText>
         </Pressable>
         <View style={styles.secondaryRow}>
-          <Pressable style={styles.later} onPress={saveDraft} accessibilityRole="button">
-            <Text style={styles.laterText}>稍後再說</Text>
+          <Pressable
+            style={({ pressed }) => [styles.textBtn, pressed && styles.pressedIcon]}
+            onPress={saveDraft}
+            accessibilityRole="button"
+            accessibilityLabel="稍後再說，先存起來"
+            hitSlop={8}
+          >
+            <AppText variant="cardTitle" color="muted">稍後再說</AppText>
           </Pressable>
-          <Pressable style={styles.discard} onPress={discard} accessibilityRole="button">
-            <IconTrash size={17} color={colors.brand} />
-            <Text style={styles.discardText}>捨棄</Text>
+          <Pressable
+            style={({ pressed }) => [styles.textBtn, pressed && styles.pressedIcon]}
+            onPress={discard}
+            accessibilityRole="button"
+            accessibilityLabel="捨棄這段錄音"
+            hitSlop={8}
+          >
+            <IconTrash size={16} color={colors.danger} />
+            <AppText variant="cardTitle" color="danger">捨棄</AppText>
           </Pressable>
         </View>
       </View>
@@ -99,20 +121,26 @@ export default function ReviewScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
-  head: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 6 },
-  title: { fontSize: 20, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
-  sub: { fontSize: 13.5, color: colors.ink2, marginTop: 6, lineHeight: 19 },
+  container: { flex: 1, backgroundColor: colors.background },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  head: { paddingHorizontal: layout.screenPaddingH, paddingTop: layout.screenPaddingV, gap: spacing.sm },
 
   player: { flex: 1, justifyContent: 'center' },
 
-  actions: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 28, gap: 8 },
-  primary: { backgroundColor: colors.brand, borderRadius: radius.card, height: 52, alignItems: 'center', justifyContent: 'center' },
-  primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  secondaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  later: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 46, paddingHorizontal: 20 },
-  laterText: { color: colors.ink2, fontSize: 15, fontWeight: '600' },
-  discard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 46, paddingHorizontal: 20 },
-  discardText: { color: colors.brand, fontSize: 15, fontWeight: '600' },
+  actions: {
+    paddingHorizontal: layout.screenPaddingH, paddingTop: spacing.md, gap: spacing.xs,
+    backgroundColor: colors.background, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.outline,
+  },
+  primary: {
+    backgroundColor: colors.primary, borderRadius: radius.button, height: layout.buttonHeight,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  bold: { fontWeight: '600' },
+  secondaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxl },
+  textBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
+    minHeight: layout.minTouchTarget, paddingHorizontal: spacing.lg,
+  },
+  pressedFill: { opacity: 0.8 },
+  pressedIcon: { opacity: 0.6 },
 });

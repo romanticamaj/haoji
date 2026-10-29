@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Animated, PanResponder,
+  View, Pressable, ScrollView, StyleSheet, ActivityIndicator, Animated, PanResponder,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppText } from '../components/AppText';
 import {
   Waveform, type IWaveformRef, FinishMode, PlayerState, useAudioPlayer,
 } from '@simform_solutions/react-native-audio-waveform';
@@ -16,7 +18,7 @@ import {
 } from '../lib/importSelection';
 import { mmss } from '../lib/transcript';
 import { IconCheck, IconAlert, IconPlay, IconPause, IconGrip } from '../components/icons';
-import { colors, radius } from '../lib/theme';
+import { colors, layout, radius, spacing, tabularNums } from '../lib/theme';
 
 const ROW_GAP = 8;
 
@@ -34,6 +36,7 @@ export default function ImportConfirmScreen() {
   const nav = useNavigation<any>();
   const route = useRoute<any>();
   const store = useStore();
+  const insets = useSafeAreaInsets();
   const files: { uri: string; name: string }[] = route.params?.files ?? [];
 
   const [list, setList] = useState<ImportCandidate[] | null>(null);
@@ -99,24 +102,24 @@ export default function ImportConfirmScreen() {
   }
 
   if (busy) return (
-    <View style={styles.center}><ActivityIndicator size="large" color={colors.brand} /><Text style={styles.busy}>{busy}</Text></View>
+    <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /><AppText variant="body" color="muted" style={styles.busy}>{busy}</AppText></View>
   );
   if (!list) return (
-    <View style={styles.center}><ActivityIndicator color={colors.brand} /><Text style={styles.busy}>檢查音檔中…</Text></View>
+    <View style={styles.center}><ActivityIndicator color={colors.primary} /><AppText variant="body" color="muted" style={styles.busy}>正在檢查音檔…</AppText></View>
   );
 
   const usable = selected(list).length;
   return (
     <View style={styles.container}>
       <View style={styles.head}>
-        <Text style={styles.title}>確認要匯入的音檔</Text>
-        <Text style={styles.sub}>
+        <AppText variant="screenTitle" color="heading" accessibilityRole="header">確認要匯入的音檔</AppText>
+        <AppText variant="small" color="muted" style={tabularNums}>
           已選 {usable}/{list.length} 個{usable > 0 ? ` · 共 ${mmss(Math.floor(totalDurationMs(list) / 1000))}` : ''}
-        </Text>
-        <Text style={styles.hint}>由上而下就是合併順序 · 可播放確認、按住右側 ☰ 拖曳調整</Text>
+        </AppText>
+        <AppText variant="small" color="muted">由上而下就是合併的順序。可以先試聽，按住右側的把手拖曳調整。</AppText>
       </View>
 
-      <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 12 }} scrollEnabled={!dragging}>
+      <ScrollView style={styles.list} contentContainerStyle={styles.listContent} scrollEnabled={!dragging}>
         {list.map((c, i) => (
           <CandidateRow
             key={c.uri}
@@ -135,25 +138,28 @@ export default function ImportConfirmScreen() {
         ))}
       </ScrollView>
 
-      <View style={styles.actions}>
+      {/* Sticky CTA: one primary, an outline secondary, and a quiet 取消. */}
+      <View style={[styles.actions, { paddingBottom: insets.bottom + spacing.sm }]}>
         <Pressable
-          style={[styles.primary, !canMerge(list) && styles.disabled]}
+          style={({ pressed }) => [styles.primary, !canMerge(list) && styles.disabled, pressed && styles.pressedFill]}
           disabled={!canMerge(list)}
           onPress={() => commit(true)}
           accessibilityRole="button"
+          accessibilityState={{ disabled: !canMerge(list) }}
         >
-          <Text style={styles.primaryText}>合併成一段並繼續</Text>
+          <AppText variant="cardTitle" color="onPrimary" style={styles.bold}>合併成一段並繼續</AppText>
         </Pressable>
         <Pressable
-          style={[styles.secondary, !canImport(list) && styles.disabled]}
+          style={({ pressed }) => [styles.secondary, !canImport(list) && styles.disabled, pressed && styles.pressedRow]}
           disabled={!canImport(list)}
           onPress={() => commit(false)}
           accessibilityRole="button"
+          accessibilityState={{ disabled: !canImport(list) }}
         >
-          <Text style={styles.secondaryText}>保持分開</Text>
+          <AppText variant="body" color="heading">保持分開</AppText>
         </Pressable>
-        <Pressable style={styles.cancel} onPress={() => nav.goBack()} accessibilityRole="button">
-          <Text style={styles.cancelText}>取消</Text>
+        <Pressable style={styles.cancel} onPress={() => nav.goBack()} accessibilityRole="button" hitSlop={8}>
+          <AppText variant="cardTitle" color="muted">取消</AppText>
         </Pressable>
       </View>
     </View>
@@ -275,27 +281,27 @@ function CandidateRow(
           accessibilityState={{ checked: c.selected, disabled: !c.ok }}
         >
           <View style={[styles.box, c.selected && styles.boxOn, !c.ok && styles.boxOff]}>
-            {c.selected && <IconCheck size={13} color="#fff" strokeWidth={3} />}
+            {c.selected && <IconCheck size={14} color={colors.onPrimary} strokeWidth={2.4} />}
           </View>
-          <Text style={styles.seq}>{index + 1}</Text>
+          <AppText variant="small" color="muted" style={[styles.seq, tabularNums]}>{index + 1}</AppText>
           <View style={styles.rowText}>
-            <Text style={[styles.name, !c.ok && styles.nameBad]} numberOfLines={1}>{c.name}</Text>
-            <Text style={styles.meta}>
-              {c.ok ? mmss(Math.floor(c.durationMs / 1000)) : (c.reason || '無法使用')}
-            </Text>
+            <AppText variant="cardTitle" color={c.ok ? 'heading' : 'muted'} numberOfLines={1}>{c.name}</AppText>
+            <AppText variant="small" color={c.ok ? 'muted' : 'danger'} style={tabularNums}>
+              {c.ok ? mmss(Math.floor(c.durationMs / 1000)) : (c.reason || '這個檔案沒辦法使用')}
+            </AppText>
           </View>
         </Pressable>
 
-        {!c.ok ? <IconAlert size={18} color={colors.brand} /> : (
+        {!c.ok ? <IconAlert size={18} color={colors.danger} /> : (
           <View style={styles.rowActions}>
             <Pressable
               testID={`play-${c.name}`}
-              style={styles.play}
+              style={({ pressed }) => [styles.play, pressed && styles.pressedFill]}
               onPress={togglePlay}
               accessibilityRole="button"
               accessibilityLabel={isPlaying ? `停止試聽 ${c.name}` : `試聽 ${c.name}`}
             >
-              {isPlaying ? <IconPause size={16} color="#fff" /> : <IconPlay size={16} color="#fff" />}
+              {isPlaying ? <IconPause size={16} color={colors.onPrimary} /> : <IconPlay size={16} color={colors.onPrimary} />}
             </Pressable>
             {/* The pan lives on the HANDLE alone, so dragging never fights the list's own scroll and
                 the row stays tappable. Dragging is a pointing gesture, so VoiceOver gets explicit
@@ -316,7 +322,7 @@ function CandidateRow(
                 if (e.nativeEvent.actionName === 'moveDown') onMove(1);
               }}
             >
-              <IconGrip size={20} color={dragging ? colors.brand : colors.ink3} />
+              <IconGrip size={20} color={dragging ? colors.primaryDark : colors.muted} strokeWidth={dragging ? 2 : 1.8} />
             </View>
           </View>
         )}
@@ -331,8 +337,8 @@ function CandidateRow(
           candleSpace={2}
           candleWidth={2}
           candleHeightScale={4}
-          waveColor={colors.neutralSoft}
-          scrubColor={colors.brand}
+          waveColor={colors.outline}
+          scrubColor={colors.primary}
           containerStyle={styles.wave}
           onPlayerStateChange={(st: PlayerState) => {
             if (st === PlayerState.stopped || st === PlayerState.paused) {
@@ -347,46 +353,48 @@ function CandidateRow(
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
-  busy: { marginTop: 14, color: colors.ink2, fontSize: 15 },
+  container: { flex: 1, backgroundColor: colors.background },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  busy: { marginTop: spacing.md },
 
-  head: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
-  title: { fontSize: 19, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
-  sub: { fontSize: 13, color: colors.ink2, marginTop: 5 },
+  head: { paddingHorizontal: layout.screenPaddingH, paddingTop: layout.screenPaddingV, paddingBottom: spacing.md, gap: spacing.xs },
 
-  list: { flex: 1, paddingHorizontal: 16 },
-  row: { backgroundColor: colors.card, borderRadius: radius.card, padding: 14, marginBottom: ROW_GAP },
-  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  tick: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  seq: { fontSize: 12, fontWeight: '700', color: colors.ink3, width: 14, textAlign: 'center' },
-  rowActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  play: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
-  grip: { width: 38, height: 44, alignItems: 'center', justifyContent: 'center' },
-  rowDragging: {
-    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+  list: { flex: 1, paddingHorizontal: layout.screenPaddingH },
+  listContent: { paddingBottom: spacing.md },
+  row: {
+    backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.lg, marginBottom: ROW_GAP,
+    borderWidth: layout.border, borderColor: colors.outline,
   },
-  wave: { height: 44, marginTop: 10, width: '100%' },
-  hint: { fontSize: 12, color: colors.ink3, marginTop: 6, lineHeight: 17 },
-  rowBad: { backgroundColor: colors.chipBg },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  tick: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1, minHeight: layout.minTouchTarget },
+  seq: { width: 14, textAlign: 'center' },
+  rowActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  play: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  grip: { width: 38, height: layout.minTouchTarget, alignItems: 'center', justifyContent: 'center' },
+  // Picked up: no shadow (KEEPLACE is flat) — the outline turns sage instead.
+  rowDragging: { borderColor: colors.primary },
+  wave: { height: 44, marginTop: spacing.md, width: '100%' },
+  rowBad: { backgroundColor: colors.background },
   box: {
-    width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.neutralSoft,
-    alignItems: 'center', justifyContent: 'center',
+    width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.outline,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface,
   },
-  boxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
-  boxOff: { borderStyle: 'dashed' },
-  rowText: { flex: 1 },
-  name: { fontSize: 15, fontWeight: '600', color: colors.ink },
-  nameBad: { color: colors.ink3 },
-  meta: { fontSize: 12.5, color: colors.ink3, marginTop: 3 },
+  boxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  boxOff: { borderStyle: 'dashed', backgroundColor: colors.background },
+  rowText: { flex: 1, gap: 2 },
 
-  actions: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 26, gap: 8 },
-  primary: { backgroundColor: colors.brand, borderRadius: radius.card, height: 50, alignItems: 'center', justifyContent: 'center' },
-  primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  secondary: { backgroundColor: colors.chipBg, borderRadius: radius.card, height: 46, alignItems: 'center', justifyContent: 'center' },
-  secondaryText: { color: colors.ink, fontSize: 15, fontWeight: '600' },
+  actions: {
+    paddingHorizontal: layout.screenPaddingH, paddingTop: spacing.md, gap: spacing.sm,
+    backgroundColor: colors.background, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.outline,
+  },
+  primary: { backgroundColor: colors.primary, borderRadius: radius.button, height: layout.buttonHeight, alignItems: 'center', justifyContent: 'center' },
+  bold: { fontWeight: '600' },
+  secondary: {
+    backgroundColor: colors.background, borderRadius: radius.input, height: 48, alignItems: 'center', justifyContent: 'center',
+    borderWidth: layout.border, borderColor: colors.outline,
+  },
   disabled: { opacity: 0.4 },
-  cancel: { height: 40, alignItems: 'center', justifyContent: 'center' },
-  cancelText: { color: colors.ink3, fontSize: 14, fontWeight: '600' },
+  cancel: { minHeight: layout.minTouchTarget, alignItems: 'center', justifyContent: 'center' },
+  pressedFill: { opacity: 0.8 },
+  pressedRow: { opacity: 0.7 },
 });

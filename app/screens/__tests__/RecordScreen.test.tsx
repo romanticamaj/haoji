@@ -52,10 +52,11 @@ test('tapping the record button starts recording', async () => {
 });
 
 test('a recorder error is shown to the user (never silently idle) with a Settings shortcut', async () => {
-  mockRecApi.error = '沒有麥克風權限，請到「設定 > 好記」開啟麥克風後再試。';
-  const { getByText } = await render(<RecordScreen />);
-  getByText(/沒有麥克風權限/);
-  getByText('前往設定開啟麥克風');
+  mockRecApi.error = '沒有麥克風權限。到「設定」開啟麥克風後，就能開始錄音。';
+  const { getByText, getByLabelText } = await render(<RecordScreen />);
+  getByText('沒有麥克風權限');
+  getByText('到「設定」開啟麥克風後，就能開始錄音。');
+  getByLabelText('前往設定開啟麥克風');
 });
 
 test('while starting, the button shows busy and does not re-trigger start', async () => {
@@ -87,7 +88,7 @@ test('picking a video from the library ingests it as a part and navigates to Rev
     assets: [{ uri: 'file:///tmp/movie.mov', fileName: 'movie.mov', type: 'video/quicktime' }],
   });
   const { getByText } = await render(<RecordScreen />);
-  fireEvent.press(getByText('從圖庫選影片'));
+  fireEvent.press(getByText('從相簿選影片'));
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
   expect(api.createSession).not.toHaveBeenCalled();
   expect(api.uploadPart).not.toHaveBeenCalled();
@@ -99,7 +100,7 @@ test('picking a video from the library ingests it as a part and navigates to Rev
 test('cancelling the library picker is a no-op (no navigation, no error)', async () => {
   (launchImageLibrary as jest.Mock).mockResolvedValueOnce({ didCancel: true });
   const { getByText, queryByText } = await render(<RecordScreen />);
-  fireEvent.press(getByText('從圖庫選影片'));
+  fireEvent.press(getByText('從相簿選影片'));
   await waitFor(() => expect(launchImageLibrary).toHaveBeenCalled());
   expect(mockReplace).not.toHaveBeenCalled();
   expect(queryByText('選取失敗')).toBeNull();

@@ -1,9 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
-// NOTE: only the transform-based press spring below uses reanimated. We deliberately do NOT use
-// layout animations (entering/exiting) here — they leave a ghost/afterimage during react-native-
-// screens native push/pop transitions (the exiting animation runs as the screen is removed).
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { View, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useRecorder } from '../hooks/useRecorder';
@@ -13,10 +9,9 @@ import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
 import Waveform from '../components/Waveform';
 import BreathingRing from '../components/BreathingRing';
-import { IconImage, IconFile } from '../components/icons';
-import { colors, radius } from '../lib/theme';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+import { AppText } from '../components/AppText';
+import { IconImage, IconFile, IconMic, IconStop, IconPause, IconPlay } from '../components/icons';
+import { colors, layout, radius, spacing, tabularNums, typography } from '../lib/theme';
 
 // Recording is local-first: the session id is generated on-device so the record button is never
 // gated on a backend round-trip (the GPU box is often unreachable from the phone unless Tailscale
@@ -89,12 +84,6 @@ export default function RecordScreen() {
   // and the launch-time recovery scan backfills anything that wasn't stored yet.
   useEffect(() => { if (rec.parts.length > 0) void persist(rec.parts); }, [rec.parts, persist]);
 
-  // Spring press-feedback for the record button (motion, no new deps — reanimated is already here).
-  const pressScale = useSharedValue(1);
-  const btnAnim = useAnimatedStyle(() => ({ transform: [{ scale: pressScale.value }] }));
-  const onPressIn = () => { pressScale.value = withSpring(0.93, { damping: 15, stiffness: 320 }); };
-  const onPressOut = () => { pressScale.value = withSpring(1, { damping: 12, stiffness: 260 }); };
-
   async function onStop() {
     const parts = await rec.stop();
     // Nothing was captured (opened + left, or a zero-length take) → don't create an empty record.
@@ -119,148 +108,220 @@ export default function RecordScreen() {
   const isPaused = rec.state === 'paused';
   const isStarting = rec.state === 'starting';
 
-  if (busyMsg) return <View style={styles.center}><ActivityIndicator color={colors.brand} size="large" /><Text style={styles.hint}>{busyMsg}</Text></View>;
+  if (busyMsg) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.primary} size="large" />
+        <AppText variant="body" color="muted" style={styles.busy}>{busyMsg}</AppText>
+      </View>
+    );
+  }
 
-  const statusText = loading ? '讀取中'
-    : isRec ? '錄音中' : isPaused ? '已暫停' : isStarting ? '啟動中'
-    : appendTo ? '準備接續錄音' : '準備錄音';
+  const statusText = loading ? '讀取中…'
+    : isRec ? '錄音中' : isPaused ? '已暫停' : isStarting ? '準備麥克風…'
+    : appendTo ? '準備接著錄' : '準備錄音';
   const stopMode = isRec || isPaused;
+  const permissionDenied = !!rec.error && /麥克風權限/.test(rec.error);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 20 }]}>
+    <View style={[styles.container, { paddingBottom: insets.bottom + spacing.xl }]}>
       {/* status + timer */}
       <View style={styles.header}>
-        <View style={styles.statusPill}>
-          <View style={[styles.statusDot, isRec && styles.statusDotLive]} />
-          <Text style={styles.statusText}>{statusText}</Text>
+        <View style={styles.status}>
+          {/* The peach dot is the ONLY accent here, and only while actually recording. */}
+          {isRec && <View style={styles.liveDot} />}
+          <AppText variant="small" color="muted">{statusText}</AppText>
         </View>
-        <Text style={styles.timer}>{mmss(Math.floor(shownMs / 1000))}</Text>
+        {/* The timer is the focal point of this screen, so it is set larger than `display` (30) —
+            a light weight keeps it calm. Tabular digits so it never jitters. */}
+        <AppText
+          variant="display"
+          color="heading"
+          style={[styles.timer, tabularNums]}
+          accessibilityLabel={`已錄 ${mmss(Math.floor(shownMs / 1000))}`}
+          maxFontSizeMultiplier={1.3}
+        >
+          {mmss(Math.floor(shownMs / 1000))}
+        </AppText>
         {appendTo && existingParts.length > 0 && (
-          <Text style={styles.continueNote}>
-            接續這場會議 · 已有 {existingParts.length} 段（{mmss(Math.floor(existingMs / 1000))}），新錄的會接在後面
-          </Text>
+          <AppText variant="small" color="muted" style={styles.continueNote}>
+            接著這場會議錄下去。前面已經有 {mmss(Math.floor(existingMs / 1000))}，新錄的會接在後面。
+          </AppText>
         )}
       </View>
 
-      {/* stage: live waveform + the record button */}
+      {/* stage: live waveform + the controls */}
       <View style={styles.stage}>
         <View style={styles.waveArea}>
           <Waveform level={rec.meteringLevel} active={isRec} />
         </View>
 
-        <View style={styles.recordWrap}>
-          <BreathingRing active={isRec} level={rec.meteringLevel} />
-          <AnimatedPressable
-            accessibilityRole="button"
-            accessibilityLabel={stopMode ? '停止錄音' : '開始錄音'}
-            accessibilityState={{ busy: isStarting || loading, disabled: !sid || isStarting || loading }}
-            style={[styles.recordBtn, btnAnim]}
-            onPressIn={onPressIn}
-            onPressOut={onPressOut}
-            onPress={stopMode ? onStop : rec.start}
-            disabled={!sid || isStarting || loading}
-          >
-            {isStarting
-              ? <ActivityIndicator color="#fff" />
-              : <View style={stopMode ? styles.stopIcon : styles.dotIcon} />}
-          </AnimatedPressable>
+        <View style={styles.controls}>
+          {stopMode && !rec.wasInterrupted ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={isPaused ? '繼續錄音' : '暫停錄音'}
+              onPress={isPaused ? rec.resume : rec.pause}
+              style={({ pressed }) => [styles.side, pressed && styles.pressedIcon]}
+            >
+              <View style={styles.pauseBtn}>
+                {isPaused ? <IconPlay size={20} color={colors.heading} /> : <IconPause size={20} color={colors.heading} />}
+              </View>
+              <AppText variant="small" color="muted">{isPaused ? '繼續' : '暫停'}</AppText>
+            </Pressable>
+          ) : <View style={styles.side} />}
+
+          <View style={styles.recordWrap}>
+            <BreathingRing active={isRec} level={rec.meteringLevel} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={stopMode ? '停止錄音' : '開始錄音'}
+              accessibilityState={{ busy: isStarting || loading, disabled: !sid || isStarting || loading }}
+              style={({ pressed }) => [styles.recordBtn, pressed && styles.pressedFill]}
+              onPress={stopMode ? onStop : rec.start}
+              disabled={!sid || isStarting || loading}
+            >
+              {isStarting
+                ? <ActivityIndicator color={colors.onPrimary} />
+                : stopMode ? <IconStop size={26} /> : <IconMic size={30} strokeWidth={2} />}
+            </Pressable>
+          </View>
+
+          <View style={styles.side} />
         </View>
 
-        <Text style={styles.hint}>
-          {isStarting ? '啟動麥克風中…' : isRec ? '再按一次結束錄音' : ''}
-        </Text>
+        <AppText variant="small" color="muted" style={styles.hint}>
+          {isStarting ? '正在準備麥克風…' : isRec ? '再按一次就結束錄音' : isPaused ? '已暫停，按「繼續」接著錄' : ''}
+        </AppText>
       </View>
 
-      {/* footer controls */}
+      {/* footer: permission / interruption / import */}
       <View style={styles.footer}>
         {rec.error && (
-          <View style={styles.recErrWrap}>
-            <Text style={styles.err}>{rec.error}</Text>
-            {/權限|麥克風|設定/.test(rec.error) && (
-              <Pressable onPress={() => Linking.openSettings()} accessibilityRole="button">
-                <Text style={styles.settingsLink}>前往設定開啟麥克風</Text>
+          permissionDenied ? (
+            <View style={styles.card}>
+              <AppText variant="cardTitle" color="heading" style={styles.cardTitle}>沒有麥克風權限</AppText>
+              <AppText variant="body" color="muted">到「設定」開啟麥克風後，就能開始錄音。</AppText>
+              <Pressable
+                onPress={() => Linking.openSettings()}
+                accessibilityRole="button"
+                accessibilityLabel="前往設定開啟麥克風"
+                style={({ pressed }) => [styles.secondary, pressed && styles.pressedRow]}
+              >
+                <AppText variant="body" color="heading">前往設定</AppText>
               </Pressable>
-            )}
-          </View>
-        )}
-
-        {stopMode && !rec.wasInterrupted && (
-          <Pressable style={styles.secondary} onPress={isPaused ? rec.resume : rec.pause} accessibilityRole="button">
-            <Text style={styles.secondaryText}>{isPaused ? '繼續錄音' : '暫停'}</Text>
-          </Pressable>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              <AppText variant="cardTitle" color="heading" style={styles.cardTitle}>沒有開始錄音</AppText>
+              <AppText variant="body" color="muted">{rec.error}</AppText>
+            </View>
+          )
         )}
 
         {rec.wasInterrupted && (
-          <View style={styles.resumeCard}>
-            <Text style={styles.resumeText}>錄音被中斷，要接著錄嗎？</Text>
+          <View style={styles.card}>
+            <AppText variant="cardTitle" color="heading" style={styles.cardTitle}>錄音被中斷了</AppText>
+            <AppText variant="body" color="muted">已經錄下的部分都保存好了。要接著錄嗎？</AppText>
             <View style={styles.resumeRow}>
-              <Pressable style={styles.resumeBtnPrimary} onPress={rec.resume} accessibilityRole="button" accessibilityLabel="繼續"><Text style={styles.resumeBtnPrimaryText}>繼續</Text></Pressable>
-              <Pressable style={styles.resumeBtnGhost} onPress={onStop} accessibilityRole="button" accessibilityLabel="結束"><Text style={styles.resumeBtnGhostText}>結束</Text></Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.primary, styles.flex, pressed && styles.pressedFill]}
+                onPress={rec.resume}
+                accessibilityRole="button"
+                accessibilityLabel="繼續"
+              >
+                <AppText variant="cardTitle" color="onPrimary" style={styles.cardTitle}>繼續</AppText>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.secondary, styles.flex, pressed && styles.pressedRow]}
+                onPress={onStop}
+                accessibilityRole="button"
+                accessibilityLabel="結束"
+              >
+                <AppText variant="body" color="heading">結束</AppText>
+              </Pressable>
             </View>
           </View>
         )}
 
-        {rec.state === 'idle' && (
+        {rec.state === 'idle' && !rec.error && (
           <View style={styles.uploadRow}>
-            <Pressable style={styles.uploadBtn} onPress={imp.pickVideo} accessibilityRole="button">
-              <IconImage size={18} color="#fff" />
-              <Text style={styles.uploadText}>從圖庫選影片</Text>
+            <Pressable
+              style={({ pressed }) => [styles.secondary, pressed && styles.pressedRow]}
+              onPress={imp.pickFiles}
+              accessibilityRole="button"
+            >
+              <IconFile size={18} color={colors.heading} />
+              <AppText variant="body" color="heading">匯入音檔（可多選）</AppText>
             </Pressable>
-            <Pressable style={styles.uploadBtn} onPress={imp.pickFiles} accessibilityRole="button">
-              <IconFile size={18} color="#fff" />
-              <Text style={styles.uploadText}>匯入音檔（可多選）</Text>
+            <Pressable
+              style={({ pressed }) => [styles.secondary, pressed && styles.pressedRow]}
+              onPress={imp.pickVideo}
+              accessibilityRole="button"
+            >
+              <IconImage size={18} color={colors.heading} />
+              <AppText variant="body" color="heading">從相簿選影片</AppText>
             </Pressable>
           </View>
         )}
 
-        {err && <Text style={styles.err}>{err}</Text>}
+        {err && <AppText variant="small" color="danger" style={styles.err}>{err}</AppText>}
       </View>
     </View>
   );
 }
 
-const RECORD_SIZE = 116;
+const RECORD_SIZE = 72;
+const PAUSE_SIZE = 52;
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper, alignItems: 'center', paddingHorizontal: 24 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
-  hint: { color: colors.ink3, marginTop: 22, fontSize: 14, height: 20 },
+  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: layout.screenPaddingH },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  busy: { marginTop: spacing.md },
 
-  header: { alignItems: 'center', gap: 14 },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: colors.card, paddingVertical: 6, paddingHorizontal: 14, borderRadius: radius.pill },
-  statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.ink3 },
-  statusDotLive: { backgroundColor: colors.brand },
-  statusText: { fontSize: 13, fontWeight: '600', color: colors.ink2 },
-  continueNote: { fontSize: 12.5, color: colors.ink3, textAlign: 'center', marginTop: 2, paddingHorizontal: 20, lineHeight: 18 },
-  timer: { fontSize: 68, fontWeight: '200', color: colors.ink, fontVariant: ['tabular-nums'], letterSpacing: 1 },
+  header: { alignItems: 'center', paddingTop: spacing.xxl, gap: spacing.sm },
+  status: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 17 },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
+  timer: { fontSize: 56, lineHeight: 64, fontWeight: '300', letterSpacing: 1 },
+  continueNote: { textAlign: 'center', paddingHorizontal: spacing.xl },
 
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
-  waveArea: { height: 72, alignSelf: 'stretch', justifyContent: 'center', marginBottom: 28 },
-  recordWrap: { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
-  recordBtn: {
-    width: RECORD_SIZE, height: RECORD_SIZE, borderRadius: RECORD_SIZE / 2, backgroundColor: colors.brand,
+  waveArea: { height: 72, alignSelf: 'stretch', justifyContent: 'center', marginBottom: spacing.xxl },
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
+  side: { width: 88, alignItems: 'center', gap: spacing.xs },
+  pauseBtn: {
+    width: PAUSE_SIZE, height: PAUSE_SIZE, borderRadius: PAUSE_SIZE / 2,
+    backgroundColor: colors.surface, borderWidth: layout.border, borderColor: colors.outline,
     alignItems: 'center', justifyContent: 'center',
-    shadowColor: colors.brand, shadowOpacity: 0.35, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 6,
   },
-  dotIcon: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#fff' },
-  stopIcon: { width: 34, height: 34, borderRadius: 8, backgroundColor: '#fff' },
+  recordWrap: { width: 168, height: 168, alignItems: 'center', justifyContent: 'center' },
+  recordBtn: {
+    width: RECORD_SIZE, height: RECORD_SIZE, borderRadius: RECORD_SIZE / 2, backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  hint: { marginTop: spacing.sm, minHeight: typography.small.lineHeight },
 
-  footer: { alignSelf: 'stretch', alignItems: 'center', minHeight: 150, justifyContent: 'flex-end' },
-  secondary: { paddingVertical: 12, paddingHorizontal: 34, borderRadius: radius.pill, backgroundColor: colors.card },
-  secondaryText: { color: colors.ink, fontSize: 16, fontWeight: '600' },
+  footer: { alignSelf: 'stretch', gap: spacing.md, minHeight: 116, justifyContent: 'flex-end' },
+  card: {
+    backgroundColor: colors.surface, borderRadius: radius.card, padding: spacing.lg, gap: spacing.sm,
+    borderWidth: layout.border, borderColor: colors.outline,
+  },
+  cardTitle: { fontWeight: '600' },
+  resumeRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
+  flex: { flex: 1 },
+  primary: {
+    height: layout.buttonHeight, borderRadius: radius.button, backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // Secondary (KEEPLACE settings `action`): ivory fill, 1px outline, icon + body label.
+  secondary: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    height: 48, borderRadius: radius.input, backgroundColor: colors.background,
+    borderWidth: layout.border, borderColor: colors.outline,
+  },
+  uploadRow: { gap: spacing.md },
+  err: { textAlign: 'center' },
 
-  uploadRow: { alignItems: 'center', gap: 10, alignSelf: 'stretch' },
-  uploadBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 14, paddingHorizontal: 28, borderRadius: radius.control, backgroundColor: colors.brand, alignSelf: 'stretch', justifyContent: 'center' },
-  uploadText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-
-  err: { color: colors.brand, marginTop: 16, textAlign: 'center', paddingHorizontal: 24 },
-  recErrWrap: { alignItems: 'center', marginBottom: 12 },
-  settingsLink: { color: colors.brand, fontSize: 15, fontWeight: '700', marginTop: 10, textDecorationLine: 'underline' },
-
-  resumeCard: { backgroundColor: colors.card, borderRadius: radius.card, padding: 18, alignItems: 'center', gap: 14, alignSelf: 'stretch' },
-  resumeText: { color: colors.ink, fontSize: 15, fontWeight: '500' },
-  resumeRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  resumeBtnPrimary: { paddingVertical: 10, paddingHorizontal: 30, borderRadius: radius.pill, backgroundColor: colors.brand },
-  resumeBtnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  resumeBtnGhost: { paddingVertical: 10, paddingHorizontal: 26, borderRadius: radius.pill, backgroundColor: colors.chipBg },
-  resumeBtnGhostText: { color: colors.ink2, fontSize: 15, fontWeight: '600' },
+  pressedFill: { opacity: 0.8 },
+  pressedRow: { opacity: 0.7 },
+  pressedIcon: { opacity: 0.6 },
 });

@@ -26,9 +26,12 @@ const dbToLevel = (db?: number) => (db == null ? 0 : (Math.max(-60, Math.min(0, 
 // session failures). Map them to a user-facing zh-TW message so recording never fails silently.
 export function recorderErrorMessage(e: unknown): string {
   const raw = (e && ((e as any).message || String(e))) || '';
-  if (/permission|denied|microphone|麥克風/i.test(raw)) return '沒有麥克風權限，請到「設定 > 好記」開啟麥克風後再試。';
-  if (/session|another app|in use|hijack/i.test(raw)) return '無法啟動錄音（麥克風可能被其他 App／通話佔用）。請關閉後重試。';
-  return raw ? `無法開始錄音：${raw}` : '無法開始錄音，請重試。';
+  // Plain words only (GUIDELINE §5): what failed and what to do. The raw native message is logged for
+  // debugging but never shown — it is English, technical and means nothing to the person recording.
+  if (raw) console.warn('[recorder]', raw);
+  if (/permission|denied|microphone|麥克風/i.test(raw)) return '沒有麥克風權限。到「設定」開啟麥克風後，就能開始錄音。';
+  if (/session|another app|in use|hijack/i.test(raw)) return '麥克風正在被其他 App 或通話使用。結束後再按一次錄音。';
+  return '沒辦法開始錄音，請再試一次。';
 }
 
 // LinearPCM (WAV) capture at 16 kHz mono. We record WAV — NOT AAC/m4a — on purpose: an AAC .m4a only
