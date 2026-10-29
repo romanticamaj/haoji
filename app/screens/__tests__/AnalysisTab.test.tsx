@@ -203,11 +203,13 @@ test('進階 model list: selecting a model passes it to analyze', async () => {
   const { getModels } = require('../../lib/api');
   (getModels as jest.Mock).mockResolvedValueOnce({ ok: true, models: ['gemma4:e4b-it-qat', 'phi4:mini'], default: 'gemma4:e4b-it-qat' });
   const onUpdate = jest.fn();
-  const { getByText, findByText } = await renderTab(base, { onUpdate: onUpdate });
+  const { getByText, findByText, getByLabelText } = await renderTab(base, { onUpdate: onUpdate });
   fireEvent.press(getByText('進階'));
   await findByText(/phi4:mini/);
   fireEvent.press(getByText(/phi4:mini/));
-  await waitFor(() => getByText(/○ gemma4:e4b-it-qat/));
+  // the picked model is the selected chip; the default is no longer selected
+  await waitFor(() => expect(getByLabelText('phi4:mini').props.accessibilityState.selected).toBe(true));
+  expect(getByLabelText('gemma4:e4b-it-qat').props.accessibilityState.selected).toBe(false);
   fireEvent.press(getByText('生成會議記錄'));
   await waitFor(() => expect(mockAnalyzeBg).toHaveBeenCalledWith('backend-new',
     expect.objectContaining({ model: 'phi4:mini', names: { SPEAKER_00: 'Gary' } })));
@@ -285,7 +287,7 @@ test('confirming 重新分析 switches to the generating view straight away', as
   const [, , buttons] = spy.mock.calls[0] as any[];
   await act(async () => { buttons[1].onPress(); });          // 重新分析
 
-  getByText(/生成中|生成會議記錄中|本機 LLM/);
+  getByText('正在寫會議記錄…');
   expect(queryByText(/舊的記錄/)).toBeNull();
   await act(async () => { await new Promise<void>((r) => setImmediate(() => r())); });
   spy.mockRestore();

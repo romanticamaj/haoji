@@ -29,11 +29,11 @@ test('AI-analysis result survives switching tabs away and back', async () => {
   const store = createMemoryStore([seed]);
   const { getByText, findByText, queryByText } = await render(
     <StoreProvider store={store}><ResultsScreen /></StoreProvider>);
-  fireEvent.press(await findByText('AI 分析'));
+  fireEvent.press(await findByText('會議記錄'));
   fireEvent.press(await findByText('生成會議記錄'));
   await findByText(/摘要內容/);                 // generated, visible
   fireEvent.press(getByText('逐字稿'));          // switch away
-  fireEvent.press(getByText('AI 分析'));          // switch back
+  fireEvent.press(getByText('會議記錄'));          // switch back
   // generation must NOT be queued again, and the notes are still there
   expect(mockAnalyzeBg).toHaveBeenCalledTimes(1);
   await waitFor(() => getByText(/摘要內容/));

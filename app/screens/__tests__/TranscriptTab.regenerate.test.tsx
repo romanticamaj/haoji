@@ -25,7 +25,7 @@ test('empty transcript but no parts: no regenerate button (nothing to re-run)', 
   const s: SavedSession = { ...withParts({ speakers: [], segments: [] }), parts: [] };
   const { getByText, queryByText } = await render(
     <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={() => {}} />);
-  getByText(/找不到可辨識的錄音檔/);
+  getByText('這段錄音裡沒有可以辨識的聲音。');
   expect(queryByText('重新生成逐字稿')).toBeNull();
 });
 
@@ -73,7 +73,7 @@ test('job in flight: empty state offers 查看進度, never 生成逐字稿', as
       onRegenerate={onRegenerate} onViewProgress={onViewProgress} />);
 
   expect(queryByText('生成逐字稿')).toBeNull();      // the destructive restart is not reachable
-  getByText('正在生成逐字稿');
+  getByText('正在整理逐字稿…');
   fireEvent.press(getByText('查看進度'));
   expect(onViewProgress).toHaveBeenCalled();
   expect(onRegenerate).not.toHaveBeenCalled();

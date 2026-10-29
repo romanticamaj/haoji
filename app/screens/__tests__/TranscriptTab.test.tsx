@@ -93,3 +93,11 @@ test('tapping a turn header opens the rename sheet; 完成 commits via onUpdate'
   expect(onUpdate).toHaveBeenCalledWith(
     expect.objectContaining({ names: expect.objectContaining({ SPEAKER_00: 'Gary' }) }));
 });
+
+// Deleting from inside a meeting: one outline danger button, always the last thing on the page.
+test('刪除這場會議 sits at the end of the transcript and hands off to the confirm', async () => {
+  const onDelete = jest.fn();
+  const { getByText } = await render(<TranscriptTab session={session} onUpdate={() => {}} onDelete={onDelete} />);
+  fireEvent.press(getByText('刪除這場會議'));
+  expect(onDelete).toHaveBeenCalledTimes(1);
+});

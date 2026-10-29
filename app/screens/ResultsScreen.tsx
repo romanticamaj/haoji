@@ -1,18 +1,19 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator, Modal, TextInput, Animated,
-  KeyboardAvoidingView, Platform,
-} from 'react-native';
+import { View, Pressable, StyleSheet, ActivityIndicator, TextInput, Alert } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
 import TranscriptTab from './TranscriptTab';
 import AnalysisTab from './AnalysisTab';
 import RecordingsList, { type RecordingsHandle } from './RecordingsList';
-import { IconPencil } from '../components/icons';
+import { IconMic, IconPencil } from '../components/icons';
+import { AppText } from '../components/AppText';
+import { Sheet } from '../components/Sheet';
+import { Chip, PrimaryButton } from '../components/Buttons';
 import { promoteTitleFromNotes } from '../lib/notesDoc';
 import { onJobChange } from '../lib/jobRunner';
-import { colors, radius } from '../lib/theme';
+import { deleteSessionFiles } from '../lib/recordings';
+import { colors, layout, radius, spacing, typography } from '../lib/theme';
 
 export default function ResultsScreen() {
   const route = useRoute<any>();
@@ -62,11 +63,11 @@ export default function ResultsScreen() {
   // Show the meeting name in the nav bar with a pencil to rename it (tap → bottom sheet).
   useLayoutEffect(() => {
     nav.setOptions({
-      title: session?.title ?? '結果',
+      title: session?.title ?? '',
       headerRight: () =>
         session ? (
           <Pressable onPress={() => setEditingTitle(true)} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="重新命名會議">
-            <IconPencil size={22} color={colors.brand} />
+            <IconPencil size={20} color={colors.heading} />
           </Pressable>
         ) : undefined,
     });
@@ -80,7 +81,23 @@ export default function ResultsScreen() {
   // Watch a job that's already running — no `regen`, so it attaches instead of restarting.
   const viewProgress = () => nav.navigate('Processing', { sessionId: id });
 
-  if (!session) return <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>;
+  // GUIDELINE §5.4: the title asks about the object; the body says what goes and that it is final.
+  const confirmDelete = () => {
+    if (!session) return;
+    Alert.alert(`刪除「${session.title}」？`, '錄音、逐字稿和會議記錄都會從這支手機移除，刪除後無法復原。', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '刪除', style: 'destructive',
+        onPress: async () => {
+          await store.remove(id);
+          await deleteSessionFiles(id);
+          nav.popToTop();
+        },
+      },
+    ]);
+  };
+
+  if (!session) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>;
   return (
     <View style={styles.container}>
       {ready ? (
@@ -88,29 +105,46 @@ export default function ResultsScreen() {
           <RecordingsList ref={playerRef} parts={parts} onProgress={setPlayheadMs} />
           {/* Carry on recording INTO this meeting — an interrupted or resumed discussion stays one
               session, so it is transcribed and analysed as a single conversation. */}
-          <Pressable style={styles.appendBtn} onPress={() => nav.navigate('Record', { appendTo: id })}
-            accessibilityRole="button" accessibilityLabel="繼續錄音">
-            <Text style={styles.appendText}>＋ 繼續錄音</Text>
-          </Pressable>
-          <View style={styles.tabs}>
-            {(['transcript', 'analysis'] as const).map((t) => (
-              <Pressable key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
-                <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t === 'transcript' ? '逐字稿' : 'AI 分析'}</Text>
-              </Pressable>
-            ))}
+          <Chip
+            label="繼續錄音"
+            icon={<IconMic size={16} color={colors.heading} />}
+            onPress={() => nav.navigate('Record', { appendTo: id })}
+            accessibilityLabel="繼續錄音"
+            style={styles.appendBtn}
+          />
+          {/* KEEPLACE StatusTabs: equal-width labels, a 2px heading underline over a 1px rule. */}
+          <View style={styles.tabs} accessibilityRole="tablist">
+            {(['transcript', 'analysis'] as const).map((t) => {
+              const on = tab === t;
+              return (
+                <Pressable
+                  key={t}
+                  style={({ pressed }) => [styles.tab, pressed && styles.pressedRow]}
+                  onPress={() => setTab(t)}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: on }}
+                >
+                  <AppText variant="cardTitle" color={on ? 'heading' : 'muted'} style={on && styles.bold}>
+                    {t === 'transcript' ? '逐字稿' : '會議記錄'}
+                  </AppText>
+                  <View style={[styles.underline, on && styles.underlineOn]} />
+                </Pressable>
+              );
+            })}
           </View>
           <View style={{ flex: 1, display: tab === 'transcript' ? 'flex' : 'none' }}>
             <TranscriptTab session={session} onUpdate={update} onRegenerate={regenerate} onViewProgress={viewProgress}
+              onDelete={confirmDelete}
               onSeek={(ms) => playerRef.current?.seekToGlobal(ms)}
               activeMs={tab === 'transcript' ? playheadMs : 0} />
           </View>
           <View style={{ flex: 1, display: tab === 'analysis' ? 'flex' : 'none' }}>
             <AnalysisTab session={session} onUpdate={update}
-              onGoToTranscript={() => setTab('transcript')} />
+              onGoToTranscript={() => setTab('transcript')} onDelete={confirmDelete} />
           </View>
         </>
       ) : (
-        <View style={styles.center}><ActivityIndicator color={colors.brand} /></View>
+        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
       )}
 
       {editingTitle && (
@@ -124,62 +158,50 @@ export default function ResultsScreen() {
   );
 }
 
-// Rename the meeting — bottom sheet on core RN (Modal + Animated), matching the speaker-rename sheet.
+// Rename the meeting — the shared KEEPLACE bottom sheet.
 function TitleSheet({ current, onClose, onCommit }: { current: string; onClose(): void; onCommit(name: string): void }) {
   const [value, setValue] = useState(current);
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => { Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: true }).start(); }, [anim]);
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [320, 0] });
   return (
-    <Modal transparent visible animationType="fade" onRequestClose={onClose}>
-      <View style={styles.sheetRoot}>
-        <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="關閉" testID="title-scrim" />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetKav} pointerEvents="box-none">
-          <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
-            <View style={styles.grab} />
-            <Text style={styles.sheetTitle}>會議名稱</Text>
-            <TextInput
-              testID="title-input"
-              autoFocus
-              style={styles.sheetInput}
-              value={value}
-              onChangeText={setValue}
-              placeholder="輸入會議名稱"
-              placeholderTextColor={colors.ink3}
-              returnKeyType="done"
-              onSubmitEditing={() => onCommit(value)}
-            />
-            <Pressable testID="title-done" style={styles.sheetCta} onPress={() => onCommit(value)} accessibilityRole="button">
-              <Text style={styles.sheetCtaText}>完成</Text>
-            </Pressable>
-          </Animated.View>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
+    <Sheet
+      title="會議名稱"
+      onClose={onClose}
+      scrimTestID="title-scrim"
+      footer={<PrimaryButton testID="title-done" label="完成" onPress={() => onCommit(value)} style={styles.sheetCta} />}
+    >
+      <TextInput
+        testID="title-input"
+        autoFocus
+        style={styles.sheetInput}
+        value={value}
+        onChangeText={setValue}
+        placeholder="輸入會議名稱"
+        placeholderTextColor={colors.hint}
+        returnKeyType="done"
+        onSubmitEditing={() => onCommit(value)}
+        accessibilityLabel="會議名稱"
+      />
+    </Sheet>
   );
 }
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.paper },
+  container: { flex: 1, backgroundColor: colors.background },
   // iOS 26 draws a glass capsule around this button whose vertical center sits above the button's own
   // center, so a plain center-aligned icon renders low. flex-start + a small top pad lifts the icon to
   // the capsule center. (Tuned on iPhone 12 / iOS 26.3; close enough across iOS 26 devices.)
   headerBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 6 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper },
-  appendBtn: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 18, marginBottom: 6, borderRadius: radius.pill, backgroundColor: colors.chipBg },
-  appendText: { color: colors.ink, fontSize: 14, fontWeight: '600' },
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.card },
-  tab: { flex: 1, paddingVertical: 13, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive: { borderBottomColor: colors.brand },
-  tabText: { fontSize: 15, color: colors.ink2, fontWeight: '600' },
-  tabTextActive: { color: colors.brand },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  appendBtn: { alignSelf: 'center', marginBottom: spacing.sm },
+  tabs: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline, paddingHorizontal: layout.screenPaddingH },
+  tab: { flex: 1, alignItems: 'center', paddingTop: spacing.md, minHeight: layout.minTouchTarget },
+  underline: { height: 2, alignSelf: 'stretch', marginTop: spacing.md - 2, backgroundColor: 'transparent' },
+  underlineOn: { backgroundColor: colors.heading },
+  bold: { fontWeight: '600' },
+  pressedRow: { opacity: 0.7 },
 
-  sheetRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,16,14,0.35)' },
-  scrim: { ...StyleSheet.absoluteFillObject },
-  sheetKav: { justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.card, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, paddingHorizontal: 22, paddingTop: 10, paddingBottom: 34 },
-  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: colors.neutralSoft, alignSelf: 'center', marginBottom: 16 },
-  sheetTitle: { fontSize: 17, fontWeight: '700', color: colors.ink, marginBottom: 14 },
-  sheetInput: { backgroundColor: colors.paper, borderRadius: radius.control, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, color: colors.ink, borderWidth: 1, borderColor: colors.hairline },
-  sheetCta: { marginTop: 18, backgroundColor: colors.brand, borderRadius: radius.control, height: 50, alignItems: 'center', justifyContent: 'center' },
-  sheetCtaText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  sheetInput: {
+    ...typography.body, lineHeight: undefined, color: colors.heading, marginTop: spacing.md,
+    height: 48, paddingHorizontal: spacing.md, borderRadius: radius.input,
+    backgroundColor: colors.background, borderWidth: layout.border, borderColor: colors.outline,
+  },
+  sheetCta: { marginTop: spacing.lg },
 });

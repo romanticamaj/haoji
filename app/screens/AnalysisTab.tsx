@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ScrollView, View, Text, Pressable, ActivityIndicator, StyleSheet, TextInput, Modal,
+  ScrollView, View, Text, Pressable, StyleSheet, TextInput, Modal,
   KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -16,8 +16,14 @@ import { notesMetaLine, parseTaskItem, extractNotesTitle, stripLeadingH1, looksL
 import { applyRulesToSession, countMatches, KeywordRule } from '../lib/keywords';
 import KeywordSheet from '../components/KeywordSheet';
 import { relativeDay } from '../lib/sessionList';
-import { speakerColor, colors, radius, tabularNums } from '../lib/theme';
-import { IconCheck, IconPencil } from '../components/icons';
+import { speakerColor, colors, layout, radius, spacing, tabularNums, typography } from '../lib/theme';
+import {
+  IconAlert, IconCheck, IconCopy, IconLoader, IconNotes, IconPencil, IconShare, IconTodo, IconTodoDone, IconTrash,
+} from '../components/icons';
+import { AppText } from '../components/AppText';
+import { EmptyState } from '../components/EmptyState';
+import { Sheet } from '../components/Sheet';
+import { Chip, DangerButton, PrimaryButton } from '../components/Buttons';
 import { SavedSession } from '../lib/store';
 import { useStore } from '../lib/store-context';
 import { ensureNotesJob, restartNotesJob } from '../lib/jobRunner';
@@ -33,28 +39,23 @@ function nodeText(node: any): string {
   return typeof node.content === 'string' ? node.content : '';
 }
 
-// Document-quality markdown styles matching the mockup's `.doc`/`.sec` look.
+// The notes read as a document (GUIDELINE §7.1): H2 = `section`, paragraphs = `body`, an 8pt bullet
+// indent, no coloured section bars and no emoji markers.
 const mdStyles = StyleSheet.create({
-  body: { fontSize: 13.5, lineHeight: 22, color: colors.ink },
-  // # title — normally stripped from the body (promoted to the meeting title), but styled defensively
-  // with a real lineHeight so a stray H1 renders cleanly instead of clipping.
-  heading1: { fontSize: 20, fontWeight: '800', color: colors.ink, lineHeight: 28, marginTop: 6, marginBottom: 10 },
-  // ## section heading → `.sec-label`: small, brand, letter-spaced, generous space above.
-  heading2: {
-    fontSize: 12, fontWeight: '700', letterSpacing: 1, color: colors.brand,
-    textTransform: 'uppercase', marginTop: 24, marginBottom: 6,
-  },
-  // ### sub-heading → ink, bold.
-  heading3: { fontSize: 14.5, fontWeight: '700', color: colors.ink, marginTop: 14, marginBottom: 4 },
-  strong: { fontWeight: '700', color: colors.ink },
-  paragraph: { marginTop: 0, marginBottom: 8, fontSize: 13.5, lineHeight: 22, color: colors.ink },
-  bullet_list: { marginTop: 2, marginBottom: 4 },
+  body: { ...typography.body, color: colors.body },
+  // # title — normally stripped from the body (promoted to the meeting title), styled defensively.
+  heading1: { ...typography.screenTitle, color: colors.heading, marginTop: spacing.sm, marginBottom: spacing.md },
+  heading2: { ...typography.section, color: colors.heading, marginTop: spacing.xxl, marginBottom: spacing.sm },
+  heading3: { ...typography.cardTitle, fontWeight: '600', color: colors.heading, marginTop: spacing.lg, marginBottom: spacing.xs },
+  strong: { fontWeight: '600', color: colors.heading },
+  paragraph: { ...typography.body, color: colors.body, marginTop: 0, marginBottom: spacing.sm },
+  bullet_list: { marginTop: 2, marginBottom: spacing.xs },
   list_item: { marginVertical: 3 },
-  bullet_list_icon: { color: colors.ink3, fontSize: 22, lineHeight: 22, marginRight: 8, marginLeft: 2 },
+  bullet_list_icon: { color: colors.muted, fontSize: 20, lineHeight: 24, marginRight: spacing.sm, marginLeft: spacing.sm },
 });
 
-export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
-  { session: SavedSession; onUpdate(s: SavedSession): void; onGoToTranscript?(): void }) {
+export default function AnalysisTab({ session, onUpdate, onGoToTranscript, onDelete }:
+  { session: SavedSession; onUpdate(s: SavedSession): void; onGoToTranscript?(): void; onDelete?(): void }) {
   const hasTranscript = (session.transcript?.segments?.length ?? 0) > 0;
   const store = useStore();
   // Generation state lives on the session (lib/notesJob.ts), not in local state: the LLM run happens
@@ -151,9 +152,7 @@ export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
       if (task) {
         return (
           <View key={node.key} style={docStyles.todo}>
-            <View style={[docStyles.ck, task.done && docStyles.ckOn]}>
-              {task.done && <Text style={docStyles.ckMark}>✓</Text>}
-            </View>
+            {task.done ? <IconTodoDone size={20} /> : <IconTodo size={20} />}
             <Text style={[docStyles.tt, task.done && docStyles.ttDone]}>{task.text}</Text>
             {task.owner ? <OwnerAvatar name={task.owner} session={session} /> : null}
           </View>
@@ -165,48 +164,65 @@ export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
   }), [session]);
 
   if (busy || starting || !session.notes) {
-    // Flow gate: meeting notes are generated FROM the transcript, so block generation until a
-    // transcript exists (e.g. the backend died mid-transcription and never produced one).
+    // Flow gate: meeting notes are written FROM the transcript, so block generation until one exists.
     if (!hasTranscript) {
       return (
-        <View style={styles.center}>
-          <Text style={styles.hint}>還沒有逐字稿。請先完成「逐字稿」，才能生成 AI 會議記錄。</Text>
-          {onGoToTranscript && (
-            <Pressable style={styles.primary} onPress={onGoToTranscript}><Text style={styles.primaryText}>前往逐字稿</Text></Pressable>
+        <ScrollView style={styles.screen} contentContainerStyle={styles.emptyContent}>
+          <EmptyState
+            icon={<IconNotes size={28} color={colors.muted} />}
+            title="還沒有逐字稿"
+            description="會議記錄是從逐字稿整理出來的，請先完成逐字稿。"
+            actionLabel={onGoToTranscript ? '前往逐字稿' : undefined}
+            onAction={onGoToTranscript}
+          />
+        </ScrollView>
+      );
+    }
+    if (busy || starting) {
+      const pct = typeof session.notesJob?.pct === 'number' ? Math.round(session.notesJob.pct * 100) : null;
+      return (
+        <View style={[styles.screen, styles.center]}>
+          <View style={styles.iconCircle}><IconLoader size={28} color={colors.primaryDark} /></View>
+          <AppText variant="section" color="heading" accessibilityRole="header">正在寫會議記錄…</AppText>
+          {!!session.notesJob?.message && <AppText variant="small" color="muted">{session.notesJob.message}</AppText>}
+          {pct != null && (
+            <View style={styles.barTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: pct }}>
+              <View style={[styles.barFill, { width: `${pct}%` }]} />
+            </View>
           )}
+          <AppText variant="body" color="muted" style={styles.centerText}>離開 App 也會繼續，回來就看得到。</AppText>
         </View>
       );
     }
     return (
-      <View style={styles.center}>
-        {busy || starting ? (
-          <>
-            <ActivityIndicator color={colors.brand} />
-            <Text style={styles.hint}>{session.notesJob?.message || '本機 LLM 生成中…'}</Text>
-            {typeof session.notesJob?.pct === 'number' && (
-              <View style={styles.notesBarTrack}>
-                <View style={[styles.notesBarFill, { width: `${Math.round(session.notesJob.pct * 100)}%` }]} />
-              </View>
-            )}
-            <Text style={styles.hintSmall}>離開 App 也會繼續，完成後回來就看得到。</Text>
-          </>
-        )
-          : <>
-              <Text style={styles.hint}>把逐字稿整理成會議記錄（摘要 / 重點 / 決議 / 待辦）。</Text>
-              <Pressable style={styles.primary} onPress={generate}><Text style={styles.primaryText}>生成會議記錄</Text></Pressable>
-              <Pressable onPress={() => setShowAdv((v) => !v)}><Text style={styles.adv}>進階</Text></Pressable>
-              {showAdv && (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                  {models.map((m) => (
-                    <Pressable key={m} onPress={() => setModel(m)}>
-                      <Text style={styles.advList}>{(m === model || (!model && models[0] === m) ? '● ' : '○ ') + m}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-              {err && <Text style={styles.err}>{err}</Text>}
-            </>}
-      </View>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.emptyContent}>
+        <EmptyState
+          icon={<IconNotes size={28} color={colors.muted} />}
+          title="還沒有會議記錄"
+          description="把逐字稿整理成摘要、重點、決議和待辦。"
+        />
+        <PrimaryButton label="生成會議記錄" onPress={generate} style={styles.emptyCta} />
+        {err && (
+          <View style={styles.errCard}>
+            <IconAlert size={18} />
+            <View style={styles.flex}>
+              <AppText variant="cardTitle" color="heading" style={styles.bold}>會議記錄沒有寫完</AppText>
+              <AppText variant="small" color="muted">逐字稿還在，請再試一次。</AppText>
+            </View>
+          </View>
+        )}
+        <Pressable onPress={() => setShowAdv((v) => !v)} style={styles.advBtn} accessibilityRole="button" hitSlop={8}>
+          <AppText variant="small" color="muted">進階</AppText>
+        </Pressable>
+        {showAdv && (
+          <View style={styles.advRow}>
+            {models.map((m) => (
+              <Chip key={m} label={m} selected={m === model || (!model && models[0] === m)} onPress={() => setModel(m)} />
+            ))}
+          </View>
+        )}
+        {onDelete && <DangerButton label="刪除這場會議" icon={<IconTrash size={18} />} onPress={onDelete} style={styles.delete} />}
+      </ScrollView>
     );
   }
 
@@ -220,37 +236,34 @@ export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
       {/* Persistent action toolbar — always visible, so 編輯 isn't buried at the bottom of a long
           note. Horizontal-scroll so it never overflows narrow screens. */}
       <View style={styles.toolbar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarRow} keyboardShouldPersistTaps="handled">
-            <Pressable style={[styles.chip, styles.chipPrimary]} onPress={() => setEditing(true)} accessibilityRole="button" accessibilityLabel="編輯會議記錄">
-              <IconPencil size={14} color="#fff" /><Text style={styles.chipPrimaryText}>編輯</Text>
-            </Pressable>
-            <Pressable style={styles.chip} onPress={confirmRegenerate} accessibilityRole="button" accessibilityLabel="重新分析">
-              <Text style={styles.chipText}>重新分析</Text>
-            </Pressable>
-            <Pressable style={styles.chip} onPress={() => setKwOpen(true)}><Text style={styles.chipText}>修正關鍵字</Text></Pressable>
-            <Pressable style={[styles.chip, copied === 'plain' && styles.chipDone]} onPress={copyPlainText}>
-              {copied === 'plain'
-                ? <><IconCheck size={14} color={colors.good} /><Text style={styles.chipDoneText}>已複製</Text></>
-                : <Text style={styles.chipText}>複製純文字</Text>}
-            </Pressable>
-            <Pressable style={[styles.chip, copied === 'md' && styles.chipDone]} onPress={copyMarkdown}>
-              {copied === 'md'
-                ? <><IconCheck size={14} color={colors.good} /><Text style={styles.chipDoneText}>已複製</Text></>
-                : <Text style={styles.chipText}>複製 Markdown</Text>}
-            </Pressable>
-            {historyCount > 0 && (
-              <Pressable style={styles.chip} onPress={() => setHistoryOpen(true)}><Text style={styles.chipText}>版本紀錄（{historyCount}）</Text></Pressable>
-            )}
-            <Pressable style={styles.chip} onPress={exportMd}><Text style={styles.chipText}>匯出</Text></Pressable>
-          </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbarRow} keyboardShouldPersistTaps="handled">
+          <Chip label="編輯" icon={<IconPencil size={16} />} onPress={() => setEditing(true)} accessibilityLabel="編輯會議記錄" />
+          <Chip label="重新分析" onPress={confirmRegenerate} />
+          <Chip label="修正關鍵字" onPress={() => setKwOpen(true)} />
+          <Chip
+            label={copied === 'plain' ? '已複製' : '複製純文字'}
+            icon={copied === 'plain' ? <IconCheck size={16} strokeWidth={2} /> : <IconCopy size={16} />}
+            onPress={copyPlainText}
+            accessibilityLabel="複製純文字"
+          />
+          <Chip
+            label={copied === 'md' ? '已複製' : '複製 Markdown'}
+            icon={copied === 'md' ? <IconCheck size={16} strokeWidth={2} /> : <IconCopy size={16} />}
+            onPress={copyMarkdown}
+            accessibilityLabel="複製 Markdown"
+          />
+          {historyCount > 0 && <Chip label={`版本紀錄（${historyCount}）`} onPress={() => setHistoryOpen(true)} />}
+          <Chip label="匯出" icon={<IconShare size={16} />} onPress={exportMd} accessibilityLabel="匯出會議記錄" />
+        </ScrollView>
       </View>
 
-      <ScrollView style={styles.wrap} contentContainerStyle={{ paddingBottom: 48 }}>
+      <ScrollView style={styles.wrap} contentContainerStyle={styles.docContent}>
         {/* Document header */}
-        <Text style={styles.docTitle}>{session.title}</Text>
-        {!!meta && <Text style={[styles.docMeta, tabularNums]}>{meta}</Text>}
+        <AppText variant="screenTitle" color="heading" accessibilityRole="header">{session.title}</AppText>
+        {!!meta && <AppText variant="small" color="muted" style={[styles.docMeta, tabularNums]}>{meta}</AppText>}
 
         <Markdown style={mdStyles} rules={rules}>{body}</Markdown>
+        {onDelete && <DangerButton label="刪除這場會議" icon={<IconTrash size={18} />} onPress={onDelete} style={styles.delete} />}
       </ScrollView>
 
       {editing && <NotesEditor initial={cleaned} onCancel={() => setEditing(false)} onSave={saveEdit} />}
@@ -265,8 +278,9 @@ export default function AnalysisTab({ session, onUpdate, onGoToTranscript }:
       {kwOpen && <KeywordSheet session={session} onClose={() => setKwOpen(false)} onApply={applyKeywords} />}
 
       {toast && (
-        <View style={styles.toast} pointerEvents="none">
-          <Text style={styles.toastText}>{toast}</Text>
+        <View style={styles.toast} pointerEvents="none" accessibilityLiveRegion="polite">
+          <IconCheck size={16} color={colors.onPrimary} strokeWidth={2} />
+          <AppText variant="body" color="onPrimary">{toast}</AppText>
         </View>
       )}
     </View>
@@ -283,9 +297,11 @@ function NotesEditor({ initial, onCancel, onSave }: { initial: string; onCancel(
       <View style={editorStyles.root}>
         {/* pad below the status bar / Dynamic Island so 取消/儲存 don't collide with the clock+battery */}
         <View style={[editorStyles.bar, { paddingTop: insets.top + 12 }]}>
-          <Pressable onPress={onCancel} hitSlop={10}><Text style={editorStyles.cancel}>取消</Text></Pressable>
-          <Text style={editorStyles.title}>編輯會議記錄</Text>
-          <Pressable testID="notes-save" onPress={() => onSave(value)} hitSlop={10}><Text style={editorStyles.save}>儲存</Text></Pressable>
+          <Pressable onPress={onCancel} hitSlop={10} accessibilityRole="button"><AppText variant="cardTitle" color="muted">取消</AppText></Pressable>
+          <AppText variant="cardTitle" color="heading" style={editorStyles.title}>編輯會議記錄</AppText>
+          <Pressable testID="notes-save" onPress={() => onSave(value)} hitSlop={10} accessibilityRole="button">
+            <AppText variant="cardTitle" color="primaryDark" style={editorStyles.title}>儲存</AppText>
+          </Pressable>
         </View>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <TextInput
@@ -296,8 +312,9 @@ function NotesEditor({ initial, onCancel, onSave }: { initial: string; onCancel(
             multiline
             autoFocus
             textAlignVertical="top"
-            placeholder="會議記錄內容（Markdown）"
-            placeholderTextColor={colors.ink3}
+            placeholder="會議記錄內容"
+            placeholderTextColor={colors.hint}
+            accessibilityLabel="會議記錄內容"
           />
         </KeyboardAvoidingView>
       </View>
@@ -312,27 +329,19 @@ function NotesHistory(
   { history: { notes: string; at: number }[]; now: number; onClose(): void; onRevert(v: string): void },
 ) {
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={histStyles.root}>
-        <Pressable style={histStyles.scrim} onPress={onClose} accessibilityLabel="關閉" />
-        <View style={histStyles.sheet}>
-          <View style={histStyles.grab} />
-          <Text style={histStyles.title}>版本紀錄</Text>
-          <Text style={histStyles.sub}>還原到先前的版本（目前版本會先被保留）</Text>
-          <ScrollView style={{ maxHeight: 360 }}>
-            {history.map((v, i) => (
-              <View key={i} style={histStyles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[histStyles.when, tabularNums]}>{relativeDay(v.at, now)}</Text>
-                  <Text style={histStyles.snippet} numberOfLines={2}>{markdownToPlainText(v.notes).replace(/\n+/g, ' ') || '（空白）'}</Text>
-                </View>
-                <Pressable style={histStyles.revert} onPress={() => onRevert(v.notes)}><Text style={histStyles.revertText}>復原</Text></Pressable>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    <Sheet title="版本紀錄" subtitle="還原到之前的版本。目前的版本會先保留下來。" onClose={onClose}>
+      <ScrollView style={histStyles.list}>
+        {history.map((v, i) => (
+          <View key={i} style={histStyles.row}>
+            <View style={histStyles.flex}>
+              <AppText variant="small" color="muted" style={tabularNums}>{relativeDay(v.at, now)}</AppText>
+              <AppText variant="body" color="body" numberOfLines={2}>{markdownToPlainText(v.notes).replace(/\n+/g, ' ') || '（空白）'}</AppText>
+            </View>
+            <Chip label="復原" onPress={() => onRevert(v.notes)} accessibilityLabel={`復原 ${relativeDay(v.at, now)} 的版本`} />
+          </View>
+        ))}
+      </ScrollView>
+    </Sheet>
   );
 }
 
@@ -341,7 +350,7 @@ function NotesHistory(
 function OwnerAvatar({ name, session }: { name: string; session: SavedSession }) {
   const speakers = session.transcript?.speakers ?? [];
   const idx = speakers.findIndex((sp) => (session.names[sp] || '').trim() === name.trim());
-  const color = idx >= 0 ? speakerColor(idx) : colors.brand;
+  const color = idx >= 0 ? speakerColor(idx) : colors.primary;
   const initial = [...name.trim()][0] ?? '?';
   return (
     <View style={[docStyles.av, { backgroundColor: color }]}>
@@ -362,78 +371,70 @@ function defaultListItem(node: any, children: any, styles: any) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.paper },
-  wrap: { flex: 1, backgroundColor: colors.paper, paddingHorizontal: 20, paddingTop: 14 },
+  screen: { flex: 1, backgroundColor: colors.background },
+  wrap: { flex: 1, backgroundColor: colors.background, paddingHorizontal: layout.screenPaddingH },
+  docContent: { paddingTop: spacing.lg, paddingBottom: spacing.xxxl },
+  docMeta: { marginTop: spacing.xs },
+  flex: { flex: 1 },
+  bold: { fontWeight: '600' },
 
-  // persistent action toolbar
-  toolbar: { borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.card },
-  toolbarRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.chipBg },
-  chipText: { color: colors.ink, fontWeight: '600', fontSize: 13.5 },
-  chipPrimary: { backgroundColor: colors.brand },
-  chipPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 13.5 },
-  chipDone: { backgroundColor: colors.goodSoft },
-  chipDoneText: { color: colors.good, fontWeight: '700', fontSize: 13.5 },
+  toolbar: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline, backgroundColor: colors.background },
+  toolbarRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: layout.screenPaddingH, paddingVertical: spacing.md },
 
-  toast: { position: 'absolute', left: 0, right: 0, bottom: 28, alignItems: 'center' },
-  toastText: {
-    backgroundColor: colors.ink, color: '#fff', fontSize: 13.5, fontWeight: '600',
-    paddingVertical: 9, paddingHorizontal: 18, borderRadius: radius.pill, overflow: 'hidden',
+  // Dark snackbar (KEEPLACE UndoSnackbar look) for 「已取代 N 處」.
+  toast: {
+    position: 'absolute', left: layout.screenPaddingH, right: layout.screenPaddingH, bottom: spacing.xxl,
+    minHeight: layout.buttonHeight, borderRadius: radius.button, backgroundColor: colors.heading,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg,
   },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, padding: 24 },
-  hint: { color: colors.ink3, fontSize: 14, textAlign: 'center', marginBottom: 16, lineHeight: 20 },
 
-  docTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4, color: colors.ink, marginTop: 2, marginBottom: 6, lineHeight: 26 },
-  docMeta: { fontSize: 12.5, color: colors.ink2, marginBottom: 2 },
+  emptyContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: layout.screenPaddingH, paddingBottom: spacing.xxl },
+  emptyCta: { alignSelf: 'center', marginTop: -spacing.xxxl },
+  center: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: layout.screenPaddingH * 2, gap: spacing.md },
+  centerText: { textAlign: 'center' },
+  iconCircle: {
+    width: 72, height: 72, borderRadius: 36, backgroundColor: colors.surface,
+    borderWidth: layout.border, borderColor: colors.outline, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm,
+  },
+  barTrack: { width: 200, height: 4, borderRadius: 2, backgroundColor: colors.outline, overflow: 'hidden' },
+  barFill: { height: 4, borderRadius: 2, backgroundColor: colors.primary },
 
-  primary: { backgroundColor: colors.brand, borderRadius: radius.control, paddingVertical: 13, paddingHorizontal: 28, alignItems: 'center' },
-  primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  adv: { color: colors.ink3, marginTop: 16, fontSize: 13 },
-  advList: { color: colors.ink, marginTop: 8, fontSize: 13 },
-  err: { color: colors.brand, marginTop: 14 },
-  hintSmall: { color: colors.ink3, fontSize: 12, marginTop: 8, textAlign: 'center' },
-  notesBarTrack: { width: 200, height: 5, borderRadius: 3, backgroundColor: colors.chipBg, marginTop: 12, overflow: 'hidden' },
-  notesBarFill: { height: 5, borderRadius: 3, backgroundColor: colors.brand },
-
+  errCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginTop: spacing.xl, padding: spacing.lg,
+    backgroundColor: colors.surface, borderRadius: radius.card, borderWidth: layout.border, borderColor: colors.outline,
+  },
+  advBtn: { alignSelf: 'center', marginTop: spacing.xl, minHeight: layout.minTouchTarget, justifyContent: 'center' },
+  advRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'center' },
+  delete: { marginTop: spacing.xxxl },
 });
 
 const editorStyles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.paper },
+  root: { flex: 1, backgroundColor: colors.background },
   bar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingTop: 14, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.card,
+    paddingHorizontal: layout.screenPaddingH, paddingBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline, backgroundColor: colors.background,
   },
-  cancel: { fontSize: 16, color: colors.ink2, fontWeight: '600' },
-  title: { fontSize: 16, fontWeight: '700', color: colors.ink },
-  save: { fontSize: 16, color: colors.brand, fontWeight: '800' },
-  input: { flex: 1, fontSize: 14.5, lineHeight: 23, color: colors.ink, padding: 18 },
+  title: { fontWeight: '600' },
+  input: { flex: 1, ...typography.body, color: colors.heading, padding: layout.screenPaddingH },
 });
 
 const histStyles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(20,16,14,0.35)' },
-  sheet: {
-    backgroundColor: colors.card, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet,
-    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 30,
+  list: { maxHeight: 360, marginTop: spacing.sm },
+  flex: { flex: 1, gap: 2 },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.outline,
   },
-  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: colors.neutralSoft, alignSelf: 'center', marginBottom: 14 },
-  title: { fontSize: 17, fontWeight: '700', color: colors.ink, marginBottom: 3 },
-  sub: { fontSize: 12.5, color: colors.ink2, marginBottom: 12 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderTopWidth: 1, borderTopColor: colors.hairline },
-  when: { fontSize: 12.5, color: colors.ink2, fontWeight: '600', marginBottom: 3 },
-  snippet: { fontSize: 13, color: colors.ink3, lineHeight: 18 },
-  revert: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: radius.pill, backgroundColor: colors.brandSoft },
-  revertText: { color: colors.brand, fontWeight: '700', fontSize: 13.5 },
 });
 
 const docStyles = StyleSheet.create({
-  todo: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.hairline },
-  ck: { width: 19, height: 19, borderRadius: 6, borderWidth: 2, borderColor: colors.neutralSoft, alignItems: 'center', justifyContent: 'center' },
-  ckOn: { backgroundColor: colors.good, borderColor: colors.good },
-  ckMark: { color: '#fff', fontSize: 11, fontWeight: '700', lineHeight: 13 },
-  tt: { flex: 1, fontSize: 13.5, color: colors.ink, lineHeight: 19 },
-  ttDone: { color: colors.ink3, textDecorationLine: 'line-through' },
-  av: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  avText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  todo: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.outline,
+  },
+  tt: { flex: 1, ...typography.body, color: colors.body },
+  ttDone: { color: colors.muted, textDecorationLine: 'line-through' },
+  av: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  avText: { fontSize: 11, fontWeight: '600', color: colors.onPrimary },
 });

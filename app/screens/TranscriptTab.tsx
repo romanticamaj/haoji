@@ -1,20 +1,25 @@
 import React from 'react';
 import {
-  ScrollView, View, Text, TextInput, Pressable, StyleSheet, Alert,
+  ScrollView, View, TextInput, Pressable, StyleSheet, Alert,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SavedSession } from '../lib/store';
 import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText, speakerStats } from '../lib/transcript';
 import SpeakerSheet from '../components/SpeakerSheet';
-import { IconCheck, IconCopy } from '../components/icons';
+import { IconCheck, IconCopy, IconLoader, IconSpeakers, IconTranscript, IconTrash, IconAudioLines } from '../components/icons';
+import { AppText } from '../components/AppText';
+import { EmptyState } from '../components/EmptyState';
+import { Chip, DangerButton, PrimaryButton } from '../components/Buttons';
 import { isActive, overallPct } from '../lib/job';
-import { colors, radius, tabularNums, speakerColor } from '../lib/theme';
+import { colors, layout, radius, spacing, tabularNums, speakerColor, typography } from '../lib/theme';
 
 export default function TranscriptTab(
-  { session, onUpdate, onRegenerate, onViewProgress, onSeek, activeMs = 0 }:
+  { session, onUpdate, onRegenerate, onViewProgress, onSeek, activeMs = 0, onDelete }:
   {
     session: SavedSession; onUpdate(s: SavedSession): void; onRegenerate?(): void;
     onViewProgress?(): void; onSeek?(globalMs: number): void; activeMs?: number;
+    /** 刪除這場會議 — always the last thing on the page. */
+    onDelete?(): void;
   },
 ) {
   const segs = session.transcript?.segments ?? [];
@@ -91,30 +96,40 @@ export default function TranscriptTab(
   // backend session and runs the pipeline (interruptible — the recording stays saved until then).
   if (segs.length === 0) {
     return (
-      <View style={styles.emptyWrap}>
-        <Text style={styles.emptyTitle}>{busy ? '正在生成逐字稿' : '還沒有逐字稿'}</Text>
-        <Text style={styles.emptyHint}>
-          {busy
-            ? `${session.job?.message || '處理中…'}（${busyPct}%）\n離開 App 也會繼續，完成後回來就看得到。`
-            : hasParts ? '這段錄音還沒有生成逐字稿。準備好了就點下面開始。' : '找不到可辨識的錄音檔。'}
-        </Text>
+      <ScrollView style={styles.wrap} contentContainerStyle={styles.emptyContent}>
         {busy ? (
-          onViewProgress && (
-            <Pressable style={styles.primary} onPress={onViewProgress} accessibilityRole="button">
-              <Text style={styles.primaryText}>查看進度</Text>
-            </Pressable>
-          )
-        ) : hasParts && onRegenerate && (
-          <Pressable
-            style={[styles.primary, regenStarted && styles.chipDisabled]}
-            onPress={startRegenerate}
-            disabled={regenStarted}
-            accessibilityRole="button"
-          >
-            <Text style={styles.primaryText}>{regenStarted ? '準備中…' : '生成逐字稿'}</Text>
-          </Pressable>
+          <EmptyState
+            icon={<IconLoader size={28} color={colors.primaryDark} />}
+            title="正在整理逐字稿…"
+            description={`${session.job?.message || '處理中…'}（${busyPct}%）\n離開 App 也會繼續，完成後會通知你。`}
+            actionLabel={onViewProgress ? '查看進度' : undefined}
+            onAction={onViewProgress}
+          />
+        ) : hasParts ? (
+          <View style={styles.emptyBlock}>
+            <EmptyState
+              icon={<IconTranscript size={28} color={colors.muted} />}
+              title="還沒有逐字稿"
+              description="這段錄音還沒整理成逐字稿。準備好了就按下面開始。"
+            />
+            {onRegenerate && (
+              <PrimaryButton
+                label={regenStarted ? '準備中…' : '生成逐字稿'}
+                onPress={startRegenerate}
+                disabled={regenStarted}
+                style={styles.emptyCta}
+              />
+            )}
+          </View>
+        ) : (
+          <EmptyState
+            icon={<IconAudioLines size={28} color={colors.muted} />}
+            title="還沒有逐字稿"
+            description="這段錄音裡沒有可以辨識的聲音。"
+          />
         )}
-      </View>
+        {onDelete && <DangerButton label="刪除這場會議" icon={<IconTrash size={18} />} onPress={onDelete} style={styles.delete} />}
+      </ScrollView>
     );
   }
 
@@ -146,58 +161,42 @@ export default function TranscriptTab(
           keyboardShouldPersistTaps="handled"
         >
           {stats.length > 0 && (
-            <Pressable
+            <Chip
               testID="open-speakers"
-              style={styles.chip}
+              label={`講者 ${namedCount}/${stats.length}`}
+              icon={<IconSpeakers size={16} />}
               onPress={() => setEditing('')}
-              accessibilityRole="button"
               accessibilityLabel="管理講者"
-            >
-              <Text style={styles.chipText}>講者 {namedCount}/{stats.length}</Text>
-            </Pressable>
+            />
           )}
-          <Pressable
+          <Chip
             testID="copy-transcript"
-            style={[styles.chip, copied && styles.chipDone]}
+            label={copied ? '已複製' : '複製'}
+            icon={copied ? <IconCheck size={16} strokeWidth={2} /> : <IconCopy size={16} />}
             onPress={copyTranscript}
-            accessibilityRole="button"
             accessibilityLabel="複製逐字稿"
-          >
-            {copied
-              ? <><IconCheck size={14} color={colors.good} /><Text style={styles.chipDoneText}>已複製</Text></>
-              : <><IconCopy size={14} color={colors.brand} /><Text style={styles.chipText}>複製</Text></>}
-          </Pressable>
+          />
           {busy && onViewProgress ? (
-            <Pressable
-              testID="view-progress"
-              style={styles.chip}
-              onPress={onViewProgress}
-              accessibilityRole="button"
-            >
-              <Text style={styles.chipText}>查看進度（{busyPct}%）</Text>
-            </Pressable>
+            <Chip testID="view-progress" label={`查看進度（${busyPct}%）`} onPress={onViewProgress} />
           ) : hasParts && onRegenerate ? (
-            <Pressable
+            <Chip
               testID="regenerate-transcript"
-              style={[styles.chip, regenStarted && styles.chipDisabled]}
+              label={regenStarted ? '準備中…' : '重新生成逐字稿'}
               onPress={confirmRegenerate}
               disabled={regenStarted}
-              accessibilityRole="button"
-            >
-              <Text style={styles.chipText}>{regenStarted ? '準備中…' : '重新生成逐字稿'}</Text>
-            </Pressable>
+            />
           ) : null}
         </ScrollView>
       </View>
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >
-        <Text style={styles.howto}>點段落跳到該處播放 · 長按可修改文字</Text>
+        <AppText variant="small" color="muted" style={styles.howto}>點一下段落就從那裡播放，長按可以修改文字。</AppText>
         {turns.map((p, i) => {
           const idx = speakerIndex[p.speaker] ?? 0;
           const color = speakerColor(idx);
@@ -214,29 +213,31 @@ export default function TranscriptTab(
             >
               <Pressable
                 testID={`turn-head-${p.speaker}`}
-                style={styles.turnHead}
+                style={({ pressed }) => [styles.turnHead, pressed && styles.pressedRow]}
                 onPress={() => setEditing(p.speaker)}
                 accessibilityRole="button"
-                accessibilityLabel={`命名講者 ${display}`}
+                // Never read the raw diarisation code (SPEAKER_01) aloud — an unnamed speaker is 講者 N.
+                accessibilityLabel={named ? `重新命名 ${display}` : `講者 ${idx + 1}，點一下命名`}
               >
                 {named ? (
                   <>
                     <View style={[styles.av, { backgroundColor: color }]}>
-                      <Text style={styles.avText}>{initial}</Text>
+                      <AppText variant="small" color="onPrimary" style={styles.avText}>{initial}</AppText>
                     </View>
-                    <Text style={styles.who}>{display}</Text>
+                    <AppText variant="cardTitle" color="heading" style={styles.who}>{display}</AppText>
                   </>
                 ) : (
+                  // Unnamed speakers wear the one peach accent: a dashed chip asking to be named.
                   <View style={styles.chipUnset}>
                     <View style={[styles.av, styles.avUnset]}>
-                      <Text style={styles.avText}>{initial}</Text>
+                      <AppText variant="small" color="onPrimary" style={styles.avText}>{initial}</AppText>
                     </View>
-                    <Text style={styles.chipUnsetText}>
-                      講者 {idx + 1} <Text style={styles.chipUnsetHint}>· 點一下命名</Text>
-                    </Text>
+                    <AppText variant="small" color="accent" style={styles.unsetText}>
+                      講者 {idx + 1} · 點一下命名
+                    </AppText>
                   </View>
                 )}
-                <Text style={[styles.tc, tabularNums]}>{mmss(p.start)}</Text>
+                <AppText variant="small" color="muted" style={[styles.tc, tabularNums]}>{mmss(p.start)}</AppText>
               </Pressable>
               {editIdx === i ? (
                 <View style={styles.editBox}>
@@ -248,15 +249,21 @@ export default function TranscriptTab(
                     value={draft}
                     onChangeText={setDraft}
                     placeholder="修改這段文字"
-                    placeholderTextColor={colors.ink3}
+                    placeholderTextColor={colors.hint}
                     scrollEnabled={false}
+                    accessibilityLabel="修改這段文字"
                   />
                   <View style={styles.editActions}>
-                    <Pressable testID={`edit-cancel-${i}`} onPress={() => setEditIdx(null)} style={styles.editBtn} accessibilityRole="button">
-                      <Text style={styles.editCancelText}>取消</Text>
+                    <Pressable testID={`edit-cancel-${i}`} onPress={() => setEditIdx(null)} style={styles.editBtn} accessibilityRole="button" hitSlop={8}>
+                      <AppText variant="cardTitle" color="muted">取消</AppText>
                     </Pressable>
-                    <Pressable testID={`edit-done-${i}`} onPress={() => commitEdit(p.startIdx, p.endIdx)} style={[styles.editBtn, styles.editDone]} accessibilityRole="button">
-                      <Text style={styles.editDoneText}>完成</Text>
+                    <Pressable
+                      testID={`edit-done-${i}`}
+                      onPress={() => commitEdit(p.startIdx, p.endIdx)}
+                      style={({ pressed }) => [styles.editBtn, styles.editDone, pressed && styles.pressedFill]}
+                      accessibilityRole="button"
+                    >
+                      <AppText variant="cardTitle" color="onPrimary" style={styles.bold}>完成</AppText>
                     </Pressable>
                   </View>
                 </View>
@@ -269,12 +276,13 @@ export default function TranscriptTab(
                   accessibilityRole="button"
                   accessibilityLabel={`跳到 ${mmss(p.start)} 播放，長按可修改文字`}
                 >
-                  <Text style={[styles.body, active && styles.bodyActive]}>{p.text}</Text>
+                  <AppText variant="body" color={active ? 'heading' : 'body'}>{p.text}</AppText>
                 </Pressable>
               )}
             </View>
           );
         })}
+        {onDelete && <DangerButton label="刪除這場會議" icon={<IconTrash size={18} />} onPress={onDelete} style={styles.delete} />}
       </ScrollView>
 
       {editing != null && (
@@ -291,63 +299,52 @@ export default function TranscriptTab(
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: colors.paper },
-  scroll: { flex: 1, paddingHorizontal: 18 },
+  wrap: { flex: 1, backgroundColor: colors.background },
+  scroll: { flex: 1, paddingHorizontal: layout.screenPaddingH },
+  scrollContent: { paddingBottom: spacing.xxxl },
 
-  emptyWrap: { flex: 1, backgroundColor: colors.paper, alignItems: 'center', justifyContent: 'center', padding: 28 },
-  emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.ink, marginBottom: 8 },
-  emptyHint: { color: colors.ink3, fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
-  primary: { backgroundColor: colors.brand, borderRadius: radius.control, paddingVertical: 13, paddingHorizontal: 28, alignItems: 'center' },
-  primaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  emptyContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: layout.screenPaddingH, paddingBottom: spacing.xxl },
+  emptyBlock: { alignItems: 'stretch' },
+  emptyCta: { alignSelf: 'center', marginTop: -spacing.xxxl },
 
-  // header row: gesture hint on the left, copy button on the right
-  toolbar: { borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.paper },
-  toolbarRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingVertical: 10 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.chipBg },
-  chipText: { color: colors.ink, fontWeight: '600', fontSize: 13.5 },
-  chipDone: { backgroundColor: colors.goodSoft },
-  chipDisabled: { opacity: 0.5 },
-  chipDoneText: { color: colors.good, fontWeight: '600', fontSize: 13.5 },
+  toolbar: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline, backgroundColor: colors.background },
+  toolbarRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: layout.screenPaddingH, paddingVertical: spacing.md },
   // teaches the two paragraph gestures (tap = seek, long-press = edit)
-  howto: { fontSize: 11.5, color: colors.ink3, paddingTop: 10, paddingBottom: 2 },
+  howto: { paddingTop: spacing.md, paddingBottom: spacing.xs },
 
-  // turns
-  turn: { paddingVertical: 12 },
+  turn: { paddingVertical: spacing.md },
   // follow-along highlight on the paragraph currently being played
   turnActive: {
-    backgroundColor: colors.brandSoft, borderRadius: 12,
-    marginHorizontal: -10, paddingHorizontal: 10, paddingVertical: 10,
+    backgroundColor: colors.primarySoft, borderRadius: radius.input,
+    marginHorizontal: -spacing.md, paddingHorizontal: spacing.md,
   },
-  turnHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
-  who: { fontSize: 13.5, fontWeight: '700', color: colors.ink },
-  tc: { marginLeft: 'auto', fontSize: 11.5, color: colors.ink3 },
-  body: { fontSize: 14, lineHeight: 22, color: colors.ink },
-  bodyActive: { color: colors.brandPress },
+  turnHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs, minHeight: 32 },
+  who: { fontWeight: '600' },
+  tc: { marginLeft: 'auto' },
 
   // inline editor (long-press a paragraph)
   editBox: {
-    backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.brandSoft,
-    paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10,
+    backgroundColor: colors.surface, borderRadius: radius.input, borderWidth: layout.border, borderColor: colors.primary,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
   },
-  editInput: { fontSize: 14, lineHeight: 22, color: colors.ink, padding: 0, minHeight: 44, textAlignVertical: 'top' },
-  editActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 10 },
-  editBtn: { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 9 },
-  editCancelText: { fontSize: 14, fontWeight: '600', color: colors.ink2 },
-  editDone: { backgroundColor: colors.brand },
-  editDoneText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  editInput: { ...typography.body, color: colors.heading, padding: 0, minHeight: 44, textAlignVertical: 'top' },
+  editActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
+  editBtn: { minHeight: 36, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radius.chip },
+  editDone: { backgroundColor: colors.primary },
+  bold: { fontWeight: '600' },
 
-  av: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  avText: { fontSize: 10, fontWeight: '700', color: '#fff' },
+  av: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  avText: { fontWeight: '600', fontSize: 12 },
 
-  // unnamed dashed pill
   chipUnset: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    backgroundColor: colors.brandSoft, borderWidth: 1, borderStyle: 'dashed',
-    borderColor: colors.speakerUnset, borderRadius: radius.pill, paddingVertical: 2, paddingLeft: 3, paddingRight: 10,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    borderWidth: layout.border, borderStyle: 'dashed', borderColor: colors.accent,
+    borderRadius: radius.chip, paddingVertical: 2, paddingLeft: 2, paddingRight: spacing.md,
   },
-  avUnset: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.speakerUnset },
-  chipUnsetText: { color: colors.brand, fontSize: 12.5, fontWeight: '600' },
-  chipUnsetHint: { color: colors.speakerUnsetText, fontWeight: '500' },
+  avUnset: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.accent },
+  unsetText: { fontWeight: '500' },
 
-  // rename sheet
+  delete: { marginTop: spacing.xxxl },
+  pressedRow: { opacity: 0.7 },
+  pressedFill: { opacity: 0.8 },
 });

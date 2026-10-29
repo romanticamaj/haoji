@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Pressable, StyleSheet } from 'react-native';
+import { AppText } from '../components/AppText';
 import {
   Waveform,
   type IWaveformRef,
@@ -11,7 +12,7 @@ import {
 import Share from 'react-native-share';
 import { resolvePartUri, partExists } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
-import { colors, radius, tabularNums } from '../lib/theme';
+import { colors, layout, radius, spacing, tabularNums } from '../lib/theme';
 import { SKIP_BACK_MS, SKIP_FWD_MS, clamp, skipTo, nextSpeed, formatSpeed, locatePart } from '../lib/player';
 import { IconPlay, IconPause, IconRewind, IconForward, IconAlert, IconShare } from '../components/icons';
 
@@ -102,9 +103,15 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
           reportProgress={reportProgress}
         />
       ))}
-      <Pressable style={styles.exportBtn} onPress={onExport} accessibilityRole="button" accessibilityLabel="匯出錄音">
-        <IconShare size={16} color={colors.brand} />
-        <Text style={styles.exportText}>匯出錄音</Text>
+      <Pressable
+        style={({ pressed }) => [styles.exportBtn, pressed && styles.pressedIcon]}
+        onPress={onExport}
+        accessibilityRole="button"
+        accessibilityLabel="匯出錄音"
+        hitSlop={8}
+      >
+        <IconShare size={16} color={colors.primaryDark} />
+        <AppText variant="cardTitle" color="primaryDark">匯出錄音</AppText>
       </Pressable>
     </View>
   );
@@ -205,18 +212,18 @@ function PlayerRow(
     const legacyBroken = !gone && storedUri.endsWith('.m4a');
     return (
       <View style={[styles.card, styles.missingCard]}>
-        {multi && <Text style={styles.segLabel}>段 {index + 1}</Text>}
+        {multi && <AppText variant="cardTitle" color="heading" style={styles.segLabel}>段 {index + 1}</AppText>}
         <View style={styles.missingRow}>
-          <IconAlert size={22} color={colors.brand} strokeWidth={1.9} />
+          <IconAlert size={22} color={colors.danger} />
           <View style={styles.missingTextWrap}>
-            <Text style={styles.missingTitle}>{gone ? '音檔不存在' : '音檔無法播放'}</Text>
-            <Text style={styles.missingHint}>
+            <AppText variant="cardTitle" color="heading" style={styles.segLabel}>{gone ? '音檔不存在' : '音檔無法播放'}</AppText>
+            <AppText variant="small" color="muted">
               {gone
-                ? '這段錄音已無法播放，檔案可能已被系統清除。'
+                ? '這段錄音的檔案已經不在手機上，可能被系統清掉了。'
                 : legacyBroken
-                  ? '這個檔案無法在裝置上播放。可能是錄音中斷留下的舊格式檔案（那種無法修復），也可能是匯入的影片沒能取出音訊——後者仍然可以生成逐字稿。'
-                  : '這段錄音的格式可能不支援，或檔案已損毀。'}
-            </Text>
+                  ? '這個檔案沒辦法在手機上播放。可能是錄音中斷時留下的舊格式檔案（無法修復），也可能是匯入的影片取不出聲音；後者還是可以生成逐字稿。'
+                  : '這段錄音的格式可能不支援，或檔案已經損壞。'}
+            </AppText>
           </View>
         </View>
       </View>
@@ -229,12 +236,12 @@ function PlayerRow(
     <View style={styles.card}>
       {multi && (
         <View style={styles.segHead}>
-          <Text style={styles.segLabel}>段 {index + 1}</Text>
-          <Text style={[styles.segDur, tabularNums]}>{storedMs > 0 ? mmss(storedMs / 1000) : '--:--'}</Text>
+          <AppText variant="cardTitle" color="heading" style={styles.segLabel}>段 {index + 1}</AppText>
+          <AppText variant="small" color="muted" style={[styles.segDur, tabularNums]}>{storedMs > 0 ? mmss(storedMs / 1000) : '--:--'}</AppText>
         </View>
       )}
 
-      {/* Real waveform, full-width, drag anywhere to scrub. brand = played, neutral = unplayed. */}
+      {/* Real waveform, full-width, drag anywhere to scrub. sage = played, outline = unplayed. */}
       {exists === true && (
         <Waveform
           mode="static"
@@ -243,8 +250,8 @@ function PlayerRow(
           candleSpace={2}
           candleWidth={3}
           candleHeightScale={5}
-          waveColor={colors.neutralSoft}
-          scrubColor={colors.brand}
+          waveColor={colors.outline}
+          scrubColor={colors.primary}
           playbackSpeed={speed}
           containerStyle={styles.wave}
           onPlayerStateChange={(s: PlayerState) => {
@@ -265,34 +272,50 @@ function PlayerRow(
 
       {/* live timecode */}
       <View style={styles.times}>
-        <Text style={[styles.timeText, tabularNums]}>{mmss(posClamped / 1000)}</Text>
-        <Text style={[styles.timeText, tabularNums]}>{totalKnown ? mmss(total / 1000) : '--:--'}</Text>
+        <AppText variant="small" color="muted" style={tabularNums}>{mmss(posClamped / 1000)}</AppText>
+        <AppText variant="small" color="muted" style={tabularNums}>{totalKnown ? mmss(total / 1000) : '--:--'}</AppText>
       </View>
 
       {/* transport — play centered, ⏪15/⏩30 flanking, speed pinned to the left (no empty balancer) */}
       <View style={styles.transport}>
-        <Pressable onPress={onCycleSpeed} style={styles.speedBtn} accessibilityLabel={`播放速度 ${formatSpeed(speed)}`}>
-          <Text style={[styles.speedText, tabularNums]}>{formatSpeed(speed)}</Text>
+        <Pressable
+          onPress={onCycleSpeed}
+          style={({ pressed }) => [styles.speedBtn, pressed && styles.pressedRow]}
+          accessibilityRole="button"
+          accessibilityLabel={`播放速度 ${formatSpeed(speed)}`}
+        >
+          <AppText variant="cardTitle" color="heading" style={tabularNums}>{formatSpeed(speed)}</AppText>
         </Pressable>
 
         <View style={styles.cluster}>
-          <Pressable onPress={() => onSkip(-SKIP_BACK_MS)} style={styles.skip} accessibilityLabel="倒退 15 秒">
-            <IconRewind size={38} color={colors.ink} strokeWidth={1.7} />
-            <View style={styles.skipNumWrap} pointerEvents="none"><Text style={[styles.skipNum, tabularNums]}>15</Text></View>
+          <Pressable
+            onPress={() => onSkip(-SKIP_BACK_MS)}
+            style={({ pressed }) => [styles.skip, pressed && styles.pressedIcon]}
+            accessibilityRole="button"
+            accessibilityLabel="倒退 15 秒"
+          >
+            <IconRewind size={36} color={colors.muted} />
+            <View style={styles.skipNumWrap} pointerEvents="none"><AppText variant="small" color="muted" style={[styles.skipNum, tabularNums]}>15</AppText></View>
           </Pressable>
 
           <Pressable
             testID={`play-${index}`}
             onPress={onTogglePlay}
-            style={styles.play}
+            style={({ pressed }) => [styles.play, pressed && styles.pressedFill]}
+            accessibilityRole="button"
             accessibilityLabel={isPlaying ? '暫停' : '播放'}
           >
-            {isPlaying ? <IconPause size={26} color="#fff" /> : <IconPlay size={26} color="#fff" />}
+            {isPlaying ? <IconPause size={24} color={colors.onPrimary} /> : <IconPlay size={24} color={colors.onPrimary} />}
           </Pressable>
 
-          <Pressable onPress={() => onSkip(SKIP_FWD_MS)} style={styles.skip} accessibilityLabel="快進 30 秒">
-            <IconForward size={38} color={colors.ink} strokeWidth={1.7} />
-            <View style={styles.skipNumWrap} pointerEvents="none"><Text style={[styles.skipNum, tabularNums]}>30</Text></View>
+          <Pressable
+            onPress={() => onSkip(SKIP_FWD_MS)}
+            style={({ pressed }) => [styles.skip, pressed && styles.pressedIcon]}
+            accessibilityRole="button"
+            accessibilityLabel="快進 30 秒"
+          >
+            <IconForward size={36} color={colors.muted} />
+            <View style={styles.skipNumWrap} pointerEvents="none"><AppText variant="small" color="muted" style={[styles.skipNum, tabularNums]}>30</AppText></View>
           </Pressable>
         </View>
       </View>
@@ -301,39 +324,43 @@ function PlayerRow(
 }
 
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, backgroundColor: colors.paper },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16, marginTop: 2 },
-  exportText: { color: colors.brand, fontSize: 14, fontWeight: '600' },
-  card: {
-    backgroundColor: colors.card, borderRadius: radius.card, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 16,
-    marginBottom: 10,
+  container: { paddingHorizontal: layout.screenPaddingH, paddingTop: spacing.sm, paddingBottom: spacing.xs, backgroundColor: colors.background },
+  exportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs, alignSelf: 'center',
+    minHeight: layout.minTouchTarget, paddingHorizontal: spacing.lg,
   },
-  segHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  segLabel: { fontSize: 13, fontWeight: '700', color: colors.ink },
-  segDur: { fontSize: 12.5, color: colors.ink3, marginLeft: 'auto' },
+  // Player card: surface + 1px outline, no shadow (GUIDELINE §7.1 Player).
+  card: {
+    backgroundColor: colors.surface, borderRadius: radius.card, paddingHorizontal: spacing.xl, paddingTop: spacing.md,
+    paddingBottom: spacing.lg, marginBottom: spacing.sm, borderWidth: layout.border, borderColor: colors.outline,
+  },
+  segHead: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs },
+  segLabel: { fontWeight: '600' },
+  segDur: { marginLeft: 'auto' },
 
-  missingCard: { paddingVertical: 16 },
-  missingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
-  missingTextWrap: { flex: 1 },
-  missingTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
-  missingHint: { fontSize: 12.5, color: colors.ink3, marginTop: 2, lineHeight: 17 },
+  missingCard: { paddingVertical: spacing.lg },
+  missingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.xs },
+  missingTextWrap: { flex: 1, gap: 2 },
 
-  wave: { height: 64, marginTop: 12, marginBottom: 6, width: '100%' },
+  wave: { height: 64, marginTop: spacing.md, marginBottom: spacing.xs, width: '100%' },
 
   times: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  timeText: { fontSize: 12.5, color: colors.ink2, fontWeight: '500' },
 
-  transport: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16, minHeight: 66, position: 'relative' },
-  speedBtn: { position: 'absolute', left: 0, top: 16, width: 46, height: 34, borderRadius: 9, backgroundColor: colors.chipBg, alignItems: 'center', justifyContent: 'center' },
-  speedText: { fontSize: 13, fontWeight: '700', color: colors.ink2 },
-  cluster: { flexDirection: 'row', alignItems: 'center', gap: 20 },
-  skip: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
-  skipNumWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  skipNum: { fontSize: 11, fontWeight: '700', color: colors.ink },
-  play: {
-    width: 66, height: 66, borderRadius: 33, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center',
-    // No colored drop shadow: on iOS a tinted shadow rasterizes as a solid black block for a few
-    // frames during the native screen transition (the "按鈕變黑" flash). The brand fill reads fine
-    // without it.
+  transport: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing.md, minHeight: 56, position: 'relative' },
+  // Speed is a chip (36 high, radius 18, surface + outline).
+  speedBtn: {
+    position: 'absolute', left: 0, top: 10, height: layout.chipHeight, minWidth: 52, paddingHorizontal: spacing.md,
+    borderRadius: radius.chip, backgroundColor: colors.surface, borderWidth: layout.border, borderColor: colors.outline,
+    alignItems: 'center', justifyContent: 'center',
   },
+  cluster: { flexDirection: 'row', alignItems: 'center', gap: spacing.xl },
+  skip: { width: layout.minTouchTarget + 8, height: layout.minTouchTarget + 8, alignItems: 'center', justifyContent: 'center' },
+  skipNumWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  skipNum: { fontSize: 10, lineHeight: 12, fontWeight: '600' },
+  // No drop shadow: a tinted shadow rasterised as a solid black block during native screen transitions.
+  play: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+
+  pressedFill: { opacity: 0.8 },
+  pressedRow: { opacity: 0.7 },
+  pressedIcon: { opacity: 0.6 },
 });
