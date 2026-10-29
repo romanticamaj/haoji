@@ -1,0 +1,29 @@
+import fs from 'fs';
+import path from 'path';
+
+// GUIDELINE §2 / spec step 6: colours come from lib/theme.ts tokens only. A hex or rgba literal in a
+// screen or component is how the old palette crept back in, so keep the UI code free of them.
+const ROOT = path.join(__dirname, '..', '..');
+const UI_DIRS = ['screens', 'components'];
+
+function uiFiles(): string[] {
+  return UI_DIRS.flatMap((d) =>
+    fs.readdirSync(path.join(ROOT, d))
+      .filter((f) => /\.tsx?$/.test(f))
+      .map((f) => path.join(ROOT, d, f)),
+  ).concat(path.join(ROOT, 'App.tsx'));
+}
+
+test('no hex / rgba colour literals in screens or components', () => {
+  const offenders = uiFiles().flatMap((f) =>
+    fs.readFileSync(f, 'utf8').split('\n')
+      .map((line, i) => ({ line, i }))
+      .filter(({ line }) => !line.trim().startsWith('//') && /['"`]#[0-9a-fA-F]{3,8}['"`]|rgba?\(/.test(line))
+      .map(({ i }) => `${path.relative(ROOT, f)}:${i + 1}`));
+  expect(offenders).toEqual([]);
+});
+
+test('no drop shadows: KEEPLACE surfaces use a 1px outline instead', () => {
+  const offenders = uiFiles().filter((f) => /shadowColor|shadowOpacity|cardShadow|elevation:/.test(fs.readFileSync(f, 'utf8')));
+  expect(offenders.map((f) => path.relative(ROOT, f))).toEqual([]);
+});

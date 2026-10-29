@@ -1,8 +1,6 @@
-// Drop-in replacement for app/lib/theme.ts — KEEPLACE visual language for 好記.
-// Source of truth: design/keeplace-style/GUIDELINE.md. Values copied from KEEPLACE src/theme/tokens.ts
-// (sage on warm ivory, 1px outlines instead of shadows, radius 18). The old "Dusty Rose" key names are
-// kept as aliases so every screen still compiles on day one; migrate call sites to the semantic names
-// (background/surface/heading/body/muted/outline/primary/…) screen by screen, then delete the aliases.
+// 好記 design tokens — the KEEPLACE visual language (sage on warm ivory, 1px outlines instead of shadows,
+// radius 18). Source of truth: design/keeplace-style/GUIDELINE.md; values from KEEPLACE
+// src/theme/tokens.ts. Screens use these semantic names only — no hex literals outside this file.
 
 const k = {
   background: '#F7F3EA',  // warm ivory — screen canvas
@@ -22,25 +20,7 @@ const k = {
   accentSoft: '#F3E6DE',  // ~15% peach over background
 } as const;
 
-export const colors = {
-  ...k,
-  // --- legacy aliases (Dusty Rose names) → KEEPLACE values. Remove once no screen uses them. ---
-  paper: k.background,
-  card: k.surface,
-  ink: k.heading,
-  ink2: k.muted,
-  ink3: k.hint,
-  hairline: k.outline,
-  neutralSoft: k.outline,
-  chipBg: k.surface,       // chips are now surface + 1px outline, not a filled grey
-  brand: k.primary,
-  brandSoft: k.primarySoft,
-  brandPress: k.primaryDark,
-  good: k.primaryDark,     // "done" reads as sage + check icon; no separate green
-  goodSoft: k.primarySoft,
-  speakerUnset: k.accent,
-  speakerUnsetText: k.accent,
-} as const;
+export const colors = k;
 
 export type ColorToken = keyof typeof k;
 
@@ -73,9 +53,6 @@ export const radius = {
   sheet: 24,
   input: 12,
   round: 999,
-  // legacy names
-  pill: 18,
-  control: 12,
 } as const;
 
 type TextStyleToken = {
@@ -101,10 +78,6 @@ export const motion = { maxDurationMs: 250 } as const;
 
 // Apply to any Text that shows times/durations so digits line up.
 export const tabularNums = { fontVariant: ['tabular-nums' as const] };
-
-// KEEPLACE has no drop shadows: surfaces separate from the ivory canvas with a 1px outline.
-// Kept as an export so existing `...cardShadow` spreads still compile; it now draws the outline.
-export const cardShadow = { borderWidth: 1, borderColor: k.outline } as const;
 
 /** Branded copy — see GUIDELINE.md §4. Tagline is a proposal until the owner confirms it. */
 export const brand = {
