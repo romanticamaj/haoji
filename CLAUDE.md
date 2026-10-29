@@ -91,7 +91,8 @@ Jest (`react-native` preset) with native modules mocked (`jest-setup.js` mocks A
 
 ## Docs
 
-- `docs/spec/` — design specs (MVP, v2 UI/recording/TestFlight, record visuals).
+- `docs/spec/` — design specs (MVP, v2 UI/recording/TestFlight, record visuals). Current UI direction: `2026-10-keeplace-style-redesign.md`.
+- `design/keeplace-style/` — **visual source of truth**: KEEPLACE-style guideline (`GUIDELINE.md`), tokens (`theme.ts`), references, app-icon generator.
 - `docs/plans/` — dated implementation plans (foundation, screens, backend-api, v2 batches).
 - `docs/product-discussion.md` — product wedge and key decisions.
 - `docs/backend-followups.md` — backend TODOs.
