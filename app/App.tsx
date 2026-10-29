@@ -21,11 +21,11 @@ const navTheme: Theme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    background: colors.paper,
-    card: colors.paper,
-    primary: colors.brand,
-    text: colors.ink,
-    border: colors.hairline,
+    background: colors.background,
+    card: colors.background,
+    primary: colors.primary,
+    text: colors.heading,
+    border: colors.outline,
   },
 };
 
@@ -56,12 +56,15 @@ export default function App() {
         <NavigationContainer theme={navTheme} ref={navRef} onReady={() => setNavReady(true)}>
           <Stack.Navigator
             screenOptions={{
+              // KEEPLACE native header: ivory, no shadow, 17/600 heading title, chevron-only back.
               headerShadowVisible: false,
-              headerTintColor: colors.brand,
-              headerStyle: { backgroundColor: colors.paper },
+              headerTintColor: colors.heading,
+              headerStyle: { backgroundColor: colors.background },
+              headerTitleStyle: { fontSize: 17, fontWeight: '600', color: colors.heading },
+              headerBackButtonDisplayMode: 'minimal',
               // Belt-and-suspenders with the theme: the scene container is explicitly paper so there's
               // never an unpainted (black) frame during the slide-in.
-              contentStyle: { backgroundColor: colors.paper },
+              contentStyle: { backgroundColor: colors.background },
               title: '好記',
             }}
           >

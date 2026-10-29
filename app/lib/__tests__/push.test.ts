@@ -13,7 +13,7 @@ test('the tap that launched the app is delivered once JS attaches', async () => 
   const push = require('../push');
   const cb = jest.fn();
   push.onOpen(cb);
-  await new Promise((r) => setTimeout(r, 0));
+  await new Promise<void>((r) => setTimeout(() => r(), 0));
   expect(cb).toHaveBeenCalledWith('local-9');
 });
 
@@ -22,7 +22,7 @@ test('a tap while running arrives as an event; unsubscribing stops delivery', as
   const push = require('../push');
   const cb = jest.fn();
   const off = push.onOpen(cb);
-  await new Promise((r) => setTimeout(r, 0));
+  await new Promise<void>((r) => setTimeout(() => r(), 0));
   expect(cb).not.toHaveBeenCalled();
 
   DeviceEventEmitter.emit('pushOpened', { session: 'local-3' });

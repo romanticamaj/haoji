@@ -22,6 +22,8 @@ const sh = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8' }).trim();
 
 // --- simulator plumbing -----------------------------------------------------------------------
 function bootedDevice() {
+  // Several simulators are often booted at once (other projects/sessions). SIM_DEVICE picks one.
+  if (process.env.SIM_DEVICE) return process.env.SIM_DEVICE;
   const out = sh('xcrun', ['simctl', 'list', 'devices', 'booted']);
   const id = out.match(/\(([0-9A-F-]{36})\) \(Booted\)/)?.[1];
   if (!id) throw new Error('沒有開機的模擬器。先開一台，再跑一次。');

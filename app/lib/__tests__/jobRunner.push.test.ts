@@ -46,6 +46,6 @@ test('a token that is slow to arrive does not stall the job, and is attached onc
   await job;
 
   deliver({ token: 'late', env: 'sandbox' });
-  await new Promise((r) => setTimeout(r, 0));
+  await new Promise<void>((r) => setTimeout(() => r(), 0));
   expect(mockCreateSession).toHaveBeenLastCalledWith('local-1', 1, { token: 'late', env: 'sandbox', title: '週會' });
 });
