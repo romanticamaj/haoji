@@ -84,7 +84,7 @@ export function useImport({ leave }: { leave: 'replace' | 'navigate' }) {
     const uri = asset?.uri || asset?.originalPath; // uri is the tmp copy; fall back to the source path
     if (!uri) {
       setBusyMsg(null);
-      setErr(res.errorMessage || '讀不到這支影片，可能還在 iCloud 裡沒下載，或格式不支援。可以改用「匯入檔案」。');
+      setErr(res.errorMessage || '讀不到這支影片，可能還在 iCloud 裡沒下載，或格式不支援。可以改用「匯入音檔」。');
       return;
     }
     setBusyMsg('準備中…');
@@ -104,7 +104,7 @@ export function useImport({ leave }: { leave: 'replace' | 'navigate' }) {
       return;
     }
     if (!files || files.length === 0) return;
-    setBusyMsg(files.length > 1 ? `讀取 ${files.length} 個檔案中…` : '讀取檔案中…'); setErr(null);
+    setBusyMsg(files.length > 1 ? `正在讀取 ${files.length} 個檔案…` : '正在讀取檔案…'); setErr(null);
     try {
       // The picker hands back security-scoped iOS uris whose access is released once we navigate away
       // — ProcessingScreen then can't read them to upload. Copy them all into the app's cache first,

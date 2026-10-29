@@ -89,7 +89,7 @@ test('gives up instead of polling forever when the backend never reports a resul
   const h = harness(base, [], () => (t += POLL_TIMEOUT_MS));   // every check is "much later"
   await runNotesJob('local-1', {}, h.deps);
   expect(h.session.notesJob?.stage).toBe('error');
-  expect(h.session.notesJob?.error).toMatch(/逾時/);
+  expect(h.session.notesJob?.error).toMatch(/寫太久了/);
 });
 
 test('isNotesActive', () => {

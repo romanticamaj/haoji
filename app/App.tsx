@@ -80,8 +80,8 @@ export default function App() {
             <Stack.Screen name="Record" component={RecordScreen} options={{ title: '錄音' }} />
             <Stack.Screen name="ImportConfirm" component={ImportConfirmScreen} options={{ title: '確認音檔' }} />
             <Stack.Screen name="Review" component={ReviewScreen} options={{ title: '錄音檢視', headerBackVisible: false }} />
-            <Stack.Screen name="Processing" component={ProcessingScreen} options={{ title: '分析中', headerBackVisible: false }} />
-            <Stack.Screen name="Results" component={ResultsScreen} options={{ title: '結果' }} />
+            <Stack.Screen name="Processing" component={ProcessingScreen} options={{ title: '整理中', headerBackVisible: false }} />
+            <Stack.Screen name="Results" component={ResultsScreen} options={{ title: '' }} />
           </Stack.Navigator>
         </NavigationContainer>
       </StoreProvider>

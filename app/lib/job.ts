@@ -56,7 +56,7 @@ export type JobDeps = {
 export const isActive = (j?: Job) => j?.stage === 'uploading' || j?.stage === 'transcribing';
 
 export const newJob = (at: number): Job =>
-  ({ stage: 'uploading', uploaded: 0, pct: 0, message: '準備上傳…', updatedAt: at });
+  ({ stage: 'uploading', uploaded: 0, pct: 0, message: '準備中…', updatedAt: at });
 
 // Overall progress: uploading occupies the first 40%, server-side work the remaining 60%, so the bar
 // never jumps backwards when the stage flips.
@@ -89,7 +89,7 @@ export async function runJob(sessionId: string, d: JobDeps): Promise<void> {
     // 1. Ensure a backend session. Idempotent on the local id, so a retry reuses the same one.
     let backendId = s.backendId;
     if (!backendId) {
-      await patch({ message: '連線後端…' });
+      await patch({ message: '正在連線…' });
       // Declare the part count up front: once they have all landed the backend starts transcription
       // ITSELF, so the pipeline completes even if this app never gets to call /transcribe.
       backendId = await d.createSession(sessionId, (s.parts ?? []).length);
@@ -121,12 +121,12 @@ export async function runJob(sessionId: string, d: JobDeps): Promise<void> {
         }
         await patch({
           stage: 'transcribing', uploaded: parts.length, pct: 0,
-          message: '上傳中（可以離開 App）…', waitingSince: now(),
+          message: '正在傳送錄音…（可以離開 App）', waitingSince: now(),
         });
       } else {
         for (let i = job.uploaded; i < parts.length; i++) {
           if (cancelled()) return;
-          await patch({ pct: parts.length ? i / parts.length : 0, message: `上傳中… ${i + 1}/${parts.length}` });
+          await patch({ pct: parts.length ? i / parts.length : 0, message: `正在傳送錄音… ${i + 1}/${parts.length}` });
           await d.uploadPart(backendId, {
             uri: d.resolveUri(parts[i].uri), name: nameFor(parts[i].uri, i), mime: mimeFor(parts[i].uri),
           }, i);
@@ -135,7 +135,7 @@ export async function runJob(sessionId: string, d: JobDeps): Promise<void> {
         if (cancelled()) return;
         await d.transcribe(backendId);
         // From here the backend finishes on its own — the app can die freely.
-        await patch({ stage: 'transcribing', pct: 0, message: '辨識中…' });
+        await patch({ stage: 'transcribing', pct: 0, message: '正在整理逐字稿…' });
       }
     }
 
@@ -149,19 +149,19 @@ export async function runJob(sessionId: string, d: JobDeps): Promise<void> {
         return;
       }
       if (st.status === 'error') {
-        await patch({ stage: 'error', error: st.error || st.message || '辨識失敗' });
+        await patch({ stage: 'error', error: st.error || st.message || '逐字稿沒有整理完成。' });
         return;
       }
       // Still 'queued' long after the parts were handed to the OS means the transfers never landed
       // (upload failed / backend unreachable). Fail loudly instead of polling forever.
       if (st.status === 'queued' && job.waitingSince && now() - job.waitingSince > UPLOAD_WAIT_TIMEOUT_MS) {
-        await patch({ stage: 'error', error: '上傳未完成，請重試。' });
+        await patch({ stage: 'error', error: '錄音沒有傳送完成，請再試一次。' });
         return;
       }
-      await patch({ pct: st.pct ?? 0, message: st.message || '辨識中…' });
+      await patch({ pct: st.pct ?? 0, message: st.message || '正在整理逐字稿…' });
       await d.delay(1500);
     }
   } catch (e: any) {
-    await patch({ stage: 'error', error: e?.message || '處理失敗' });
+    await patch({ stage: 'error', error: e?.message || '整理沒有完成，請再試一次。' });
   }
 }

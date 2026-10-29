@@ -86,7 +86,7 @@ export async function runNotesJob(
 
     // Only submit when nothing was already running — otherwise just attach and poll.
     if (!wasAlreadyRunning) {
-      await patch({ stage: 'generating', message: '生成會議記錄中…', error: undefined });
+      await patch({ stage: 'generating', message: '正在寫會議記錄…', error: undefined });
       // Send OUR transcript: it carries the user's corrections, and it exists even when the server
       // copy doesn't. Without this the notes were generated from the uncorrected server-side text.
       await d.analyzeInBackground(backendId, {
@@ -97,7 +97,7 @@ export async function runNotesJob(
     while (!cancelled()) {
       // Don't poll forever if the backend never reports anything (e.g. it was restarted mid-run).
       if (now() - startedAt > POLL_TIMEOUT_MS) {
-        await patch({ stage: 'error', error: '生成逾時，請再試一次。' });
+        await patch({ stage: 'error', error: '會議記錄寫太久了，請再試一次。' });
         return;
       }
       let st: SessionStatus | null = null;
@@ -122,7 +122,7 @@ export async function runNotesJob(
         return;
       }
       if (st.notes_status === 'error') {
-        await patch({ stage: 'error', error: st.notes_error || '生成失敗' });
+        await patch({ stage: 'error', error: st.notes_error || '會議記錄沒有寫完，請再試一次。' });
         return;
       }
       // Mirror the backend's stage + progress so the list badge and the tab both reflect reality:
@@ -133,11 +133,11 @@ export async function runNotesJob(
         pct: queued ? undefined : st.notes_pct,
         message: queued
           ? (st.notes_queue_position ? `排隊中…（第 ${st.notes_queue_position} 位）` : '排隊中…')
-          : (st.notes_message || '生成會議記錄中…'),
+          : (st.notes_message || '正在寫會議記錄…'),
       });
       await d.delay(2000);
     }
   } catch (e: any) {
-    await patch({ stage: 'error', error: e?.message || '生成失敗' });
+    await patch({ stage: 'error', error: e?.message || '會議記錄沒有寫完，請再試一次。' });
   }
 }

@@ -167,7 +167,7 @@ test('background upload: gives up if the parts never land instead of polling for
   const h = bgHarness(base, queued, [], () => (t += UPLOAD_WAIT_TIMEOUT_MS));
   await runJob('local-1', h.deps);
   expect(h.session.job?.stage).toBe('error');
-  expect(h.session.job?.error).toMatch(/上傳未完成/);
+  expect(h.session.job?.error).toMatch(/錄音沒有傳送完成/);
 });
 
 test('background upload unavailable → falls back to uploading in the foreground', async () => {

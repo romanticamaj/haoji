@@ -74,7 +74,7 @@ export default function ImportConfirmScreen() {
         const src = chosen[i].uri;
         let rel: string;
         if (isVideo(src) && audioExtract.available) {
-          setBusy(`擷取音訊中… ${i + 1}/${chosen.length}`);
+          setBusy(`正在取出聲音… ${i + 1}/${chosen.length}`);
           const tmp = `${require('react-native-fs').CachesDirectoryPath}/extract-${id}-${i}.m4a`;
           try {
             await audioExtract.extractAudio(fsPath(src), tmp);
@@ -90,7 +90,7 @@ export default function ImportConfirmScreen() {
       await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts });
 
       if (merge && parts.length > 1) {
-        setBusy('合併音檔中…');
+        setBusy('正在合併音檔…');
         const merged = await mergeSessionParts(id, parts);
         if (merged) await store.upsert({ id, createdAt, title, names: {}, unlocked: false, parts: merged });
       }

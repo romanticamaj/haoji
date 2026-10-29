@@ -94,7 +94,7 @@ export default function RecordScreen() {
     // one export — instead of 段 1 / 段 2 / 段 3. Lossless (identical PCM), and if it can't be done
     // the parts simply stay as they were.
     if (parts.length > 1) {
-      setBusyMsg('整理錄音中…');
+      setBusyMsg('正在整理錄音…');
       const merged = await mergeSessionParts(sid, parts);
       if (merged) await persist(merged);
       setBusyMsg(null);

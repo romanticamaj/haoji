@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
 import { ensureJob, restartJob, onJobChange } from '../lib/jobRunner';
 import { overallPct } from '../lib/job';
-import { colors, radius } from '../lib/theme';
+import { AppText } from '../components/AppText';
+import { PrimaryButton, SecondaryButton } from '../components/Buttons';
+import { IconAlert, IconLoader } from '../components/icons';
+import { colors, layout, spacing, tabularNums } from '../lib/theme';
 
 // This screen no longer OWNS the work — it just watches it.
 //
@@ -60,16 +63,16 @@ export default function ProcessingScreen() {
     if (started && job?.stage === 'done' && session) nav.replace('Results', { sessionId, session });
   }, [started, job?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Failure: say what failed, what is still safe, and what to do (GUIDELINE §5.5).
   if (started && job?.stage === 'error') return (
     <View style={styles.center}>
-      <Text style={styles.err}>{job.error || '處理失敗'}</Text>
-      <View style={styles.errActions}>
-        <Pressable style={styles.retry} onPress={() => void restartJob(sessionId, store)} accessibilityRole="button">
-          <Text style={styles.retryText}>重試</Text>
-        </Pressable>
-        <Pressable style={styles.back} onPress={() => nav.popToTop()} accessibilityRole="button">
-          <Text style={styles.backText}>返回</Text>
-        </Pressable>
+      <View style={styles.iconCircle}><IconAlert size={28} /></View>
+      <AppText variant="section" color="heading" accessibilityRole="header">逐字稿沒有整理完成</AppText>
+      <AppText variant="body" color="muted" style={styles.centerText}>錄音還在手機上，沒有不見。</AppText>
+      {!!job.error && <AppText variant="small" color="muted" style={styles.centerText}>{job.error}</AppText>}
+      <View style={styles.actions}>
+        <PrimaryButton label="重試" onPress={() => void restartJob(sessionId, store)} />
+        <SecondaryButton label="返回" onPress={() => nav.popToTop()} />
       </View>
     </View>
   );
@@ -77,37 +80,38 @@ export default function ProcessingScreen() {
   const pct = job ? Math.round(overallPct(job) * 100) : 0;
   return (
     <View style={styles.center}>
-      <ActivityIndicator size="large" color={colors.brand} />
-      <Text style={styles.msg}>{job?.message || '準備中…'}</Text>
-      <View style={styles.barTrack}><View style={[styles.barFill, { width: `${pct}%` }]} /></View>
-      <Text style={styles.pct}>{pct}%</Text>
+      <View style={styles.iconCircle}><IconLoader size={28} color={colors.primaryDark} /></View>
+      <AppText variant="section" color="heading" accessibilityRole="header">正在整理逐字稿…</AppText>
+      <AppText variant="small" color="muted">{job?.message || '準備中…'}</AppText>
+      <View style={styles.barTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: pct }}>
+        <View style={[styles.barFill, { width: `${pct}%` }]} />
+      </View>
+      <AppText variant="small" color="muted" style={tabularNums}>{pct}%</AppText>
 
-      <Text style={styles.note}>
+      <AppText variant="body" color="muted" style={[styles.centerText, styles.note]}>
         {job?.stage === 'transcribing'
-          ? '已送出給後端處理，離開 App 也會繼續。'
-          : '上傳完成後就會在後端繼續處理。'}
-      </Text>
-      <Pressable style={styles.bg} onPress={() => nav.popToTop()} accessibilityRole="button">
-        <Text style={styles.bgText}>在背景繼續</Text>
-      </Pressable>
+          ? '已開始整理，離開 App 也會繼續。完成後會通知你。'
+          : '上傳完成後會自己繼續整理，不用一直開著 App。'}
+      </AppText>
+      <SecondaryButton label="在背景繼續" onPress={() => nav.popToTop()} style={styles.bg} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, padding: 24 },
-  msg: { marginTop: 16, color: colors.ink2, fontSize: 15 },
-  barTrack: { width: '78%', height: 6, borderRadius: 3, backgroundColor: colors.chipBg, marginTop: 16, overflow: 'hidden' },
-  barFill: { height: 6, borderRadius: 3, backgroundColor: colors.brand },
-  pct: { marginTop: 8, fontSize: 12.5, color: colors.ink3, fontVariant: ['tabular-nums'] },
-  note: { marginTop: 22, fontSize: 12.5, color: colors.ink3, textAlign: 'center', lineHeight: 18 },
-  bg: { marginTop: 12, paddingVertical: 10, paddingHorizontal: 22, borderRadius: radius.pill, backgroundColor: colors.chipBg },
-  bgText: { color: colors.ink, fontSize: 14, fontWeight: '600' },
-
-  err: { color: colors.brand, fontSize: 16, textAlign: 'center' },
-  errActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  retry: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: colors.brand },
-  retryText: { color: '#fff', fontWeight: '700' },
-  back: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 20, backgroundColor: colors.chipBg },
-  backText: { color: colors.ink, fontWeight: '600' },
+  // EmptyState-like centre layout: 72 circle + section title + muted description.
+  center: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background,
+    paddingHorizontal: layout.screenPaddingH * 2, gap: spacing.md,
+  },
+  iconCircle: {
+    width: 72, height: 72, borderRadius: 36, backgroundColor: colors.surface,
+    borderWidth: layout.border, borderColor: colors.outline, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm,
+  },
+  centerText: { textAlign: 'center' },
+  barTrack: { width: '100%', height: 4, borderRadius: 2, backgroundColor: colors.outline, marginTop: spacing.sm, overflow: 'hidden' },
+  barFill: { height: 4, borderRadius: 2, backgroundColor: colors.primary },
+  note: { marginTop: spacing.md },
+  bg: { alignSelf: 'stretch', marginTop: spacing.sm },
+  actions: { alignSelf: 'stretch', gap: spacing.md, marginTop: spacing.lg },
 });

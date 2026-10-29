@@ -10,7 +10,8 @@ async function timedFetch(url: string, opts: RequestInit, ms: number): Promise<R
   try {
     return await fetch(url, { ...opts, signal: ctrl.signal });
   } catch (e: any) {
-    if (e?.name === 'AbortError') throw new Error('連線逾時，請確認後端是否正常、手機是否連上 Tailscale。');
+    if (e?.name === 'AbortError') // Plain words, but keep the one hint that actually helps: the phone reaches the box over Tailscale.
+    throw new Error('連不到整理用的電腦。確認網路（Tailscale）有連上後，再試一次。');
     throw e;
   } finally {
     clearTimeout(timer);
@@ -19,7 +20,7 @@ async function timedFetch(url: string, opts: RequestInit, ms: number): Promise<R
 
 async function asJson(res: Response) {
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((body as any).error || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error((body as any).error || `整理用的電腦沒有回應（${res.status}），請再試一次。`);
   return body;
 }
 
