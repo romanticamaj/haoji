@@ -1,5 +1,7 @@
-import fs from 'fs';
-import path from 'path';
+// Jest runs in Node, but this RN project ships no Node type declarations — type just what we use.
+declare const __dirname: string;
+const fs: { readdirSync(p: string): string[]; readFileSync(p: string, enc: 'utf8'): string } = require('fs');
+const path: { join(...p: string[]): string; relative(from: string, to: string): string } = require('path');
 
 // GUIDELINE §2 / spec step 6: colours come from lib/theme.ts tokens only. A hex or rgba literal in a
 // screen or component is how the old palette crept back in, so keep the UI code free of them.
