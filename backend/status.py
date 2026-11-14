@@ -7,6 +7,7 @@ server facts. Probes are cached STATUS_TTL seconds so polling from several clien
 counts are live."""
 import os, shutil, sqlite3, subprocess, tempfile, threading, time
 import requests
+from urllib.parse import urlparse
 from fastapi import APIRouter, Request
 import asr, auth, config, errors, jobs, settings
 
@@ -42,6 +43,14 @@ def _ffmpeg_ok():
     return bool(path), path or config.FFMPEG
 
 
+def redact(url):
+    """Drop user:password@ from a URL before it is shown anywhere."""
+    p = urlparse(url or "")
+    if p.username or p.password:
+        return p._replace(netloc=p.hostname + (f":{p.port}" if p.port else "")).geturl()
+    return url
+
+
 def _check(id_, ok, label, hint="", message=""):
     return {"id": id_, "ok": bool(ok), "label": label, "hint": "" if ok else hint, "message": message}
 
@@ -56,7 +65,7 @@ def _probe():
         checks.append(_check("data_writable", True, "資料夾可寫入", message=config.DATA_DIR))
     except Exception as e:
         checks.append(_check("data_writable", False, "資料夾可寫入",
-                             f"確認 {config.DATA_DIR} 存在且可寫入（Docker 的 data volume）。", str(e)))
+                             "確認 DATA_DIR 存在且可寫入（Docker 的 data volume）。", str(e)))
     # sqlite
     try:
         with sqlite3.connect(config.DB_PATH) as c:
@@ -85,14 +94,14 @@ def _probe():
     except Exception:
         pass
     checks.append(_check("ollama", reachable, "Ollama",
-                         f"連不到 {llm_base}。確認 ollama 容器在跑，或到「連線」頁修改網址"
+                         "連不到 Ollama。確認 ollama 容器在跑，或到管理頁「連線」修改網址"
                          "（由 OLLAMA_BASE_URL 設定時要改 .env）。",
-                         f"{version} · {llm_base}" if reachable else llm_base))
+                         f"{version} · {redact(llm_base)}" if reachable else redact(llm_base)))
     has_model = reachable and model in names
     checks.append(_check("llm_model", has_model, "會議記錄模型",
                          f"到「模型」頁下載 {model}，或改選已安裝的模型。" if reachable
                          else "先讓 Ollama 連得上。", model))
-    return {"checks": checks, "llm": {"model": model, "reachable": reachable, "base_url": llm_base,
+    return {"checks": checks, "llm": {"model": model, "reachable": reachable, "base_url": redact(llm_base),
                                       "provider": settings.get("llm_provider")},
             "asr": {"base_url": base or "", "health": health or {}}}
 

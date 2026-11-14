@@ -129,3 +129,22 @@ def test_queue_counts_reflected(env):
 def test_pairing_required_flag(env, monkeypatch):
     monkeypatch.setenv("HAOJI_REQUIRE_TOKEN", "1")
     assert TestClient(appmod.app).get("/api/status").json()["pairing_required"] is True
+
+
+def test_public_status_leaks_no_urls_or_paths(env, monkeypatch, tmp_path):
+    settings.set("ollama_base_url", "http://user:pw@10.9.8.7:11434")
+    def down(url, timeout=None, **kw): raise requests.ConnectionError("refused")
+    monkeypatch.setattr(status.requests, "get", down)
+    monkeypatch.setattr(status.asr, "quick_probe", lambda: (None, None))
+    blob = json.dumps(TestClient(appmod.app).get("/api/status").json(), ensure_ascii=False)
+    for secret in ("10.9.8.7", "user:pw", str(tmp_path), "breeze-asr:7765"):
+        assert secret not in blob
+
+
+def test_detail_redacts_userinfo(env):
+    settings.set("ollama_base_url", "http://user:pw@10.9.8.7:11434")
+    status.clear_cache()
+    j = TestClient(appmod.app).get("/api/status?detail=1",
+                                   headers={"Authorization": f"Bearer {auth.admin_token()}"}).json()
+    blob = json.dumps(j)
+    assert "user:pw" not in blob and "10.9.8.7" in blob
