@@ -14,6 +14,7 @@ import { AppText } from '../components/AppText';
 import { IconImage, IconFile, IconMic, IconStop, IconPause, IconPlay } from '../components/icons';
 import { colors, layout, radius, spacing, tabularNums, typography } from '../lib/theme';
 import { haptic } from '../lib/haptics';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 // Recording is local-first: the session id is generated on-device so the record button is never
 // gated on a backend round-trip (the GPU box is often unreachable from the phone unless Tailscale
@@ -120,13 +121,15 @@ export default function RecordScreen() {
   // Android back mid-take asks first. 結束 is exactly the stop button (onStop → rec.stop(), which
   // finalizes the part per useRecorder's C1/I2 ordering, then saves and opens Review) — back never
   // drops a take on the floor. Idle → back is left to navigation.
-  useAndroidBack(() => {
+  function confirmLeave() {
     Alert.alert('要結束這段錄音嗎？', '錄好的部分會留在手機上。', [
       { text: '繼續錄音', style: 'cancel' },
       { text: '結束', onPress: () => { void onStop(); } },
     ]);
-    return true;
-  }, isRec || isPaused);
+  }
+  useAndroidBack(() => { confirmLeave(); return true; }, isRec || isPaused);
+  // The header's back asks the same question on both platforms; idle just goes back.
+  const onHeaderBack = () => { if (isRec || isPaused) confirmLeave(); else nav.goBack(); };
 
   if (busyMsg) {
     return (
@@ -144,7 +147,9 @@ export default function RecordScreen() {
   const permissionDenied = !!rec.error && /麥克風權限/.test(rec.error);
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom + spacing.xl }]}>
+    <View style={[styles.screen, { paddingBottom: insets.bottom + spacing.xl }]}>
+      <ScreenHeader title="錄音" onBack={onHeaderBack} />
+      <View style={styles.container}>
       {/* status + timer */}
       <View style={styles.header}>
         <View style={styles.status}>
@@ -287,6 +292,7 @@ export default function RecordScreen() {
 
         {err && <AppText variant="small" color="danger" style={styles.err}>{err}</AppText>}
       </View>
+      </View>
     </View>
   );
 }
@@ -294,6 +300,7 @@ export default function RecordScreen() {
 const RECORD_SIZE = 72;
 const PAUSE_SIZE = 52;
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: layout.screenPaddingH },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   busy: { marginTop: spacing.md },

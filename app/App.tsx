@@ -103,7 +103,7 @@ export default function App() {
               component={HomeScreen}
               options={{ headerTransparent: true, headerTitle: '', headerStyle: { backgroundColor: 'transparent' } }}
             />
-            <Stack.Screen name="Record" component={RecordScreen} options={{ title: '錄音' }} />
+            <Stack.Screen name="Record" component={RecordScreen} options={{ title: '錄音', headerShown: false }} />
             <Stack.Screen name="ImportConfirm" component={ImportConfirmScreen} options={{ title: '確認音檔' }} />
             {/* Review, Processing, Settings and Pair draw the flat ScreenHeader themselves (no native glass
                 back button, no shadow); Review and Processing have no back. */}

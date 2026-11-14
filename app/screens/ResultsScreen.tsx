@@ -228,7 +228,8 @@ export default function ResultsScreen() {
           </View>
           {hasParts && (
             // Local only: the player never depends on the server, so it works offline and unpaired.
-            <View style={{ paddingBottom: insets.bottom }}>
+            // The dock's surface runs under the home indicator (surface, not canvas, below the bar).
+            <View style={{ paddingBottom: insets.bottom, backgroundColor: colors.surface }}>
               <MiniPlayer
                 playing={player.playing}
                 positionMs={playheadMs}

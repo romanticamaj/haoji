@@ -92,6 +92,34 @@ describe('Record', () => {
   });
 });
 
+// The header back button asks the same question on both platforms (#32 follow-up: Record had the
+// native glass back button, the last shadow in the app, and it left a take without asking).
+describe('Record header', () => {
+  test('uses the flat ScreenHeader titled 錄音', async () => {
+    const { getByTestId, getByText } = await render(<RecordScreen />);
+    expect(getByTestId('screen-header')).toBeTruthy();
+    expect(getByText('錄音')).toBeTruthy();
+  });
+
+  test('back while idle just goes back', async () => {
+    const { getByLabelText } = await render(<RecordScreen />);
+    const { fireEvent } = require('@testing-library/react-native');
+    fireEvent.press(getByLabelText('返回'));
+    expect(mockNav.goBack).toHaveBeenCalled();
+  });
+
+  test.each(['ios', 'android'])('on %s, back mid-take asks 「要結束這段錄音嗎？」 first', async (os) => {
+    jest.replaceProperty(Platform, 'OS', os as any);
+    mockRecApi.state = 'recording';
+    const alert = jest.spyOn(Alert, 'alert');
+    const { getByLabelText } = await render(<RecordScreen />);
+    const { fireEvent } = require('@testing-library/react-native');
+    fireEvent.press(getByLabelText('返回'));
+    expect(alert.mock.calls[0][0]).toBe('要結束這段錄音嗎？');
+    expect(mockNav.goBack).not.toHaveBeenCalled();
+  });
+});
+
 describe('Processing', () => {
   test('back goes Home instead of to the screen that started the job', async () => {
     mockRoute.params = { sessionId: 's1' };
