@@ -12,6 +12,7 @@ import BreathingRing from '../components/BreathingRing';
 import { AppText } from '../components/AppText';
 import { IconImage, IconFile, IconMic, IconStop, IconPause, IconPlay } from '../components/icons';
 import { colors, layout, radius, spacing, tabularNums, typography } from '../lib/theme';
+import { haptic } from '../lib/haptics';
 
 // Recording is local-first: the session id is generated on-device so the record button is never
 // gated on a backend round-trip (the GPU box is often unreachable from the phone unless Tailscale
@@ -84,7 +85,14 @@ export default function RecordScreen() {
   // and the launch-time recovery scan backfills anything that wasn't stored yet.
   useEffect(() => { if (rec.parts.length > 0) void persist(rec.parts); }, [rec.parts, persist]);
 
+  function onStart() { haptic('recordStart'); rec.start(); }
+  function onPauseResume() {
+    haptic('pause');
+    if (rec.state === 'paused') rec.resume(); else rec.pause();
+  }
+
   async function onStop() {
+    haptic('recordStop');
     const parts = await rec.stop();
     // Nothing was captured (opened + left, or a zero-length take) → don't create an empty record.
     if (parts.length === 0) { nav.goBack(); return; }
@@ -161,7 +169,7 @@ export default function RecordScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={isPaused ? '繼續錄音' : '暫停錄音'}
-              onPress={isPaused ? rec.resume : rec.pause}
+              onPress={onPauseResume}
               style={({ pressed }) => [styles.side, pressed && styles.pressedIcon]}
             >
               <View style={styles.pauseBtn}>
@@ -178,7 +186,7 @@ export default function RecordScreen() {
               accessibilityLabel={stopMode ? '停止錄音' : '開始錄音'}
               accessibilityState={{ busy: isStarting || loading, disabled: !sid || isStarting || loading }}
               style={({ pressed }) => [styles.recordBtn, pressed && styles.pressedFill]}
-              onPress={stopMode ? onStop : rec.start}
+              onPress={stopMode ? onStop : onStart}
               disabled={!sid || isStarting || loading}
             >
               {isStarting

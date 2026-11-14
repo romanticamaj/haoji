@@ -13,6 +13,7 @@ import { TranscribeButton } from '../components/TranscribeButton';
 import { StageRow } from '../components/StageRow';
 import { IconAlert, IconLoader } from '../components/icons';
 import { colors, layout, spacing, tabularNums } from '../lib/theme';
+import { haptic } from '../lib/haptics';
 
 // This screen no longer OWNS the work — it just watches it.
 //
@@ -67,7 +68,10 @@ export default function ProcessingScreen() {
   // Finished while we were watching → go straight to the result. Only ever act on a stage produced
   // by this visit (see `started`), never on one left over from a previous analysis.
   useEffect(() => {
-    if (started && job?.stage === 'done' && session) nav.replace('Results', { sessionId, session });
+    if (started && job?.stage === 'done' && session) {
+      haptic('ready');
+      nav.replace('Results', { sessionId, session });
+    }
   }, [started, job?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Failure: say what failed, what is still safe, and what to do (GUIDELINE §5.5).
