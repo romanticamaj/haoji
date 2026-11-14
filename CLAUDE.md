@@ -48,7 +48,7 @@ python -m pytest -q
 python -m pytest tests/test_parts.py -q  # single file
 ```
 
-`react-native-config` (`.env` → `Config.API_BASE`) selects the backend URL, read in `app/lib/config.ts` (fallback = Tailscale IP so TestFlight works without `.env` wiring). The iOS ATS exception (`ios/Haoji/Info.plist`) and Android `network_security_config.xml` are pinned to the Tailscale + LAN IPs — keep them in sync if those change. Signing/TestFlight config lives in `ios/fastlane/`.
+The server is chosen at runtime: `app/lib/server.ts` holds the paired server (URL + token, AsyncStorage, set via the `haoji://pair?url=…&token=…` link or the Pair screen). Precedence: paired URL → build-time `Config.API_BASE` (`.env`, read in `app/lib/config.ts`, no hardcoded fallback) → `null` = unpaired (recording still works; server actions show 連接主機). `api.ts` resolves the base and Bearer header on every call. Because a self-hosted server can live at any address, iOS ATS allows arbitrary loads and Android permits cleartext. Signing/TestFlight config lives in `ios/fastlane/`.
 
 ## Backend architecture (v2 "parts" flow)
 

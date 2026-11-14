@@ -15,8 +15,9 @@ export type RootStackParamList = {
   Results: { sessionId: string; session?: SavedSession };
   // Server connection + status, privacy, about.
   Settings: undefined;
-  // Connect to a server. url/token arrive prefilled from a haoji://pair link.
-  Pair: { url?: string; token?: string } | undefined;
+  // Connect to a server. url/token arrive prefilled from a haoji://pair link; `error` when the link
+  // was not a valid pair link (see lib/linking.ts).
+  Pair: { url?: string; token?: string; error?: string } | undefined;
   // First-run cards; shown once, only when not onboarded and not paired.
   Onboarding: undefined;
 };
