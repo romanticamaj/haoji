@@ -292,7 +292,8 @@ export default function TranscriptTab(
                   onLongPress={() => beginEdit(i, p.text)}
                   delayLongPress={280}
                   accessibilityRole="button"
-                  accessibilityLabel={`跳到 ${mmss(p.start)} 播放，長按可修改文字`}
+                  accessibilityLabel={p.text}
+                  accessibilityHint={`點兩下從 ${mmss(p.start)} 播放，長按可修改文字`}
                   // VoiceOver / TalkBack: the rotor offers 從這裡播放 and 修改文字 by name.
                   accessibilityActions={[{ name: 'activate', label: '從這裡播放' }, { name: 'longpress', label: '修改文字' }]}
                   onAccessibilityAction={(e) => {

@@ -1,0 +1,1 @@
+/Users/gary.hsieh/garysrc/haoji/app/android/app/build/intermediates/cxx/RelWithDebInfo/2r11f4p2/obj/x86_64

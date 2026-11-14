@@ -14,6 +14,7 @@ import { AppText } from '../components/AppText';
 import { IconImage, IconFile, IconMic, IconStop, IconPause, IconPlay } from '../components/icons';
 import { colors, layout, radius, spacing, tabularNums, typography } from '../lib/theme';
 import { haptic } from '../lib/haptics';
+import { zhDateTime } from '../lib/dateFormat';
 import { ScreenHeader } from '../components/ScreenHeader';
 
 // Recording is local-first: the session id is generated on-device so the record button is never
@@ -67,7 +68,7 @@ export default function RecordScreen() {
   const insets = useSafeAreaInsets();
 
   // Stable session metadata so the incremental saves and the final save all agree on id/date/title.
-  const [meta] = useState(() => ({ createdAt: Date.now(), title: new Date().toLocaleString() }));
+  const [meta] = useState(() => ({ createdAt: Date.now(), title: zhDateTime(Date.now()) }));
   // MERGE, don't overwrite: appending to an existing meeting must keep its title, transcript, notes
   // and speaker names — a plain upsert here would wipe them.
   const persist = useCallback(async (parts: { uri: string; durationMs: number }[]) => {

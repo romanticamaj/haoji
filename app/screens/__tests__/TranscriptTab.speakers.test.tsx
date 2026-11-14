@@ -102,3 +102,13 @@ test('transcript text may grow to the content ceiling; chrome stops at the chrom
   expect(within(getByTestId('turn-head-SPEAKER_00')).getByText('00:00').props.maxFontSizeMultiplier).toBe(fontScale.chrome);
   expect(within(getByTestId('turn-head-SPEAKER_00')).getByText(/點一下命名/).props.maxFontSizeMultiplier).toBe(fontScale.chrome);
 });
+
+// Found by the Maestro flow: each turn's accessibility label was 「跳到 00:00 播放，長按可修改文字」,
+// which REPLACED the words — a screen-reader user heard the instruction on every paragraph and
+// never what was said. The label is the content; the instruction is the hint.
+test('a transcript turn reads its words; the play/edit instruction is the hint', async () => {
+  const { getByTestId } = await render(<TranscriptTab session={session} onUpdate={() => {}} />);
+  const body = getByTestId('turn-body-1');
+  expect(body.props.accessibilityLabel).toBe('第二段');
+  expect(body.props.accessibilityHint).toBe('點兩下從 00:02 播放，長按可修改文字');
+});

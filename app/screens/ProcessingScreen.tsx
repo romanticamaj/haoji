@@ -15,6 +15,7 @@ import { TranscribeButton } from '../components/TranscribeButton';
 import { StageRow } from '../components/StageRow';
 import { IconAlert, IconLoader } from '../components/icons';
 import { colors, layout, spacing, tabularNums } from '../lib/theme';
+import { zhDateTime } from '../lib/dateFormat';
 import { haptic } from '../lib/haptics';
 
 // This screen no longer OWNS the work — it just watches it.
@@ -56,7 +57,7 @@ export default function ProcessingScreen() {
       // against a missing record — create a minimal one so the pipeline has something to write to.
       if (!(await store.get(sessionId))) {
         await store.upsert({
-          id: sessionId, createdAt: Date.now(), title: new Date().toLocaleString(),
+          id: sessionId, createdAt: Date.now(), title: zhDateTime(Date.now()),
           names: {}, unlocked: false, parts: [],
         });
       }

@@ -219,3 +219,15 @@ test('before recording starts, an appended meeting shows what it already holds',
   const { findByText } = await render(<RecordScreen />);
   await findByText('00:33');
 });
+
+// Seen in Results on the simulator: new meetings were titled 「11/14/2026 下午12:51:21」 — the JS
+// engine's en-US date with a Chinese AM/PM. Titles the app writes itself use the zh-TW formatter.
+test('a new meeting is titled with a zh-TW date, never an en-US stamp', async () => {
+  (pick as jest.Mock).mockResolvedValueOnce([{ uri: 'file:///u.m4a', name: 'u.m4a', type: 'audio/mp4' }]);
+  const { getByText } = await render(<RecordScreen />);
+  fireEvent.press(getByText('匯入音檔（可多選）'));
+  await waitFor(() => expect(mockStore.upsert).toHaveBeenCalled());
+  const title = mockStore.upsert.mock.calls[0][0].title as string;
+  expect(title).toMatch(/^\d{1,2}月\d{1,2}日/);
+  expect(title).not.toMatch(/\d+\/\d+\/\d{4}/);
+});

@@ -2,7 +2,8 @@
 appId: com.garyhsieh.haoji
 ---
 - launchApp
-- tapOn: "搜尋會議"
+- tapOn:
+    id: "home-search-toggle"
 - inputText: "時程"
 - extendedWaitUntil:
     visible: ".*時程.*"
