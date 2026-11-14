@@ -1,5 +1,5 @@
 import Config from 'react-native-config';
-// Backend base URL, injected per build scheme via react-native-config (.env). The fallback is
-// the Tailscale IP (not localhost) so a release/TestFlight build reaches the GPU-box backend
-// even if .env isn't wired into the native build. Override locally by editing .env.
-export const API_BASE: string = Config.API_BASE ?? 'http://100.106.118.45:7780';
+// Build-time default server, injected per build scheme via react-native-config (.env). There is no
+// hardcoded fallback: a build without API_BASE starts unpaired and the person connects to their own
+// server at runtime (lib/server.ts). A paired server always wins over this default.
+export const API_BASE: string | null = Config.API_BASE || null;

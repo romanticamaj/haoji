@@ -5,7 +5,9 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 // reanimated must be mocked in jest (native module unavailable)
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
 
-// react-native-config is a native module; give tests a default backend base URL
+// react-native-config is a native module; give tests a default backend base URL. This is the build-time
+// default in lib/server.ts's precedence (paired URL → API_BASE → null); unpaired tests override it with
+// jest.replaceProperty(require('../lib/config'), 'API_BASE', null).
 jest.mock('react-native-config', () => ({ API_BASE: 'http://127.0.0.1:7780' }));
 
 // react-native-fs constructs a NativeEventEmitter at import → crashes in jest without a

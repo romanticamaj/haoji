@@ -5,6 +5,7 @@ import { SessionStore } from './store';
 import { runJob, isActive } from './job';
 import { runNotesJob, isNotesActive } from './notesJob';
 import * as push from './push';
+import { authHeaders } from './server';
 
 // Process-wide registry of in-flight transcription jobs.
 //
@@ -43,7 +44,7 @@ export function ensureJob(sessionId: string, store: SessionStore): Promise<void>
     // When the OS uploader is available the transfers survive the app being swiped away.
     bg: {
       available: bgUpload.available,
-      enqueue: bgUpload.enqueue,
+      enqueue: async (url, fileUri, taskId) => bgUpload.enqueue(url, fileUri, taskId, await authHeaders()),
       pendingTasks: bgUpload.pendingTasks,
       partUrl: api.partPutUrl,
     },

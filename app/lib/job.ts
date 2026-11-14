@@ -49,7 +49,8 @@ export type JobDeps = {
     available: boolean;
     enqueue(url: string, fileUri: string, taskId: string): Promise<void>;
     pendingTasks(): Promise<string[]>;
-    partUrl(backendId: string, index: number): string;
+    // May be async: the server is resolved at runtime (lib/server.ts), same base as every api call.
+    partUrl(backendId: string, index: number): string | Promise<string>;
   };
 };
 
@@ -117,7 +118,7 @@ export async function runJob(sessionId: string, d: JobDeps): Promise<void> {
           if (cancelled()) return;
           const taskId = `${sessionId}:${i}`;
           if (pending.includes(taskId)) continue;   // already in the OS queue — never queue it twice
-          await d.bg.enqueue(d.bg.partUrl(backendId, i), d.resolveUri(parts[i].uri), taskId);
+          await d.bg.enqueue(await d.bg.partUrl(backendId, i), d.resolveUri(parts[i].uri), taskId);
         }
         await patch({
           stage: 'transcribing', uploaded: parts.length, pct: 0,
