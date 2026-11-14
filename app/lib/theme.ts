@@ -76,6 +76,12 @@ export const typography = {
 
 export const motion = { maxDurationMs: 250 } as const;
 
+/**
+ * Dynamic Type ceilings (`maxFontSizeMultiplier`). Chrome (headers, tabs, chips, timestamps) stops at
+ * 1.3× so buttons stay on screen; content (the transcript, the notes) may grow to 1.6×.
+ */
+export const fontScale = { chrome: 1.3, content: 1.6 } as const;
+
 // Apply to any Text that shows times/durations so digits line up.
 export const tabularNums = { fontVariant: ['tabular-nums' as const] };
 

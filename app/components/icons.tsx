@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  AudioLines, Check, ChevronDown, ChevronRight, ChevronUp, CircleAlert, Copy, FileAudio, FileText,
+  AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleAlert, Copy, Ellipsis, FileAudio, FileText,
   GripVertical, Image, Loader, Lock, Mic, NotebookPen, Pause, Pencil, Play, RotateCcw, RotateCw,
   Search, Share, Square, SquareCheck, Trash2, Undo2, UserRound, UsersRound, X, type LucideIcon,
 } from 'lucide-react-native';
@@ -46,6 +46,8 @@ export const IconGrip = make(GripVertical, colors.muted);
 export const IconChevronUp = make(ChevronUp, colors.heading);
 export const IconChevronDown = make(ChevronDown, colors.heading);
 export const IconChevronRight = make(ChevronRight, colors.muted);
+export const IconChevronLeft = make(ChevronLeft, colors.heading);
+export const IconMore = make(Ellipsis, colors.heading);
 export const IconMic = make(Mic, colors.onPrimary);
 export const IconStop = make(Square, colors.onPrimary, { fill: true });
 export const IconUndo = make(Undo2, colors.heading);
