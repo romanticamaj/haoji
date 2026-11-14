@@ -112,6 +112,50 @@ class OllamaProvider:
         return "".join(parts)
 
 
-_PROVIDERS = {"ollama": OllamaProvider()}
+def _clean(content):
+    if "</think>" in content:
+        content = content.rsplit("</think>", 1)[-1]
+    return to_traditional(re.sub(r"<think>.*?</think>", "", content, flags=re.S).strip())
+
+
+class OpenAICompatProvider:
+    """Any OpenAI-compatible /v1/chat/completions endpoint (DeepInfra, OpenRouter, vLLM, LM Studio,
+    Ollama's own /v1). The "cloud API" deployment profile in docs/system-design-note.md: drop the
+    ollama container and roughly halve the GPU requirement. Same prompt, same cleanup."""
+    name = "openai"
+
+    def generate_meeting_notes(self, transcript, model=None, on_progress=None):
+        base = (settings.get("openai_base_url") or "").rstrip("/")
+        if not base:
+            raise RuntimeError("還沒設定 OpenAI 相容 API 的網址（OPENAI_BASE_URL）。")
+        url = base + ("/chat/completions" if base.endswith("/v1") or "/v1/" in base + "/" else "/v1/chat/completions")
+        headers = {"Content-Type": "application/json"}
+        key = settings.get("openai_api_key")
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        payload = {"model": model or settings.llm_model(), "temperature": 0.3,
+                   "max_tokens": config.LLM_OUTPUT_TOKENS,
+                   "messages": [{"role": "system", "content": MEETING_NOTES_PROMPT},
+                                {"role": "user", "content": transcript}]}
+        try:
+            r = requests.post(url, json=payload, headers=headers, timeout=config.LLM_TIMEOUT)
+            r.raise_for_status()
+            content = ((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"會議記錄 API 請求失敗：{e}")
+        if on_progress:
+            try:
+                on_progress(len(content))
+            except Exception:
+                pass
+        return _clean(content)
+
+
+_PROVIDERS = {"ollama": OllamaProvider(), "openai": OpenAICompatProvider()}
 def get_provider(name="ollama"):
     return _PROVIDERS.get(name) or _PROVIDERS["ollama"]
+
+
+def active_provider():
+    """The provider the operator selected in settings (LLM_PROVIDER env or the console)."""
+    return get_provider(settings.get("llm_provider"))

@@ -144,16 +144,18 @@ def mark_fetched(sid, now):
 
 
 def purge_expired(now, ttl_s):
-    """Blank the transcript and notes of finished sessions older than ttl_s (the row stays so a late
-    client gets status "expired" instead of 404). ttl_s == 0 means "as soon as the phone has collected
-    it": only rows with fetched_at set are purged. Never touches a session whose notes are still being
-    generated. Returns how many rows were purged."""
-    busy = "COALESCE(notes_status,'') NOT IN ('queued','running')"
+    """Blank the transcript and notes of sessions older than ttl_s (the row stays so a late client
+    gets status "expired" instead of 404). ttl_s == 0 means "as soon as the phone has collected it":
+    only rows with fetched_at set are purged. Selection is by *content still present*, not by status,
+    so notes that land on an already-expired row are swept on the next pass. Never touches a session
+    still transcribing or whose notes are still being generated. Returns rows purged."""
+    keep = ("status NOT IN ('queued','running') AND COALESCE(notes_status,'') NOT IN ('queued','running') "
+            "AND (transcript IS NOT NULL OR notes IS NOT NULL)")
     with _conn() as c:
         if ttl_s <= 0:
             q = (f"UPDATE sessions SET transcript=NULL, notes=NULL, status='expired', message='' "
-                 f"WHERE status IN ('done','error') AND fetched_at IS NOT NULL AND fetched_at <= ? AND {busy}")
+                 f"WHERE fetched_at IS NOT NULL AND fetched_at <= ? AND {keep}")
             return c.execute(q, (now,)).rowcount
         q = (f"UPDATE sessions SET transcript=NULL, notes=NULL, status='expired', message='' "
-             f"WHERE status IN ('done','error') AND created < ? AND {busy}")
+             f"WHERE created < ? AND {keep}")
         return c.execute(q, (now - ttl_s,)).rowcount

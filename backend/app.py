@@ -265,10 +265,11 @@ def _run_analyze(sid, text, model_arg, model_label):
     try:
         sessions.update_session(sid, notes_status="running", notes_pct=0.0, notes_message="生成中…")
         threading.Thread(target=_tick, daemon=True, name=f"notes-tick-{sid}").start()
-        notes = llm.get_provider("ollama").generate_meeting_notes(
+        notes = llm.active_provider().generate_meeting_notes(
             text, model=model_arg, on_progress=on_progress)
+        # fetched_at reset: with retention 0 the row must survive until the phone collects the notes.
         sessions.update_session(sid, notes=notes, notes_status="done", notes_error=None,
-                                notes_pct=1.0, notes_message="完成")
+                                notes_pct=1.0, notes_message="完成", fetched_at=None)
         log.info("[%s] analyze(bg) done: %d chars notes, took %.0fs", sid, len(notes), time.time() - t0)
         jobs.finish(sid, "analyze", ok=True)
     except Exception as e:
@@ -419,6 +420,8 @@ def session_status(sid: str):
     # collect the finished result on its next run instead of re-running the LLM.
     if s.get("notes"):
         out["notes"] = s["notes"]
+        if s.get("notes_status") in (None, "done"):
+            sessions.mark_fetched(sid, time.time())
     if s.get("notes_status"):
         out["notes_status"] = s["notes_status"]
     if s.get("notes_error"):
@@ -435,7 +438,14 @@ def session_status(sid: str):
 
 @app.delete("/api/sessions/{sid}")
 def delete_session(sid: str):
-    """The phone deleted this meeting: drop the server copy too (parts are already gone)."""
+    """The phone deleted this meeting: drop the server copy too, including any part files still on
+    disk (an upload that never got transcribed). A job already running for it finds no row afterwards
+    and its own finally-block removes what it was using."""
+    for p in [p for p in sessions.get_parts(sid) if p] + [os.path.join(config.UPLOAD_DIR, sid + ".wav")]:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
     if not sessions.delete_session(sid):
         return JSONResponse({"error": "查無此工作"}, status_code=404)
     log.info("[%s] session deleted by client", sid)
@@ -535,7 +545,7 @@ async def analyze(sid: str, req: Request):
         # responsive (otherwise /health and every other request freeze for the
         # whole 10-20s generation).
         notes = await run_in_threadpool(
-            llm.get_provider("ollama").generate_meeting_notes, text, model=body.get("model") or None)
+            llm.active_provider().generate_meeting_notes, text, model=body.get("model") or None)
     except Exception as e:
         log.error("[%s] analyze FAILED: %s", sid, e)
         return JSONResponse({"error": str(e)}, status_code=502)

@@ -77,3 +77,42 @@ def test_retention_zero_keeps_notes_pending(c, monkeypatch):
     sessions.update_session(sid, notes=None, notes_status="running")
     c.get(f"/api/sessions/{sid}")
     assert sessions.purge_expired(time.time() + 1, 0) == 0
+
+
+def test_notes_written_after_expiry_are_purged_too(c):
+    sid = _done(created=time.time() - 25 * 3600)
+    sessions.purge_expired(time.time(), 24 * 3600)
+    # a late background notes job lands on the expired row
+    sessions.update_session(sid, notes="# 晚到的筆記", notes_status="done")
+    assert sessions.purge_expired(time.time(), 24 * 3600) == 1
+    assert sessions.get_session(sid)["notes"] is None
+
+
+def test_notes_only_session_purged_after_fetch_with_retention_zero(c, monkeypatch):
+    sessions.ensure_session("notesonly1", "notes")
+    sessions.update_session("notesonly1", notes="# 筆記", notes_status="done")
+    c.get("/api/sessions/notesonly1")                 # client collects the notes
+    assert sessions.purge_expired(time.time() + 1, 0) == 1
+
+
+def test_delete_removes_part_files(c, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "UPLOAD_DIR", str(tmp_path))
+    sid = sessions.create_session("m")
+    p = tmp_path / "part0.m4a"; p.write_bytes(b"audio")
+    wav = tmp_path / f"{sid}.wav"; wav.write_bytes(b"w")
+    sessions.add_part(sid, str(p))
+    assert c.delete(f"/api/sessions/{sid}").status_code == 200
+    assert not p.exists() and not wav.exists()
+
+
+def test_retention_zero_waits_for_notes_to_be_collected(c, monkeypatch):
+    sid = _done()
+    sessions.update_session(sid, notes=None)
+    c.get(f"/api/sessions/{sid}")                         # transcript collected
+    # background notes finish afterwards
+    monkeypatch.setattr(appmod.llm, "active_provider", lambda: type("P", (), {
+        "generate_meeting_notes": lambda self, t, model=None, on_progress=None: "# 筆記"})())
+    appmod._run_analyze(sid, "text", None, "m")
+    assert sessions.purge_expired(time.time() + 1, 0) == 0    # not collected yet: keep
+    assert c.get(f"/api/sessions/{sid}").json()["notes"] == "# 筆記"
+    assert sessions.purge_expired(time.time() + 1, 0) == 1

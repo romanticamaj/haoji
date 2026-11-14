@@ -148,3 +148,20 @@ def test_detail_redacts_userinfo(env):
                                    headers={"Authorization": f"Bearer {auth.admin_token()}"}).json()
     blob = json.dumps(j)
     assert "user:pw" not in blob and "10.9.8.7" in blob
+
+
+def test_openai_provider_does_not_require_ollama(env, monkeypatch):
+    settings.set("llm_provider", "openai")
+    settings.set("openai_base_url", "https://api.example.com/v1")
+    def down(url, timeout=None, **kw): raise requests.ConnectionError("refused")
+    monkeypatch.setattr(status.requests, "get", down)
+    j = TestClient(appmod.app).get("/api/status").json()
+    c = {c["id"]: c for c in j["checks"]}
+    assert c["ollama"]["ok"] and c["llm_model"]["ok"] and j["ok"]
+    assert c["ollama"]["label"] == "會議記錄 API（OpenAI 相容）"
+
+
+def test_openai_provider_unconfigured_hint(env):
+    settings.set("llm_provider", "openai")
+    c = {c["id"]: c for c in TestClient(appmod.app).get("/api/status").json()["checks"]}
+    assert not c["ollama"]["ok"] and "OPENAI_BASE_URL" in c["ollama"]["hint"]

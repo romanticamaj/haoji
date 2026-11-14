@@ -81,28 +81,37 @@ def _probe():
     checks.append(_check("breeze_asr", bool(base), "語音辨識（Breeze ASR）",
                          "breeze-asr 容器還沒就緒：第一次啟動會下載約 3GB 模型，"
                          "用 `docker compose logs -f breeze-asr` 看進度。", base or ""))
-    # Ollama
-    llm_base, model = settings.ollama_base(), settings.llm_model()
+    # Notes model: Ollama, or an OpenAI-compatible API (then Ollama isn't needed at all)
+    llm_base, model, provider = settings.ollama_base(), settings.llm_model(), settings.get("llm_provider")
     version, names, reachable = "", [], False
-    try:
-        r = requests.get(llm_base + "/api/version", timeout=2)
-        version = (r.json() or {}).get("version", "")
-        r = requests.get(llm_base + "/api/tags", timeout=2)
-        r.raise_for_status()
-        names = [m["name"] for m in (r.json() or {}).get("models", [])]
-        reachable = True
-    except Exception:
-        pass
-    checks.append(_check("ollama", reachable, "Ollama",
-                         "連不到 Ollama。確認 ollama 容器在跑，或到管理頁「連線」修改網址"
-                         "（由 OLLAMA_BASE_URL 設定時要改 .env）。",
-                         f"{version} · {redact(llm_base)}" if reachable else redact(llm_base)))
-    has_model = reachable and model in names
-    checks.append(_check("llm_model", has_model, "會議記錄模型",
-                         f"到「模型」頁下載 {model}，或改選已安裝的模型。" if reachable
-                         else "先讓 Ollama 連得上。", model))
+    if provider == "openai":
+        api = settings.get("openai_base_url")
+        reachable = bool(api)
+        checks.append(_check("ollama", reachable, "會議記錄 API（OpenAI 相容）",
+                             "到管理頁「連線」填 OpenAI 相容 API 網址，或在 .env 設定 OPENAI_BASE_URL。",
+                             redact(api)))
+        checks.append(_check("llm_model", reachable, "會議記錄模型", "先設定 API 網址。", model))
+        llm_base = api
+    else:
+        try:
+            r = requests.get(llm_base + "/api/version", timeout=2)
+            version = (r.json() or {}).get("version", "")
+            r = requests.get(llm_base + "/api/tags", timeout=2)
+            r.raise_for_status()
+            names = [m["name"] for m in (r.json() or {}).get("models", [])]
+            reachable = True
+        except Exception:
+            pass
+        checks.append(_check("ollama", reachable, "Ollama",
+                             "連不到 Ollama。確認 ollama 容器在跑，或到管理頁「連線」修改網址"
+                             "（由 OLLAMA_BASE_URL 設定時要改 .env）。",
+                             f"{version} · {redact(llm_base)}" if reachable else redact(llm_base)))
+        has_model = reachable and model in names
+        checks.append(_check("llm_model", has_model, "會議記錄模型",
+                             f"到「模型」頁下載 {model}，或改選已安裝的模型。" if reachable
+                             else "先讓 Ollama 連得上。", model))
     return {"checks": checks, "llm": {"model": model, "reachable": reachable, "base_url": redact(llm_base),
-                                      "provider": settings.get("llm_provider")},
+                                      "provider": provider},
             "asr": {"base_url": base or "", "health": health or {}}}
 
 
