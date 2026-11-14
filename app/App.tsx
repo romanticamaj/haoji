@@ -8,6 +8,7 @@ import { Stack, RootStackParamList } from './navigation';
 import { StoreProvider, useStore } from './lib/store-context';
 import * as push from './lib/push';
 import { colors } from './lib/theme';
+import { AppStatusBar } from './components/AppStatusBar';
 import HomeScreen from './screens/HomeScreen';
 import RecordScreen from './screens/RecordScreen';
 import ImportConfirmScreen from './screens/ImportConfirmScreen';
@@ -75,6 +76,7 @@ export default function App() {
   const [navReady, setNavReady] = React.useState(false);
   return (
     <SafeAreaProvider>
+      <AppStatusBar />
       <StoreProvider>
         <PushOpener ready={navReady} />
         <OnboardingGate ready={navReady} />

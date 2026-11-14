@@ -43,6 +43,15 @@ test('shows empty state when no sessions', async () => {
   getByText('按下方的「記下來」開始錄音，或匯入一段音檔。');
 });
 
+// Found on the Android emulator: with no meetings the empty state didn't fill the screen, so the
+// bottom bar rode up under it. The empty state takes the remaining space so the bar stays at the bottom.
+test('empty state fills the remaining space so the bottom bar stays at the bottom', async () => {
+  const { getByTestId, getByText } = await renderHome([]);
+  await waitFor(() => getByText('還沒有任何會議'));
+  const { StyleSheet } = require('react-native');
+  expect(StyleSheet.flatten(getByTestId('home-empty').props.style)).toMatchObject({ flex: 1 });
+});
+
 test('lists saved sessions newest-first', async () => {
   const { getByText } = await renderHome([mk('a', 1, '會議A'), mk('b', 2, '會議B')]);
   await waitFor(() => getByText('會議B'));

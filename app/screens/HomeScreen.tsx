@@ -196,11 +196,13 @@ export default function HomeScreen() {
       {!loaded ? (
         <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
       ) : visible.length === 0 ? (
-        <EmptyState
-          icon={<IconAudioLines size={30} color={colors.primaryDark} />}
-          title="還沒有任何會議"
-          description="按下方的「記下來」開始錄音，或匯入一段音檔。"
-        />
+        <View testID="home-empty" style={styles.center}>
+          <EmptyState
+            icon={<IconAudioLines size={30} color={colors.primaryDark} />}
+            title="還沒有任何會議"
+            description="按下方的「記下來」開始錄音，或匯入一段音檔。"
+          />
+        </View>
       ) : activeQuery && hits.length === 0 ? (
         <EmptyState
           icon={<IconSearch size={28} color={colors.muted} />}
