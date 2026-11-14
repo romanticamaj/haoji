@@ -12,7 +12,7 @@ detailed **Audio Player state** section for the reported cross-session/transport
   Recording capture and the call-interruption → new-part flow are **device-only** (marked 📱). On the
   simulator, exercise these via seeded sessions / uploaded files instead.
 - **Backend dependency:** transcription and AI notes require the GPU box reachable over Tailscale
-  (`100.106.118.45:8780`) or LAN (`192.168.100.10:8780`). Cases needing it are marked 🖥. Cases that
+  (`<tailscale-ip>:8780`) or LAN (`<lan-ip>:8780`). Cases needing it are marked 🖥. Cases that
   can run fully offline (list, player, rename persistence, paywall unlock) are marked 🔌.
 - **Seeding:** to test list/player/results without the backend, pre-populate sessions via a memory
   store (`createMemoryStore`) or by completing one real recording/upload first, then reuse it.

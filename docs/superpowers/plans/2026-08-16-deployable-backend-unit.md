@@ -147,7 +147,7 @@ def _find(name, fallback):
     return fallback if os.path.exists(fallback) else name
 
 # Windows dev-box fallback; inside the container ffmpeg is on PATH so _find wins.
-_WINGET = (r"C:\Users\gary.hsieh\AppData\Local\Microsoft\WinGet\Packages"
+_WINGET = (r"%USERPROFILE%\AppData\Local\Microsoft\WinGet\Packages"
            r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin")
 FFMPEG = os.environ.get("FFMPEG_PATH") or _find("ffmpeg", os.path.join(_WINGET, "ffmpeg.exe"))
 FFPROBE = os.environ.get("FFPROBE_PATH") or _find("ffprobe", os.path.join(_WINGET, "ffprobe.exe"))

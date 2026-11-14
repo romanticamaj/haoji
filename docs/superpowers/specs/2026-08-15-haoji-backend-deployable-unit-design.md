@@ -27,7 +27,7 @@
 ## 3. 現況架構（問題所在）
 
 ```
-📱App ──HTTPS(Tailscale 100.106.118.45:8780)──▶ 好記 backend :8780 (FastAPI, CPU)
+📱App ──HTTPS(Tailscale <tailscale-ip>:8780)──▶ 好記 backend :8780 (FastAPI, CPU)
                                                    ├─ HTTP :8765 ─▶ 🔴 Breeze ASR (GPU, C:\ai-servers\asr)
                                                    └─ HTTP :11434 ─▶ 🔴 Ollama gemma4 (GPU)
 本機專用 ops 層：AI Service Manager :8760（GPU 互斥）· start.bat/ps1 · keepalive.ps1

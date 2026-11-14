@@ -86,14 +86,14 @@ part 檔存在 `FileSystem.documentDirectory + 'haoji/<sessionId>/part-<n>.m4a'`
 - `ios.infoPlist`：
   - `NSMicrophoneUsageDescription`（中文說明）
   - `UIBackgroundModes: ['audio']`
-  - **`NSAppTransportSecurity`**：對 Tailscale 後端是 **http**（非 https），iOS ATS 預設擋明文 → 加例外允許 `100.106.118.45`（`NSExceptionDomains` 或針對該 IP 的例外），否則 TestFlight build 連不到後端。
+  - **`NSAppTransportSecurity`**：對 Tailscale 後端是 **http**（非 https），iOS ATS 預設擋明文 → 加例外允許 `<tailscale-ip>`（`NSExceptionDomains` 或針對該 IP 的例外），否則 TestFlight build 連不到後端。
 
 ### API base
-- build 時 `EXPO_PUBLIC_API_BASE = http://100.106.118.45:8780`（Tailscale）。手機需裝 Tailscale 並登入同一 tailnet。
+- build 時 `EXPO_PUBLIC_API_BASE = http://<tailscale-ip>:8780`（Tailscale）。手機需裝 Tailscale 並登入同一 tailnet。
 
 ### EAS
 - `eas.json`：一個 `preview`/`production` profile（internal distribution → TestFlight）。
-- 簽章/上架憑證：用 **App Store Connect API key**（`AuthKey_S4KA24P9A5.p8`，Key ID `S4KA24P9A5`，**Issuer ID = 待你提供**），Team ID `64N77Z6TV3`。
+- 簽章/上架憑證：用 **App Store Connect API key**（`AuthKey_<ASC_KEY_ID>.p8`，Key ID `<ASC_KEY_ID>`，**Issuer ID = 待你提供**），Team ID `64N77Z6TV3`。
 - 流程：`eas build -p ios` → `eas submit -p ios`（上傳 App Store Connect）→ TestFlight 處理完 → 你（帳號持有人，自動是 internal tester）在 TestFlight app 安裝。
 - TestFlight internal testing **不需要註冊裝置 UDID**（那是 ad-hoc 才要）。
 
@@ -118,6 +118,6 @@ part 檔存在 `FileSystem.documentDirectory + 'haoji/<sessionId>/part-<n>.m4a'`
 
 ## 已拍板 / 待拍板
 
-- ✅ Issuer ID：`efcfbd71-5d12-4d85-8efc-5cee020286d9`，Key ID：`S4KA24P9A5`，Team：`64N77Z6TV3`。
+- ✅ Issuer ID：`<ASC_ISSUER_ID>`，Key ID：`<ASC_KEY_ID>`，Team：`64N77Z6TV3`。
 - ✅ 錄音：不主動切段，連續錄 + 中斷才分 part（依使用者意見）。
 - ✅ bundle identifier：`com.garyhsieh.haoji`。

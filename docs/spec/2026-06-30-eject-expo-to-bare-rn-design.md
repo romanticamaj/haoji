@@ -114,17 +114,17 @@ architecture); the design's seams make that substitution local to the two hooks.
 iOS `Info.plist`:
 - `NSMicrophoneUsageDescription` = `好記需要麥克風來錄製會議音訊。`
 - `UIBackgroundModes` = `[audio]`
-- `NSAppTransportSecurity` exception for `100.106.118.45` (and `192.168.100.10`) allowing
+- `NSAppTransportSecurity` exception for `<tailscale-ip>` (and `<lan-ip>`) allowing
   insecure HTTP loads.
 
 Android `AndroidManifest.xml` + `res/xml/network_security_config.xml`:
 - `RECORD_AUDIO` permission.
-- A network security config permitting cleartext HTTP to `100.106.118.45` and
-  `192.168.100.10` (Android blocks cleartext by default — the equivalent of the iOS ATS
+- A network security config permitting cleartext HTTP to `<tailscale-ip>` and
+  `<lan-ip>` (Android blocks cleartext by default — the equivalent of the iOS ATS
   exception). Reference it via `android:networkSecurityConfig` on `<application>`.
 
 `react-native-config` carries the backend base URL per scheme (Debug → LAN/Tailscale IP,
-Release → Tailscale IP `http://100.106.118.45:8780`), replacing the old
+Release → Tailscale IP `http://<tailscale-ip>:8780`), replacing the old
 `EXPO_PUBLIC_API_BASE` mechanism. `lib/config.ts` reads it via `react-native-config`.
 
 ## 6. TestFlight via fastlane
@@ -132,8 +132,8 @@ Release → Tailscale IP `http://100.106.118.45:8780`), replacing the old
 `ios/fastlane/` with:
 - `Appfile`: `app_identifier "com.garyhsieh.haoji"`, `team_id "64N77Z6TV3"`.
 - `Fastfile` `beta` lane: `build_app` (gym, archive) + `upload_to_testflight` (pilot),
-  authenticating with the **App Store Connect API key** (key id `S4KA24P9A5`, issuer
-  `efcfbd71-5d12-4d85-8efc-5cee020286d9`) via `app_store_connect_api_key`.
+  authenticating with the **App Store Connect API key** (key id `<ASC_KEY_ID>`, issuer
+  `<ASC_ISSUER_ID>`) via `app_store_connect_api_key`.
 - Auto-increment the build number from `latest_testflight_build_number`.
 
 Signing: **start with manual signing** — a one-time Xcode setup placing an Apple
@@ -143,7 +143,7 @@ later upgrade, out of scope for the first pass.
 
 Two carry-over flags:
 - The `.p8` key path in `eas.json` is a **Windows** path
-  (`C:/Users/.../Downloads/AuthKey_S4KA24P9A5.p8`). Builds run on the Mac, so the `.p8`
+  (`C:/Users/.../Downloads/AuthKey_<ASC_KEY_ID>.p8`). Builds run on the Mac, so the `.p8`
   must be placed locally on the Mac and **gitignored**; the Fastfile points at the Mac path.
 - EAS previously held signing credentials in the cloud; the distribution cert + App Store
   profile must be provisioned locally once before the first `beta` run.

@@ -10,7 +10,7 @@
 
 - MIT licence. Copyright is "2026 Haoji contributors".
 - The tree may not contain any of the following, enforced by `scripts/check-public.sh` in CI:
-  - personal IPs (`100.106.118.45`, `192.168.100.10`)
+  - the maintainer's private IPs
   - `gary.hsieh` paths
   - ASC `key_id`/`issuer_id` literals
   - `.p8` files

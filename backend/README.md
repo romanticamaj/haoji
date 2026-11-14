@@ -35,7 +35,7 @@ curl -s http://127.0.0.1:7780/api/llm/models  # {"ok":true,"models":["gemma4:e4b
 | `breeze-asr` | 7765 | container network only |
 | `ollama` | 11434 | container network only |
 
-App reaches it at `http://100.106.118.45:7780` (Tailscale) or `http://192.168.100.10:7780` (same-WiFi LAN).
+App reaches it at `http://<tailscale-ip>:7780` (Tailscale) or `http://<lan-ip>:7780` (same-WiFi LAN).
 
 ### Uptime
 

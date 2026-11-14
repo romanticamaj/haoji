@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Two independently-deployed pieces, in one repo:
 
 - `app/` — bare React Native client (`@react-native-community/cli`, **not Expo**), native iOS + Android. Developed on Mac, shipped to TestFlight via fastlane.
-- `backend/` — FastAPI service, deployed as a **Docker Compose unit** (`backend/deploy`: `haoji-backend` + `breeze-asr` + `ollama`) on a machine with an NVIDIA GPU (Breeze ASR + Ollama need it). The app reaches it over Tailscale (`http://100.106.118.45:7780`) or same-WiFi LAN (`http://192.168.100.10:7780`). Do not run the backend on the Mac.
+- `backend/` — FastAPI service, deployed as a **Docker Compose unit** (`backend/deploy`: `haoji-backend` + `breeze-asr` + `ollama`) on a machine with an NVIDIA GPU (Breeze ASR + Ollama need it). The app reaches it over Tailscale (`http://<tailscale-ip>:7780`) or same-WiFi LAN (`http://<lan-ip>:7780`). Do not run the backend on the Mac.
 
 ## Bare React Native discipline
 
