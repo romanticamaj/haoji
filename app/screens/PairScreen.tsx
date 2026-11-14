@@ -6,6 +6,7 @@ import { normalizeUrl, saveServer } from '../lib/server';
 import { validateServer } from '../lib/serverStatus';
 import { AppText } from '../components/AppText';
 import { PrimaryButton } from '../components/Buttons';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { IconCheck } from '../components/icons';
 import { colors, layout, radius, spacing, typography } from '../lib/theme';
 
@@ -62,6 +63,7 @@ export default function PairScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScreenHeader title="連接主機" onBack={() => { if (nav.canGoBack?.()) nav.goBack(); else nav.navigate('Home'); }} />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <AppText variant="screenTitle" color="heading" accessibilityRole="header">連接你的主機</AppText>
         <AppText variant="body" color="muted">在主機的管理頁「配對手機」，用相機掃 QR code 就會自動填好。</AppText>

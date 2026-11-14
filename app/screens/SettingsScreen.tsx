@@ -6,6 +6,7 @@ import { forgetServer } from '../lib/server';
 import { AppText } from '../components/AppText';
 import { PrimaryButton, SecondaryButton, DangerTextButton } from '../components/Buttons';
 import { StatusDot } from '../components/StatusDot';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { IconChevronRight } from '../components/icons';
 import { colors, layout, radius, spacing, tabularNums } from '../lib/theme';
 import { version } from '../package.json';
@@ -38,68 +39,71 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={styles.content}>
-      <Card title="主機">
-        {unpaired ? (
-          <>
-            <AppText variant="cardTitle" color="heading">還沒連接主機</AppText>
-            <AppText variant="body" color="muted">連接你自己的主機後，就能生成逐字稿和會議記錄。錄音不用連線也能用。</AppText>
-            <PrimaryButton label="連接主機" onPress={() => nav.navigate('Pair')} style={styles.gapTop} />
-          </>
-        ) : (
-          <>
-            <AppText variant="cardTitle" color="heading" selectable numberOfLines={2}>{srv.base ?? ''}</AppText>
-            {srv.latencyMs !== undefined && (
-              <AppText variant="small" color="muted" style={tabularNums}>{`回應時間 ${srv.latencyMs} ms`}</AppText>
-            )}
-            <SecondaryButton label="重新配對" onPress={() => nav.navigate('Pair')} style={styles.gapTop} />
-            {srv.server && <DangerTextButton label="中斷連線" onPress={forget} />}
-          </>
-        )}
-      </Card>
-
-      <Card title="狀態" testID="settings-card-status" onLayout={onStatusLayout}>
-        <View
-          style={styles.statusRow}
-          accessible
-          accessibilityLabel={`主機狀態：${srv.loading ? '正在確認…' : summary.label}`}
-        >
-          <StatusDot tone={summary.tone} size={10} />
-          <AppText variant="cardTitle" color="heading">{srv.loading ? '正在確認…' : summary.label}</AppText>
-        </View>
-        {!srv.loading && summary.rows.map((r) => (
-          // Muted label left, dot + value right; read as one phrase.
-          <View key={r.label} style={styles.row} accessible accessibilityLabel={`${r.label}：${r.value}`}>
-            <AppText variant="body" color="muted">{r.label}</AppText>
-            <View style={styles.rowValue}>
-              <StatusDot tone={r.ok ? 'ready' : 'offline'} />
-              <AppText variant="body" color="heading">{r.value}</AppText>
-            </View>
+    <View style={styles.screen}>
+      <ScreenHeader title="設定" onBack={() => nav.goBack()} />
+      <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={styles.content}>
+        <Card title="主機">
+          {unpaired ? (
+            <>
+              <AppText variant="cardTitle" color="heading">還沒連接主機</AppText>
+              <AppText variant="body" color="muted">連接你自己的主機後，就能生成逐字稿和會議記錄。錄音不用連線也能用。</AppText>
+              <PrimaryButton label="連接主機" onPress={() => nav.navigate('Pair')} style={styles.gapTop} />
+            </>
+          ) : (
+            <>
+              <AppText variant="cardTitle" color="heading" selectable numberOfLines={2}>{srv.base ?? ''}</AppText>
+              {srv.latencyMs !== undefined && (
+                <AppText variant="small" color="muted" style={tabularNums}>{`回應時間 ${srv.latencyMs} ms`}</AppText>
+              )}
+              <SecondaryButton label="重新配對" onPress={() => nav.navigate('Pair')} style={styles.gapTop} />
+              {srv.server && <DangerTextButton label="中斷連線" onPress={forget} />}
+            </>
+          )}
+        </Card>
+  
+        <Card title="狀態" testID="settings-card-status" onLayout={onStatusLayout}>
+          <View
+            style={styles.statusRow}
+            accessible
+            accessibilityLabel={`主機狀態：${srv.loading ? '正在確認…' : summary.label}`}
+          >
+            <StatusDot tone={summary.tone} size={10} />
+            <AppText variant="cardTitle" color="heading">{srv.loading ? '正在確認…' : summary.label}</AppText>
           </View>
-        ))}
-        {!srv.loading && summary.detail.map((line) => (
-          <AppText key={line} variant="body" color="body" style={tabularNums}>{line}</AppText>
-        ))}
-      </Card>
-
-      <Card title="隱私">
-        <AppText variant="body" color="body">錄音只在處理時傳到你的主機，處理完就刪除。</AppText>
-        <AppText variant="body" color="muted">逐字稿和會議記錄只存在這支手機上。</AppText>
-      </Card>
-
-      <Card title="關於">
-        <AppText variant="body" color="body" style={tabularNums}>{`版本 ${version}`}</AppText>
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel="在 GitHub 看原始碼"
-          onPress={() => { void Linking.openURL(SOURCE_URL).catch(() => {}); }}
-          style={({ pressed }) => [styles.link, pressed && styles.pressed]}
-        >
-          <AppText variant="body" color="primaryDark">在 GitHub 看原始碼</AppText>
-          <IconChevronRight size={18} />
-        </Pressable>
-      </Card>
-    </ScrollView>
+          {!srv.loading && summary.rows.map((r) => (
+            // Muted label left, dot + value right; read as one phrase.
+            <View key={r.label} style={styles.row} accessible accessibilityLabel={`${r.label}：${r.value}`}>
+              <AppText variant="body" color="muted">{r.label}</AppText>
+              <View style={styles.rowValue}>
+                <StatusDot tone={r.ok ? 'ready' : 'offline'} />
+                <AppText variant="body" color="heading">{r.value}</AppText>
+              </View>
+            </View>
+          ))}
+          {!srv.loading && summary.detail.map((line) => (
+            <AppText key={line} variant="body" color="body" style={tabularNums}>{line}</AppText>
+          ))}
+        </Card>
+  
+        <Card title="隱私">
+          <AppText variant="body" color="body">錄音只在處理時傳到你的主機，處理完就刪除。</AppText>
+          <AppText variant="body" color="muted">逐字稿和會議記錄只存在這支手機上。</AppText>
+        </Card>
+  
+        <Card title="關於">
+          <AppText variant="body" color="body" style={tabularNums}>{`版本 ${version}`}</AppText>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="在 GitHub 看原始碼"
+            onPress={() => { void Linking.openURL(SOURCE_URL).catch(() => {}); }}
+            style={({ pressed }) => [styles.link, pressed && styles.pressed]}
+          >
+            <AppText variant="body" color="primaryDark">在 GitHub 看原始碼</AppText>
+            <IconChevronRight size={18} />
+          </Pressable>
+        </Card>
+      </ScrollView>
+    </View>
   );
 }
 

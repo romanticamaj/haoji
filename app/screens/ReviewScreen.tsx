@@ -7,6 +7,7 @@ import { SavedSession } from '../lib/store';
 import { deleteSessionFiles } from '../lib/recordings';
 import RecordingsList from './RecordingsList';
 import { AppText } from '../components/AppText';
+import { ScreenHeader } from '../components/ScreenHeader';
 import { IconTrash } from '../components/icons';
 import { TranscribeButton } from '../components/TranscribeButton';
 import { useServerStatus } from '../hooks/useServerStatus';
@@ -69,10 +70,16 @@ export default function ReviewScreen() {
     ]);
   };
 
-  if (!session) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>;
+  if (!session) return (
+    <View style={styles.container}>
+      <ScreenHeader title="錄音檢視" />
+      <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
+      <ScreenHeader title="錄音檢視" />
       <View style={styles.head}>
         <AppText variant="screenTitle" color="heading" accessibilityRole="header">
           {hasTranscript ? '補錄好了' : '錄好了，先聽聽看'}
