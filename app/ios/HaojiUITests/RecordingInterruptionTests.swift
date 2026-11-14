@@ -76,7 +76,7 @@ final class RecordingInterruptionTests: XCTestCase {
     E2ETrigger.callBegins()
 
     assertText("已暫停")
-    assertText("錄音被中斷，要接著錄嗎？")
+    assertText("錄音被中斷了")   // wording pass (GUIDELINE §5): title + 「已經錄下的部分都保存好了。」
     XCTAssertGreaterThanOrEqual(timerSeconds(), beforeCall,
                                 "中斷後秒數不能倒退——歸零正是「前面全部被洗掉」的樣子")
   }
@@ -106,7 +106,7 @@ final class RecordingInterruptionTests: XCTestCase {
     wait(5)
     stopRecording()
     assertText("錄好了，先聽聽看")
-    tap("稍後再說")
+    tap("稍後再說，先存起來")
 
     // Reopen it and continue recording.
     let meeting = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "今天")).firstMatch
@@ -116,7 +116,7 @@ final class RecordingInterruptionTests: XCTestCase {
     tap("更多動作")
     tap("繼續錄音")
 
-    assertText("準備接續錄音")
+    assertText("準備接著錄")
     let carriedOver = timerSeconds()
     XCTAssertGreaterThan(carriedOver, 0, "接續畫面應帶入既有長度，從 00:00 開始等於看不到既有錄音")
 
