@@ -107,6 +107,12 @@ export const api = {
   },
 };
 
+/** One line for inline errors: the server's message plus its hint (forbidden_host etc. put the fix there). */
+export function describeError(e: unknown, fallback = '沒有成功，請再試一次。'): string {
+  if (e instanceof ApiError) return [e.message, e.hint].filter(Boolean).join(' ') || fallback;
+  return fallback;
+}
+
 /** Trim whatever was pasted (logs add spaces/newlines), verify with the backend, then remember it. */
 export async function login(raw: string): Promise<void> {
   const token = raw.trim();
