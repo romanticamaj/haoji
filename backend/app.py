@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 import config
-import asr, sessions, llm, media, push, settings
+import asr, sessions, llm, media, push, settings, auth, errors
 from fastapi import Request
 
 # --- logging: rotating file (backend/logs/haoji.log) + console ---------------
@@ -43,6 +43,23 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # skip noisy pollers: /health and the GET status poll during transcription
 _SKIP_LOG = re.compile(r"^/health$|^/api/sessions/[^/]+$")
 
+@app.exception_handler(errors.ApiError)
+async def _api_error(request: Request, e: errors.ApiError):
+    return errors.api_error(e.code, e.message, e.hint, status=e.status)
+
+
+@app.middleware("http")
+async def _guards(request: Request, call_next):
+    # Origin guard first (any state-changing browser request from another site), then the optional
+    # phone pairing token on the session API. See auth.py.
+    if not auth.origin_ok(request):
+        return errors.api_error("forbidden_origin", "這個請求不是從主機本身的管理頁發出的。", status=403)
+    if request.url.path.startswith("/api/sessions") and not auth.pairing_ok(request):
+        return errors.api_error("unauthorized", "配對金鑰不對。",
+                                "在主機的管理頁「配對手機」重新掃描 QR code。", status=401)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def _log_requests(request: Request, call_next):
     t0 = time.time()
@@ -51,6 +68,8 @@ async def _log_requests(request: Request, call_next):
         log.info("%s %s -> %s (%.0fms)", request.method, request.url.path,
                  resp.status_code, (time.time() - t0) * 1000)
     return resp
+
+app.include_router(auth.router)
 
 _executor = ThreadPoolExecutor(max_workers=2)
 # Notes generation gets its OWN pool. Sharing the transcription pool meant a couple of long jobs
@@ -70,6 +89,8 @@ os.makedirs(PARTS_DIR, exist_ok=True)
 def _startup():
     sessions.init_db()
     settings.init()
+    log.info("admin token (%s): %s — open /console and paste it to sign in", auth.admin_token_source(),
+             auth.admin_token() if auth.admin_token_source() == "file" else "set by HAOJI_ADMIN_TOKEN")
     log.info("好記 backend up on :%s", config.WEB_PORT)
 
 @app.get("/health")
