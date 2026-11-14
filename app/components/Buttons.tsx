@@ -103,6 +103,22 @@ export function DangerButton({ label, onPress, icon, testID, accessibilityLabel,
   );
 }
 
+/** No fill, no outline: a `danger` label in a 44 pt target. For a quiet destructive action inside a card. */
+export function DangerTextButton({ label, onPress, testID, accessibilityLabel, style }: Common) {
+  return (
+    <Touchable
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      style={[styles.text, style]}
+      pressedStyle={styles.pressedRow}
+    >
+      <AppText variant="body" color="danger" maxFontSizeMultiplier={fontScale.chrome}>{label}</AppText>
+    </Touchable>
+  );
+}
+
 /** 36 high, radius 18, surface + outline; selected = sage fill. Used in toolbars and choice rows. */
 export function Chip({ label, onPress, disabled, icon, testID, accessibilityLabel, selected, style }: Common & { selected?: boolean }) {
   return (
@@ -134,6 +150,7 @@ const styles = StyleSheet.create({
     borderWidth: layout.border, borderColor: colors.outline, paddingHorizontal: spacing.lg,
   },
   danger: { borderColor: colors.outline },
+  text: { minHeight: layout.minTouchTarget, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     height: layout.chipHeight, borderRadius: radius.chip, paddingHorizontal: spacing.lg,

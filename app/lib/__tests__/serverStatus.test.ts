@@ -99,7 +99,7 @@ describe('validateServer', () => {
   test('unauthorized: the server requires a token and none was given', async () => {
     const f = fakeFetch({ '/api/status': { status: 200, json: { ...status, pairing_required: true } } });
     expect(await validateServer('http://box', undefined, f)).toEqual({
-      ok: false, reason: 'unauthorized', message: '配對金鑰不對，請重新掃描主機上的 QR code。',
+      ok: false, reason: 'unauthorized', message: '配對碼不對，請重新掃描主機上的 QR code。',
     });
   });
 
@@ -126,7 +126,7 @@ describe('validateServer', () => {
       unreachable: '連不到這個網址，確認主機有開、手機和主機在同一個網路或 Tailscale 上。',
       not_haoji: '這個網址不是好記主機。',
       too_old: '主機版本太舊，請更新主機後再試。',
-      unauthorized: '配對金鑰不對，請重新掃描主機上的 QR code。',
+      unauthorized: '配對碼不對，請重新掃描主機上的 QR code。',
     });
   });
 });
@@ -144,7 +144,12 @@ describe('summarize', () => {
   test('ready when ok and nothing is running', () => {
     const s = summarize(allGreen());
     expect(s).toMatchObject({ tone: 'ready', label: '主機已連線' });
-    expect(s.detail).toEqual(['語音辨識：正常', '會議記錄：正常', '處理中 0 場，排隊中 0 場']);
+    // Issue #32 item 7: label-and-value rows, and an empty queue said in words.
+    expect(s.rows).toEqual([
+      { label: '語音辨識', value: '正常', ok: true },
+      { label: '會議記錄', value: '正常', ok: true },
+    ]);
+    expect(s.detail).toEqual(['目前沒有在整理的錄音。']);
   });
 
   test('busy when something is active or queued', () => {
@@ -157,19 +162,20 @@ describe('summarize', () => {
       ok: false, checks: allGreen().checks.map((c) => (c.id === 'breeze_asr' ? { ...c, ok: false } : c)),
     }));
     expect(s).toMatchObject({ tone: 'offline', label: '連不到主機' });
-    expect(s.detail).toContain('語音辨識：還沒準備好');
+    expect(s.rows).toContainEqual({ label: '語音辨識', value: '還沒準備好', ok: false });
   });
 
   test('only the notes model missing (contract fixture) does not block transcripts', () => {
     const s = summarize(status);   // ok:false because llm_model is missing; one job active
     expect(s.tone).toBe('busy');
-    expect(s.detail).toContain('會議記錄：還沒準備好');
-    expect(s.detail).toContain('語音辨識：正常');
+    expect(s.rows).toContainEqual({ label: '會議記錄', value: '還沒準備好', ok: false });
+    expect(s.rows).toContainEqual({ label: '語音辨識', value: '正常', ok: true });
+    expect(s.detail).toContain('處理中 1 場，排隊中 0 場');
   });
 
   test('the phone never says GPU, Ollama, model or 後端', () => {
     const all = [summarize(null), summarize(null, new Error()), summarize(status), summarize(allGreen())]
-      .flatMap((s) => [s.label, ...s.detail]).join('\n');
+      .flatMap((s) => [s.label, ...s.detail, ...s.rows.flatMap((r) => [r.label, r.value])]).join('\n');
     expect(all).not.toMatch(/GPU|Ollama|model|模型|後端|Breeze/i);
   });
 });

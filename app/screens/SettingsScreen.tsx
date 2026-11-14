@@ -4,7 +4,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useServerStatus } from '../hooks/useServerStatus';
 import { forgetServer } from '../lib/server';
 import { AppText } from '../components/AppText';
-import { PrimaryButton, SecondaryButton, DangerButton } from '../components/Buttons';
+import { PrimaryButton, SecondaryButton, DangerTextButton } from '../components/Buttons';
 import { StatusDot } from '../components/StatusDot';
 import { IconChevronRight } from '../components/icons';
 import { colors, layout, radius, spacing, tabularNums } from '../lib/theme';
@@ -53,7 +53,7 @@ export default function SettingsScreen() {
               <AppText variant="small" color="muted" style={tabularNums}>{`回應時間 ${srv.latencyMs} ms`}</AppText>
             )}
             <SecondaryButton label="重新配對" onPress={() => nav.navigate('Pair')} style={styles.gapTop} />
-            {srv.server && <DangerButton label="中斷連線" onPress={forget} />}
+            {srv.server && <DangerTextButton label="中斷連線" onPress={forget} />}
           </>
         )}
       </Card>
@@ -67,6 +67,16 @@ export default function SettingsScreen() {
           <StatusDot tone={summary.tone} size={10} />
           <AppText variant="cardTitle" color="heading">{srv.loading ? '正在確認…' : summary.label}</AppText>
         </View>
+        {!srv.loading && summary.rows.map((r) => (
+          // Muted label left, dot + value right; read as one phrase.
+          <View key={r.label} style={styles.row} accessible accessibilityLabel={`${r.label}：${r.value}`}>
+            <AppText variant="body" color="muted">{r.label}</AppText>
+            <View style={styles.rowValue}>
+              <StatusDot tone={r.ok ? 'ready' : 'offline'} />
+              <AppText variant="body" color="heading">{r.value}</AppText>
+            </View>
+          </View>
+        ))}
         {!srv.loading && summary.detail.map((line) => (
           <AppText key={line} variant="body" color="body" style={tabularNums}>{line}</AppText>
         ))}
@@ -115,6 +125,8 @@ const styles = StyleSheet.create({
   },
   gapTop: { marginTop: spacing.sm },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 32 },
+  rowValue: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   link: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: layout.minTouchTarget },
   pressed: { opacity: 0.6 },
 });

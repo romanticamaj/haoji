@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { normalizeUrl, saveServer } from '../lib/server';
 import { validateServer } from '../lib/serverStatus';
 import { AppText } from '../components/AppText';
@@ -27,6 +28,7 @@ export default function PairScreen() {
   const [busy, setBusy] = useState(false);
   const [paired, setPaired] = useState<string | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const insets = useSafeAreaInsets();
 
   // A second link opened while this screen is up replaces what is in the fields.
   useEffect(() => {
@@ -48,10 +50,14 @@ export default function PairScreen() {
     const base = normalizeUrl(url)!;
     await saveServer({ url: base, token: t, name: hostOf(base), pairedAt: Date.now() });
     setPaired(hostOf(base));
-    closeTimer.current = setTimeout(() => {
-      if (nav.canGoBack?.()) nav.goBack();
-      else nav.navigate('Home');
-    }, PAIRED_CLOSE_MS);
+    closeTimer.current = setTimeout(close, PAIRED_CLOSE_MS);
+  };
+
+  // Leave once (the timer and 完成 can race): whichever comes first clears the other.
+  const close = () => {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = undefined; }
+    if (nav.canGoBack?.()) nav.goBack();
+    else nav.navigate('Home');
   };
 
   return (
@@ -79,9 +85,9 @@ export default function PairScreen() {
         </View>
 
         <View style={styles.field}>
-          <AppText variant="cardTitle" color="heading">配對金鑰（選填）</AppText>
+          <AppText variant="cardTitle" color="heading">配對碼（選填）</AppText>
           <TextInput
-            accessibilityLabel="配對金鑰（選填）"
+            accessibilityLabel="配對碼（選填）"
             style={styles.input}
             value={token}
             onChangeText={(v) => { setToken(v); setError(null); }}
@@ -111,6 +117,12 @@ export default function PairScreen() {
           />
         )}
       </ScrollView>
+      {paired ? (
+        // Pinned under the form once connected, so leaving never needs a scroll.
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+          <PrimaryButton label="完成" onPress={close} />
+        </View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -127,4 +139,5 @@ const styles = StyleSheet.create({
   },
   button: { marginTop: spacing.sm },
   done: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: layout.buttonHeight },
+  footer: { paddingHorizontal: layout.screenPaddingH, paddingTop: spacing.md, backgroundColor: colors.background },
 });
