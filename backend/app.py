@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 import config
-import asr, sessions, llm, media, push, settings, auth, errors
+import asr, sessions, llm, media, push, settings, auth, errors, jobs
 from fastapi import Request
 
 # --- logging: rotating file (backend/logs/haoji.log) + console ---------------
@@ -70,6 +70,7 @@ async def _log_requests(request: Request, call_next):
     return resp
 
 app.include_router(auth.router)
+app.include_router(jobs.router)
 
 _executor = ThreadPoolExecutor(max_workers=2)
 # Notes generation gets its OWN pool. Sharing the transcription pool meant a couple of long jobs
@@ -244,6 +245,7 @@ def _run_analyze(sid, text, model_arg, model_label):
     with _analyze_lock:
         if sid in _notes_waiting:
             _notes_waiting.remove(sid)
+    jobs.start(sid, "analyze")
     try:
         sessions.update_session(sid, notes_status="running", notes_pct=0.0, notes_message="生成中…")
         threading.Thread(target=_tick, daemon=True, name=f"notes-tick-{sid}").start()
@@ -252,9 +254,11 @@ def _run_analyze(sid, text, model_arg, model_label):
         sessions.update_session(sid, notes=notes, notes_status="done", notes_error=None,
                                 notes_pct=1.0, notes_message="完成")
         log.info("[%s] analyze(bg) done: %d chars notes, took %.0fs", sid, len(notes), time.time() - t0)
+        jobs.finish(sid, "analyze", ok=True)
     except Exception as e:
         log.exception("[%s] analyze(bg) FAILED: %s", sid, e)
         sessions.update_session(sid, notes_status="error", notes_error=str(e))
+        jobs.finish(sid, "analyze", ok=False, error=e)
     finally:
         stop_tick.set()
         with _analyze_lock:
@@ -276,6 +280,7 @@ def _submit_transcribe(sid):
             return False
         _submitted.add(sid)
     sessions.update_session(sid, status="queued", message="排隊中…", error=None)
+    jobs.queued(sid, "transcribe")
     _executor.submit(_run_transcribe, sid)
     return True
 
@@ -314,6 +319,7 @@ async def put_part(sid: str, index: int, req: Request):
 def _run_transcribe(sid):
     parts = [p for p in sessions.get_parts(sid) if p]  # skip empty index slots
     t0 = time.time()
+    jobs.start(sid, "transcribe")
     try:
         log.info("[%s] transcribe start: concat %d part(s)", sid, len(parts))
         sessions.update_session(sid, status="running", pct=0.1, message="串接音檔…")
@@ -354,9 +360,11 @@ def _run_transcribe(sid):
         log.info("[%s] transcribe done: %d segs, %d speakers, %.0fs audio, took %.0fs",
                  sid, len(norm["segments"]), len(norm["speakers"]),
                  norm.get("duration", 0), time.time() - t0)
+        jobs.finish(sid, "transcribe", ok=True)
     except Exception as e:
         log.exception("[%s] transcribe FAILED: %s", sid, e)
         sessions.update_session(sid, status="error", message=str(e), error=str(e))
+        jobs.finish(sid, "transcribe", ok=False, error=e)
     finally:
         for p in parts + [os.path.join(config.UPLOAD_DIR, sid + ".wav")]:
             try: os.remove(p)
@@ -477,6 +485,7 @@ async def analyze(sid: str, req: Request):
             _notes_waiting.append(sid)
         sessions.update_session(sid, notes_status="queued", notes_error=None,
                                 notes_pct=0.0, notes_message="排隊中…")
+        jobs.queued(sid, "analyze")
         _notes_executor.submit(_run_analyze, sid, text, body.get("model") or None, model)
         log.info("[%s] analyze queued in background -> LLM %s", sid, model)
         return {"ok": True, "background": True}
