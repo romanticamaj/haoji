@@ -15,12 +15,14 @@ concurrency:
 jobs:
   public-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: scripts/check-public.sh
 
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
@@ -37,6 +39,7 @@ jobs:
 
   app:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: app
@@ -49,10 +52,11 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npx tsc --noEmit
-      - run: npx jest --ci
+      - run: npx jest --ci --verbose
 
   console:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend/console
@@ -69,6 +73,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [backend, console]
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +92,7 @@ jobs:
 
   console-e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [console]
     steps:
       - uses: actions/checkout@v4
