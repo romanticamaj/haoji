@@ -102,3 +102,49 @@ def test_sessions_open_by_default_and_guarded_when_required(client, monkeypatch)
     # the admin token is not a pairing token
     assert client.post("/api/sessions", json={},
                        headers={"Authorization": f"Bearer {auth.admin_token()}"}).status_code == 401
+
+
+# --- DNS rebinding: the Host header must be an IP, localhost, or an allowlisted name ------------
+
+@pytest.mark.parametrize("host", ["127.0.0.1:7780", "localhost:7780", "192.168.1.20:7780",
+                                  "100.64.0.5", "[::1]:7780", "testserver"])
+def test_ip_and_allowed_hosts_pass(client, host):
+    assert client.get("/health", headers={"Host": host}).status_code == 200
+
+
+def test_unknown_dns_name_rejected(client):
+    r = client.get("/api/status", headers={"Host": "evil.example:7780"})
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "forbidden_host"
+    assert "HAOJI_ALLOWED_HOSTS" in r.json()["error"]["hint"]
+
+
+def test_rebinding_post_with_matching_origin_and_host_rejected(client):
+    # The attack: evil.example rebinds to this box, so Origin and Host agree with each other.
+    tok = auth.admin_token()
+    r = client.post("/api/pairing/rotate", headers={
+        "Authorization": f"Bearer {tok}", "Host": "evil.example:7780", "Origin": "http://evil.example:7780"})
+    assert r.status_code == 403
+
+
+def test_public_url_names_allowed(client, monkeypatch):
+    monkeypatch.setenv("HAOJI_PUBLIC_URLS", "https://haoji.tail1234.ts.net")
+    assert client.get("/health", headers={"Host": "haoji.tail1234.ts.net"}).status_code == 200
+
+
+def test_cross_origin_post_from_ip_origin_rejected(client):
+    # Origin must also be allowed and match the Host — another site on the LAN can't drive the console.
+    tok = auth.admin_token()
+    r = client.post("/api/pairing/rotate", headers={
+        "Authorization": f"Bearer {tok}", "Host": "192.168.1.20:7780", "Origin": "http://192.168.1.99:8080"})
+    assert r.status_code == 403
+
+
+def test_admin_token_never_logged(client, caplog):
+    import logging
+    caplog.set_level(logging.INFO)
+    with TestClient(appmod.app):
+        pass
+    tok = auth.admin_token()
+    assert tok not in caplog.text
+    assert "admin_token" in caplog.text

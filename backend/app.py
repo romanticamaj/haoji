@@ -52,6 +52,10 @@ async def _api_error(request: Request, e: errors.ApiError):
 async def _guards(request: Request, call_next):
     # Origin guard first (any state-changing browser request from another site), then the optional
     # phone pairing token on the session API. See auth.py.
+    if not auth.host_ok(request):
+        return errors.api_error("forbidden_host", "這個主機名稱不在允許清單裡。",
+                                "把它加到 .env 的 HAOJI_ALLOWED_HOSTS（或 HAOJI_PUBLIC_URLS）後重新啟動。",
+                                status=403)
     if not auth.origin_ok(request):
         return errors.api_error("forbidden_origin", "這個請求不是從主機本身的管理頁發出的。", status=403)
     if request.url.path.startswith("/api/sessions") and not auth.pairing_ok(request):
@@ -90,8 +94,13 @@ os.makedirs(PARTS_DIR, exist_ok=True)
 def _startup():
     sessions.init_db()
     settings.init()
-    log.info("admin token (%s): %s — open /console and paste it to sign in", auth.admin_token_source(),
-             auth.admin_token() if auth.admin_token_source() == "file" else "set by HAOJI_ADMIN_TOKEN")
+    # Never log the token itself — only where to read it.
+    if auth.admin_token_source() == "env":
+        log.info("console: /console — admin token set by HAOJI_ADMIN_TOKEN")
+    else:
+        auth.admin_token()                      # make sure it exists
+        log.info("console: /console — admin token in %s "
+                 "(docker: `docker compose exec haoji-backend cat /data/admin_token`)", auth.admin_token_path())
     log.info("好記 backend up on :%s", config.WEB_PORT)
 
 @app.get("/health")

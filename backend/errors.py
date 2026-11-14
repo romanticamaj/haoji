@@ -6,7 +6,7 @@ The code is from a fixed list so the console and the app can branch on it; messa
 from fastapi.responses import JSONResponse
 
 CODES = {
-    "unauthorized", "forbidden_origin", "invalid_setting", "setting_locked",
+    "unauthorized", "forbidden_origin", "forbidden_host", "invalid_setting", "setting_locked",
     "ollama_unreachable", "model_in_use", "not_found", "bad_request",
 }
 

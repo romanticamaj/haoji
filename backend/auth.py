@@ -10,7 +10,7 @@
 - **Origin guard**: a state-changing request that carries an Origin header must come from this very
   host. Blocks DNS-rebinding / cross-site requests from a browser; curl and the phone send no Origin.
 """
-import hmac, os, secrets, threading
+import hmac, ipaddress, os, secrets, threading
 from urllib.parse import quote, urlparse
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -46,6 +46,10 @@ def _token_file(name, env):
 
 def admin_token():
     return _token_file("admin_token", "HAOJI_ADMIN_TOKEN")
+
+
+def admin_token_path():
+    return os.path.join(config.DATA_DIR, "admin_token")
 
 
 def admin_token_source():
@@ -89,17 +93,54 @@ def is_admin(request: Request):
 def require_admin(request: Request):
     if not is_admin(request):
         raise errors.ApiError("unauthorized", "需要管理金鑰。",
-                              "在主機上執行 `docker compose logs haoji-backend | grep admin` 找到金鑰。",
+                              "在主機上執行 `docker compose exec haoji-backend cat /data/admin_token` 取得金鑰。",
                               status=401)
 
 
+def _hostname(netloc):
+    """'host:port' / '[v6]:port' -> lowercase hostname without port."""
+    return (urlparse("//" + (netloc or "")).hostname or "").lower()
+
+
+def _is_ip(h):
+    try:
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        return False
+
+
+def allowed_hostnames():
+    names = {"localhost"}
+    for v in (os.environ.get("HAOJI_ALLOWED_HOSTS") or "").split(","):
+        if v.strip():
+            names.add(v.strip().lower())
+    for u in (os.environ.get("HAOJI_PUBLIC_URLS") or "").split(","):
+        h = urlparse(u.strip()).hostname
+        if h:
+            names.add(h.lower())
+    return names
+
+
+def host_ok(request: Request):
+    """DNS-rebinding guard. A rebinding page reaches us under the *attacker's* domain name, so a
+    request is accepted only when its Host is an IP literal (rebinding can't produce one), localhost,
+    or a name the operator listed. Phones and curl normally use IPs or the published URL."""
+    h = _hostname(request.headers.get("host"))
+    return not h or _is_ip(h) or h in allowed_hostnames()
+
+
 def origin_ok(request: Request):
+    """A state-changing browser request must come from this same host (and that host must itself
+    pass host_ok, which the middleware checks first). curl and the phone send no Origin."""
     if request.method in ("GET", "HEAD", "OPTIONS"):
         return True
     origin = request.headers.get("origin")
     if not origin:
         return True
-    return urlparse(origin).netloc.lower() == (request.headers.get("host") or "").lower()
+    o = urlparse(origin)
+    return o.netloc.lower() == (request.headers.get("host") or "").lower() and (
+        _is_ip(_hostname(o.netloc)) or _hostname(o.netloc) in allowed_hostnames())
 
 
 def pairing_ok(request: Request):
