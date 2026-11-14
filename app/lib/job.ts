@@ -26,6 +26,8 @@ export type Job = {
   // Set when the parts were handed to the OS background uploader: from then on we are waiting for the
   // transfers to land and the backend to auto-start. Used to give up if that never happens.
   waitingSince?: number;
+  // The backend's own status, recorded while polling, so the stage row survives a relaunch.
+  serverStatus?: SessionStatus['status'];
 };
 
 // How long to wait for OS-driven uploads to land before calling it a failure. Generous: a long
@@ -58,6 +60,28 @@ export const isActive = (j?: Job) => j?.stage === 'uploading' || j?.stage === 't
 
 export const newJob = (at: number): Job =>
   ({ stage: 'uploading', uploaded: 0, pct: 0, message: '準備中…', updatedAt: at });
+
+// The four steps shown on the Processing screen: 上傳 → 排隊 → 辨識 → 整理.
+export const STAGES = ['上傳', '排隊', '辨識', '整理'] as const;
+export type StageIndex = 0 | 1 | 2 | 3;
+
+/**
+ * Which of STAGES a job is in. Pure. `sessionStatus` is the backend's status (falls back to the one the
+ * job recorded while polling). With OS background uploads the backend reports "queued" from the moment
+ * the session is created until every part has landed, so that still counts as uploading.
+ */
+export function stageOf(job: Job | undefined, sessionStatus?: SessionStatus['status']): StageIndex {
+  if (!job) return 0;
+  if (job.stage === 'done') return 3;
+  const st = sessionStatus ?? job.serverStatus;
+  if (st === 'done') return 3;
+  if (st === 'running') return 2;
+  if (job.stage === 'uploading') return 0;
+  if (job.stage === 'error') return st === 'queued' ? 1 : 0;
+  // transcribing
+  if (job.waitingSince) return 0;
+  return 1;
+}
 
 // Overall progress: uploading occupies the first 40%, server-side work the remaining 60%, so the bar
 // never jumps backwards when the stage flips.
@@ -159,7 +183,7 @@ export async function runJob(sessionId: string, d: JobDeps): Promise<void> {
         await patch({ stage: 'error', error: '錄音沒有傳送完成，請再試一次。' });
         return;
       }
-      await patch({ pct: st.pct ?? 0, message: st.message || '正在整理逐字稿…' });
+      await patch({ pct: st.pct ?? 0, message: st.message || '正在整理逐字稿…', serverStatus: st.status });
       await d.delay(1500);
     }
   } catch (e: any) {

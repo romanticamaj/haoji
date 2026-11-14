@@ -9,15 +9,19 @@ import SpeakerSheet from '../components/SpeakerSheet';
 import { IconCheck, IconCopy, IconLoader, IconSpeakers, IconTranscript, IconTrash, IconAudioLines } from '../components/icons';
 import { AppText } from '../components/AppText';
 import { EmptyState } from '../components/EmptyState';
-import { Chip, DangerButton, PrimaryButton } from '../components/Buttons';
+import { Chip, DangerButton } from '../components/Buttons';
+import { TranscribeButton } from '../components/TranscribeButton';
+import type { Gate } from '../lib/serverStatus';
 import { isActive, overallPct } from '../lib/job';
 import { colors, layout, radius, spacing, tabularNums, speakerColor, typography } from '../lib/theme';
 
 export default function TranscriptTab(
-  { session, onUpdate, onRegenerate, onViewProgress, onSeek, activeMs = 0, onDelete }:
+  { session, onUpdate, onRegenerate, onViewProgress, onSeek, activeMs = 0, onDelete, gate = 'ok', onConnect }:
   {
     session: SavedSession; onUpdate(s: SavedSession): void; onRegenerate?(): void;
     onViewProgress?(): void; onSeek?(globalMs: number): void; activeMs?: number;
+    /** Can a transcript be made now (lib/serverStatus transcribeGate)? The transcript itself always shows. */
+    gate?: Gate; onConnect?(): void;
     /** 刪除這場會議 — always the last thing on the page. */
     onDelete?(): void;
   },
@@ -113,9 +117,11 @@ export default function TranscriptTab(
               description="這段錄音還沒整理成逐字稿。準備好了就按下面開始。"
             />
             {onRegenerate && (
-              <PrimaryButton
+              <TranscribeButton
+                gate={gate}
                 label={regenStarted ? '準備中…' : '生成逐字稿'}
                 onPress={startRegenerate}
+                onConnect={() => onConnect?.()}
                 disabled={regenStarted}
                 style={styles.emptyCta}
               />
@@ -178,12 +184,15 @@ export default function TranscriptTab(
           />
           {busy && onViewProgress ? (
             <Chip testID="view-progress" label={`查看進度（${busyPct}%）`} onPress={onViewProgress} />
+          ) : hasParts && onRegenerate && gate === 'unpaired' && onConnect ? (
+            <Chip testID="connect-server" label="連接主機" onPress={onConnect} />
           ) : hasParts && onRegenerate ? (
             <Chip
               testID="regenerate-transcript"
               label={regenStarted ? '準備中…' : '重新生成逐字稿'}
               onPress={confirmRegenerate}
-              disabled={regenStarted}
+              // Offline: the server can't take it now; the transcript above is untouched.
+              disabled={regenStarted || gate !== 'ok'}
             />
           ) : null}
         </ScrollView>

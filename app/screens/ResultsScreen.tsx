@@ -14,12 +14,17 @@ import { promoteTitleFromNotes } from '../lib/notesDoc';
 import { onJobChange } from '../lib/jobRunner';
 import { deleteSessionFiles } from '../lib/recordings';
 import { colors, layout, radius, spacing, typography } from '../lib/theme';
+import { useServerStatus } from '../hooks/useServerStatus';
+import { transcribeGate } from '../lib/serverStatus';
 
 export default function ResultsScreen() {
   const route = useRoute<any>();
   const nav = useNavigation<any>();
   const store = useStore();
   const id: string = route.params.sessionId;
+  // Only server actions are gated by the server's state; playback and the transcript never are.
+  const srv = useServerStatus();
+  const gate = transcribeGate(srv.summary, srv.loading);
   // Seed from the snapshot Home passed (if any) so the screen is fully rendered during the push
   // animation — the useFocusEffect below still refreshes from storage for the latest data.
   const [session, setSession] = useState<SavedSession | null>(route.params.session ?? null);
@@ -135,6 +140,7 @@ export default function ResultsScreen() {
           <View style={{ flex: 1, display: tab === 'transcript' ? 'flex' : 'none' }}>
             <TranscriptTab session={session} onUpdate={update} onRegenerate={regenerate} onViewProgress={viewProgress}
               onDelete={confirmDelete}
+              gate={gate} onConnect={() => nav.navigate('Pair')}
               onSeek={(ms) => playerRef.current?.seekToGlobal(ms)}
               activeMs={tab === 'transcript' ? playheadMs : 0} />
           </View>

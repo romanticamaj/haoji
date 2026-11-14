@@ -10,6 +10,8 @@ jest.mock('../../lib/api', () => ({
   uploadPart: (...a: any[]) => mockUploadPart(...a),
   transcribe: (...a: any[]) => mockTranscribe(...a),
   getSession: (...a: any[]) => mockGetSession(...a),
+  // The server-status poll (useServerStatus): a connected server (busy still accepts work).
+  getStatus: jest.fn().mockResolvedValue(require('../../../backend/tests/fixtures/contracts/status.json')),
 }));
 const mockReplace = jest.fn();
 jest.mock('@react-navigation/native', () => ({

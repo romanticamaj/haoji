@@ -105,6 +105,19 @@ export const TONE_LABEL: Record<Tone, string> = {
 // 會議記錄, so a server still pulling its notes model can transcribe and is not "offline".
 const TRANSCRIPT_CHECKS = ['data_writable', 'sqlite', 'ffmpeg', 'breeze_asr'];
 
+export type Gate = 'ok' | 'unpaired' | 'offline';
+
+/**
+ * Whether a "make a transcript" action can run now. While the first status is still loading the answer
+ * is 'ok' — never grey out a button on a guess. A busy server still accepts work (it queues).
+ */
+export function transcribeGate(s: Summary, loading: boolean): Gate {
+  if (loading) return 'ok';
+  if (s.tone === 'unpaired') return 'unpaired';
+  if (s.tone === 'offline') return 'offline';
+  return 'ok';
+}
+
 /** Reduce a status (or the lack of one) to phone words. Never says GPU, Ollama, model or 後端. */
 export function summarize(s: PublicStatus | null, err?: unknown): Summary {
   if (err) return { tone: 'offline', label: TONE_LABEL.offline, detail: ['確認主機有開、手機和主機在同一個網路或 Tailscale 上。'] };
