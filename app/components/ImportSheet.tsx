@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Sheet } from './Sheet';
 import { AppText } from './AppText';
+import { Touchable } from './Buttons';
 import { IconFile, IconImage, IconChevronRight, type IconProps } from './icons';
 import { colors, layout, radius, spacing } from '../lib/theme';
 
@@ -40,12 +41,12 @@ function Option({ Icon, label, hint, a11y, onPress, testID }: {
   Icon: (p: IconProps) => React.ReactElement; label: string; hint: string; a11y: string; onPress(): void; testID: string;
 }) {
   return (
-    <Pressable
+    <Touchable
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={a11y}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      style={styles.row}
     >
       <View style={styles.icon}><Icon size={20} color={colors.heading} /></View>
       <View style={styles.text}>
@@ -53,7 +54,7 @@ function Option({ Icon, label, hint, a11y, onPress, testID }: {
         <AppText variant="small" color="muted">{hint}</AppText>
       </View>
       <IconChevronRight size={18} />
-    </Pressable>
+    </Touchable>
   );
 }
 
@@ -69,7 +70,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   text: { flex: 1, gap: spacing.xxs },
-  pressed: { opacity: 0.7 },
 });
 
 export default ImportSheet;
