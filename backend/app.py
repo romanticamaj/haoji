@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 import config
-import asr, sessions, llm, media, push
+import asr, sessions, llm, media, push, settings
 from fastapi import Request
 
 # --- logging: rotating file (backend/logs/haoji.log) + console ---------------
@@ -69,6 +69,7 @@ os.makedirs(PARTS_DIR, exist_ok=True)
 @app.on_event("startup")
 def _startup():
     sessions.init_db()
+    settings.init()
     log.info("好記 backend up on :%s", config.WEB_PORT)
 
 @app.get("/health")
@@ -408,7 +409,7 @@ def debug_jobs():
 @app.get("/api/llm/models")
 def llm_models():
     ok, names, _ = llm.llm_status()
-    return {"ok": ok, "models": names, "default": config.LLM_MODEL}
+    return {"ok": ok, "models": names, "default": settings.llm_model()}
 
 @app.post("/api/sessions/{sid}/analyze")
 async def analyze(sid: str, req: Request):
@@ -438,7 +439,7 @@ async def analyze(sid: str, req: Request):
     text = sessions.build_transcript_text(data["segments"], body.get("names") or {})
     if not text.strip():
         return JSONResponse({"error": "沒有逐字稿內容"}, status_code=400)
-    model = body.get("model") or config.LLM_MODEL
+    model = body.get("model") or settings.llm_model()
 
     # Background mode: queue the generation and return immediately. The notes are written to the DB
     # when it finishes, so a client that is backgrounded/killed mid-generation collects them from

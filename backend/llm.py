@@ -4,7 +4,7 @@ import json
 import re
 import time
 import requests
-import config
+import config, settings
 # Shared s2tw converter (also used by asr.normalize so the transcript is Traditional too). Imported
 # into this namespace so existing references (llm.to_traditional) keep working.
 from zhtw import to_traditional
@@ -27,7 +27,7 @@ MEETING_NOTES_PROMPT = """你是專業的會議記錄助理。下面是一份多
 
 def llm_status():
     try:
-        r = requests.get(config.OLLAMA_BASE + "/api/tags", timeout=3)
+        r = requests.get(settings.ollama_base() + "/api/tags", timeout=3)
         r.raise_for_status()
         models = r.json().get("models", [])
         names = [m["name"] for m in models]
@@ -40,10 +40,10 @@ class OllamaProvider:
     name = "ollama"
 
     def generate_meeting_notes(self, transcript, model=None, on_progress=None):
-        model = model or config.LLM_MODEL
+        model = model or settings.llm_model()
         ok, names, thinking = llm_status()
         if not ok:
-            raise RuntimeError(f"連不到本機 LLM（Ollama，{config.OLLAMA_BASE}）。")
+            raise RuntimeError(f"連不到本機 LLM（Ollama，{settings.ollama_base()}）。")
         if names and model not in names:
             raise RuntimeError(f"本機沒有模型「{model}」。可用：{', '.join(names) or '（無）'}")
         approx_prompt = int((len(MEETING_NOTES_PROMPT) + len(transcript)) * 0.8) + 16
@@ -66,7 +66,7 @@ class OllamaProvider:
             content = self._generate_streaming(payload, on_progress)
         else:
             try:
-                r = requests.post(config.OLLAMA_BASE + "/api/chat", json=payload, timeout=config.LLM_TIMEOUT)
+                r = requests.post(settings.ollama_base() + "/api/chat", json=payload, timeout=config.LLM_TIMEOUT)
                 r.raise_for_status()
             except requests.exceptions.RequestException as e:
                 raise RuntimeError(f"本機 LLM 請求失敗：{e}")
@@ -83,7 +83,7 @@ class OllamaProvider:
         character count is REAL progress (not a timer), which is what makes a progress bar honest.
         Reports are throttled — this is for a human watching a list, not a firehose."""
         try:
-            r = requests.post(config.OLLAMA_BASE + "/api/chat", json=payload,
+            r = requests.post(settings.ollama_base() + "/api/chat", json=payload,
                               timeout=config.LLM_TIMEOUT, stream=True)
             r.raise_for_status()
         except requests.exceptions.RequestException as e:
