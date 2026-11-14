@@ -1,0 +1,1 @@
+{"error": {"code": "setting_locked", "message": "這個設定由環境變數決定，不能在這裡修改。", "hint": "修改 .env 的 OLLAMA_BASE_URL 後重新啟動。"}}

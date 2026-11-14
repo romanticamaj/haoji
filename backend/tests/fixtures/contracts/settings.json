@@ -1,0 +1,7 @@
+{
+  "ollama_base_url": {"value": "http://ollama:11434", "locked": true, "default": "http://127.0.0.1:11434"},
+  "llm_model": {"value": "gemma4:e4b-it-qat", "locked": false, "default": "gemma4:e4b-it-qat"},
+  "llm_provider": {"value": "ollama", "locked": false, "default": "ollama"},
+  "openai_base_url": {"value": "", "locked": false, "default": ""},
+  "openai_api_key": {"configured": false, "locked": false}
+}

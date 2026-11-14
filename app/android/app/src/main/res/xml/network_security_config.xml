@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- The app talks to a server the person hosts themselves, at ANY address (Tailscale 100.x, a LAN
+         IP, a MagicDNS name), usually over plain HTTP. A pinned domain list can only cover the
+         owner's own boxes, so cleartext is permitted app-wide. The only traffic is to the paired
+         server (lib/server.ts); DEPLOY.md recommends `tailscale serve` for HTTPS. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

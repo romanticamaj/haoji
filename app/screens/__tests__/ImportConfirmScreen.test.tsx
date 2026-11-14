@@ -1,0 +1,143 @@
+import React from 'react';
+import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+
+const mockProbe = jest.fn();
+jest.mock('../../lib/audioMerge', () => ({
+  available: true,
+  probe: (...a: any[]) => mockProbe(...a),
+  concatWav: jest.fn(),
+  concatToM4A: jest.fn(),
+}));
+const mockMoveToPart = jest.fn();
+const mockMerge = jest.fn();
+jest.mock('../../lib/recordings', () => ({
+  fsPath: (p: string) => p.replace(/^file:\/\//, ''),
+  moveToPart: (...a: any[]) => mockMoveToPart(...a),
+  mergeSessionParts: (...a: any[]) => mockMerge(...a),
+}));
+jest.mock('../../lib/audioExtract', () => ({ available: false, extractAudio: jest.fn() }));
+
+const mockReplace = jest.fn();
+const mockGoBack = jest.fn();
+const routeFiles = [
+  { uri: 'file:///c/one.m4a', name: 'one.m4a' },
+  { uri: 'file:///c/two.m4a', name: 'two.m4a' },
+  { uri: 'file:///c/doc.pdf', name: 'doc.pdf' },
+];
+jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ replace: mockReplace, goBack: mockGoBack, navigate: jest.fn() }),
+  useRoute: () => ({ params: { files: routeFiles } }),
+}));
+
+const mockStore = { upsert: jest.fn().mockResolvedValue(undefined), get: jest.fn(), list: jest.fn(), remove: jest.fn() };
+jest.mock('../../lib/store-context', () => ({ useStore: () => mockStore }));
+
+import ImportConfirmScreen from '../ImportConfirmScreen';
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockProbe.mockResolvedValue([
+    { path: '/c/one.m4a', ok: true, durationMs: 60000 },
+    { path: '/c/two.m4a', ok: true, durationMs: 30000 },
+    { path: '/c/doc.pdf', ok: false, durationMs: 0, reason: '沒有音訊' },
+  ]);
+  mockMoveToPart.mockImplementation((id: string, i: number) => Promise.resolve(`haoji/${id}/part-${i}.m4a`));
+  mockMerge.mockResolvedValue(null);
+});
+
+test('shows what each file actually is, and refuses to tick an unusable one', async () => {
+  const { getByText, findByText } = await render(<ImportConfirmScreen />);
+  await findByText('one.m4a');
+  getByText('沒有音訊');                       // decoded, not guessed from the extension
+  await act(async () => { fireEvent.press(getByText('doc.pdf')); });
+  getByText('已選 2/3 個 · 共 01:30');          // still 2 — the bad file cannot be selected
+});
+
+test('deselecting a file removes it from the count and the import', async () => {
+  const { getByText, findByText } = await render(<ImportConfirmScreen />);
+  await findByText('one.m4a');
+  await act(async () => { fireEvent.press(getByText('two.m4a')); });
+  getByText('已選 1/3 個 · 共 01:00');
+});
+
+test('reordering changes the ORDER the files are written in — the merge order', async () => {
+  const { getByTestId, findByText, getByText } = await render(<ImportConfirmScreen />);
+  await findByText('one.m4a');
+
+  // Reordering is a drag; VoiceOver reaches the same thing through the handle's move actions, which
+  // is also the path a test can drive deterministically.
+  await act(async () => {
+    fireEvent(getByTestId('grip-one.m4a'), 'accessibilityAction', { nativeEvent: { actionName: 'moveDown' } });
+  });                                                                        // two, one, doc
+  await act(async () => { fireEvent.press(getByText('合併成一段並繼續')); });
+
+  await waitFor(() => expect(mockMoveToPart).toHaveBeenCalledTimes(2));
+  // part-0 is now the file the user moved up, not the one the picker happened to return first
+  expect(mockMoveToPart.mock.calls[0][2]).toBe('file:///c/two.m4a');
+  expect(mockMoveToPart.mock.calls[1][2]).toBe('file:///c/one.m4a');
+  expect(mockMerge).toHaveBeenCalled();
+});
+
+// PanResponder reads the gesture from the responder's touch history, so a test drag has to supply one.
+function touch(prevY: number, y: number, t: number) {
+  const bank = { touchActive: true, startPageX: 0, startPageY: 0, startTimeStamp: 0, currentPageX: 0,
+    currentPageY: y, currentTimeStamp: t, previousPageX: 0, previousPageY: prevY, previousTimeStamp: t - 1 };
+  return {
+    nativeEvent: { touches: [{}], changedTouches: [{}], pageX: 0, pageY: y, timestamp: t },
+    touchHistory: { numberActiveTouches: 1, indexOfSingleActiveTouch: 0, mostRecentTimeStamp: t, touchBank: [bank] },
+  };
+}
+async function dragGrip(grip: any, dys: number[]) {
+  await act(async () => { fireEvent(grip, 'responderGrant', touch(0, 0, 1)); });
+  for (let i = 0; i < dys.length; i++) {
+    await act(async () => { fireEvent(grip, 'responderMove', touch(i ? dys[i - 1] : 0, dys[i], i + 2)); });
+  }
+  await act(async () => { fireEvent(grip, 'responderRelease', touch(dys[dys.length - 1], dys[dys.length - 1], dys.length + 2)); });
+}
+
+test('a drag can carry a row past several slots, and a later drag starts from the new order', async () => {
+  const { getByTestId, findByText, getByText } = await render(<ImportConfirmScreen />);
+  await findByText('one.m4a');
+
+  // Rows aren't laid out under jest, so a slot is the 96 default + the 8 gap = 104.
+  await dragGrip(getByTestId('grip-one.m4a'), [40, 80, 120, 160, 200, 230]);   // two, doc, one
+  expect(getByTestId('grip-one.m4a').props.accessibilityLabel).toContain('目前第 3 個');
+
+  await dragGrip(getByTestId('grip-one.m4a'), [-40, -80]);                     // two, one, doc
+  expect(getByTestId('grip-one.m4a').props.accessibilityLabel).toContain('目前第 2 個');
+
+  await act(async () => { fireEvent.press(getByText('合併成一段並繼續')); });
+  await waitFor(() => expect(mockMoveToPart).toHaveBeenCalledTimes(2));
+  expect(mockMoveToPart.mock.calls[0][2]).toBe('file:///c/two.m4a');
+  expect(mockMoveToPart.mock.calls[1][2]).toBe('file:///c/one.m4a');
+});
+
+test('a quick flick past two slots in one move event still lands two slots down', async () => {
+  const { getByTestId, findByText } = await render(<ImportConfirmScreen />);
+  await findByText('one.m4a');
+  await dragGrip(getByTestId('grip-one.m4a'), [215]);
+  expect(getByTestId('grip-one.m4a').props.accessibilityLabel).toContain('目前第 3 個');
+});
+
+test('保持分開 imports the selected files without joining them', async () => {
+  const { getByText, findByText } = await render(<ImportConfirmScreen />);
+  await findByText('one.m4a');
+  await act(async () => { fireEvent.press(getByText('保持分開')); });
+
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Review', { sessionId: expect.stringMatching(/^local-/) }));
+  expect(mockMerge).not.toHaveBeenCalled();
+  expect(mockStore.upsert).toHaveBeenCalledWith(expect.objectContaining({
+    parts: [
+      { uri: expect.stringMatching(/part-0\.m4a$/), durationMs: 60000 },
+      { uri: expect.stringMatching(/part-1\.m4a$/), durationMs: 30000 },
+    ],
+  }));
+});
+
+test('the unusable file is never imported, whichever action is taken', async () => {
+  const { getByText, findByText } = await render(<ImportConfirmScreen />);
+  await findByText('one.m4a');
+  await act(async () => { fireEvent.press(getByText('保持分開')); });
+  await waitFor(() => expect(mockMoveToPart).toHaveBeenCalledTimes(2));
+  for (const call of mockMoveToPart.mock.calls) expect(call[2]).not.toContain('doc.pdf');
+});

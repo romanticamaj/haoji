@@ -1,0 +1,91 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Transcript } from './types';
+import type { Job } from './job';
+import type { NotesJob } from './notesJob';
+import { serverBase } from './server';
+
+export type SavedSession = {
+  id: string; createdAt: number; title: string;
+  /**
+   * Where `title` came from. 'user' is set the moment someone renames the meeting themselves and
+   * makes the title permanent — no regeneration may overwrite it. 'ai' (or absent, for meetings
+   * saved before this existed) means the title is still the app's to maintain, so re-analysing
+   * refreshes it. Without this the two are indistinguishable once an AI title has been applied:
+   * the title stops looking like the timestamp default and then freezes for good.
+   */
+  titleSource?: 'ai' | 'user';
+  transcript?: Transcript; names: Record<string, string>;
+  notes?: string;
+  /** Legacy IAP flag. The paywall was removed in 2026-09; kept so stored sessions still parse. */
+  unlocked: boolean;
+  // Previous versions of `notes`, newest first, pushed each time the user edits/reverts/regenerates.
+  // Powers the notes editor's 版本紀錄 (revert). Capped when written (see lib/notesEdit).
+  notesHistory?: { notes: string; at: number }[];
+  parts: { uri: string; durationMs: number }[];
+  // Backend draft-session id, created lazily in ProcessingScreen at upload time. `id` is a
+  // local, device-generated id so recording never depends on backend reachability; `backendId`
+  // is what the transcribe/analyze endpoints key on.
+  backendId?: string;
+  // Durable transcription job state (see lib/job.ts). Persisted so a backgrounded, crashed or
+  // force-quit app can resume the upload / keep fetching progress instead of losing the work.
+  job?: Job;
+  // Durable AI-notes generation state (see lib/notesJob.ts) — same idea as `job`, for the LLM step.
+  notesJob?: NotesJob;
+};
+
+export interface SessionStore {
+  list(): Promise<SavedSession[]>;
+  get(id: string): Promise<SavedSession | null>;
+  upsert(s: SavedSession): Promise<void>;
+  remove(id: string): Promise<void>;
+}
+
+const KEY = 'haoji.sessions';
+const sortNewest = (a: SavedSession[]) => [...a].sort((x, y) => y.createdAt - x.createdAt);
+
+function fromMap(map: Record<string, SavedSession>): SessionStore {
+  return {
+    async list() { return sortNewest(Object.values(map)); },
+    async get(id) { return map[id] ?? null; },
+    async upsert(s) { map[s.id] = s; },
+    async remove(id) { delete map[id]; },
+  };
+}
+
+export function createMemoryStore(seed: SavedSession[] = []): SessionStore {
+  const map: Record<string, SavedSession> = {};
+  for (const s of seed) map[s.id] = s;
+  return fromMap(map);
+}
+
+export function createAsyncStorageStore(): SessionStore {
+  const read = async (): Promise<Record<string, SavedSession>> => {
+    const raw = await AsyncStorage.getItem(KEY);
+    return raw ? JSON.parse(raw) : {};
+  };
+  const write = (m: Record<string, SavedSession>) => AsyncStorage.setItem(KEY, JSON.stringify(m));
+  return {
+    async list() { return sortNewest(Object.values(await read())); },
+    async get(id) { return (await read())[id] ?? null; },
+    async upsert(s) { const m = await read(); m[s.id] = s; await write(m); },
+    async remove(id) { const m = await read(); delete m[id]; await write(m); },
+  };
+}
+
+// --- First-run onboarding ------------------------------------------------------------------------
+// Shown once, and only to a phone that is neither onboarded nor pointed at a server. Skipping it is
+// fine: recording never depends on a server (local-first).
+export const ONBOARDED_KEY = 'haoji.onboarded';
+
+export async function isOnboarded(): Promise<boolean> {
+  try { return (await AsyncStorage.getItem(ONBOARDED_KEY)) === '1'; } catch { return false; }
+}
+
+export async function setOnboarded(): Promise<void> {
+  try { await AsyncStorage.setItem(ONBOARDED_KEY, '1'); } catch { /* worst case it shows once more */ }
+}
+
+export async function shouldShowOnboarding(): Promise<boolean> {
+  if (await isOnboarded()) return false;
+  return (await serverBase()) === null;
+}

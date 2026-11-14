@@ -1,0 +1,37 @@
+diff --git a/node_modules/react-native-fs/RNFSManager.m b/node_modules/react-native-fs/RNFSManager.m
+index 5ddd941..df34795 100755
+--- a/node_modules/react-native-fs/RNFSManager.m
++++ b/node_modules/react-native-fs/RNFSManager.m
+@@ -293,9 +293,15 @@ + (BOOL)requiresMainQueueSetup
+   resolve(base64Content);
+ }
+ 
++// HAOJI_FIX: these were declared as POINTERS (NSInteger *). The New Architecture's TurboModule
++// interop refuses to convert a JS number to a pointer type and throws
++//   "Error while converting JavaScript argument 1 to Objective C type NSInteger"
++// so EVERY call to RNFS.read() failed. Our crash-truncated-WAV repair caught that and returned
++// false, silently, for two weeks — a 27-minute meeting recording stayed unplayable because of it.
++// Declared by value, the bridge converts them correctly.
+ RCT_EXPORT_METHOD(read:(NSString *)filepath
+-                  length: (NSInteger *)length
+-                  position: (NSInteger *)position
++                  length: (NSInteger)length
++                  position: (NSInteger)position
+                   resolver:(RCTPromiseResolveBlock)resolve
+                   rejecter:(RCTPromiseRejectBlock)reject)
+ {
+@@ -324,11 +330,11 @@ + (BOOL)requiresMainQueueSetup
+     }
+ 
+     // Seek to the position if there is one.
+-    [file seekToFileOffset: (int)position];
++    [file seekToFileOffset: position];
+ 
+     NSData *content;
+-    if ((int)length > 0) {
+-        content = [file readDataOfLength: (int)length];
++    if (length > 0) {
++        content = [file readDataOfLength: length];
+     } else {
+         content = [file readDataToEndOfFile];
+     }

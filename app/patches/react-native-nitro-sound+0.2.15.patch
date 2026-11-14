@@ -1,0 +1,160 @@
+diff --git a/node_modules/react-native-nitro-sound/ios/Sound.swift b/node_modules/react-native-nitro-sound/ios/Sound.swift
+index 65cd4df..a144ec9 100644
+--- a/node_modules/react-native-nitro-sound/ios/Sound.swift
++++ b/node_modules/react-native-nitro-sound/ios/Sound.swift
+@@ -56,9 +56,12 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+                 // Apply AVModeIOS if provided
+                 let sessionMode = audioSets?.AVModeIOS.map(self.getAudioSessionMode) ?? .default
+ 
++                // HAOJI_FIX: add .mixWithOthers so another app starting audio (a demo video, music)
++                // does not automatically take the session away and cut the recording short. iOS still
++                // interrupts for calls/Siri — this only avoids the avoidable interruptions.
+                 try self.recordingSession?.setCategory(.playAndRecord,
+                                                      mode: sessionMode,
+-                                                     options: [.defaultToSpeaker, .allowBluetooth])
++                                                     options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
+                 try self.recordingSession?.setActive(true)
+ 
+                 print("🎙️ Audio session set up successfully")
+@@ -119,12 +122,48 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+             print("🎙️ Directory exists and is writable: \(directory.path)")
+ 
+             // Setup audio settings
+-            let settings = self.getAudioSettings(audioSets: audioSets)
++            var settings = self.getAudioSettings(audioSets: audioSets)
++
++            // HAOJI_FIX: derive the format from the OUTPUT EXTENSION rather than trusting the AudioSet
++            // that came from JS. The NitroModules interop can drop fields, and when AVFormatIDKeyIOS
++            // ('lpcm') fails to arrive the format silently stays the AAC default while the app is
++            // writing a .wav file. AVAudioRecorder then rejects AAC-in-WAVE with
++            // kAudioFormatUnsupportedDataFormatError ('fmt?', OSStatus 1718449215) and recording is
++            // impossible. The extension is unambiguous, so it decides.
++            if fileURL.pathExtension.lowercased() == "wav" {
++                settings[AVFormatIDKey] = Int(kAudioFormatLinearPCM)
++                // Rate and channels have to be forced here too. The AudioSet from JS never survives
++                // the interop, so these silently fell back to the 44.1 kHz STEREO preset — 5.5x the
++                // bytes of the 16 kHz mono the app asks for and the backend transcribes at, which is
++                // pure cost in disk and upload time for no gain in quality.
++                settings[AVSampleRateKey] = 16000.0
++                settings[AVNumberOfChannelsKey] = 1
++                settings[AVLinearPCMBitDepthKey] = 16
++                settings[AVLinearPCMIsFloatKey] = false
++                settings[AVLinearPCMIsBigEndianKey] = false
++                settings[AVLinearPCMIsNonInterleaved] = false
++                settings.removeValue(forKey: AVEncoderBitRateKey)
++                settings.removeValue(forKey: AVEncoderAudioQualityKey)
++            } else if (settings[AVFormatIDKey] as? Int) == Int(kAudioFormatLinearPCM) {
++                // Conversely: PCM asked for, but the container can't hold it — fall back to AAC.
++                settings[AVFormatIDKey] = Int(kAudioFormatMPEG4AAC)
++                settings.removeValue(forKey: AVLinearPCMBitDepthKey)
++                settings.removeValue(forKey: AVLinearPCMIsFloatKey)
++                settings.removeValue(forKey: AVLinearPCMIsBigEndianKey)
++                settings.removeValue(forKey: AVLinearPCMIsNonInterleaved)
++            }
+             print("🎙️ Audio settings: \(settings)")
+ 
+             // Create recorder
+             print("🎙️ Creating AVAudioRecorder...")
+-            self.audioRecorder = try AVAudioRecorder(url: fileURL, settings: settings)
++            do {
++                self.audioRecorder = try AVAudioRecorder(url: fileURL, settings: settings)
++            } catch {
++                // HAOJI: surface WHAT was rejected — an opaque OSStatus alone cost a release to
++                // diagnose. ('fmt?' = 1718449215 = unsupported format for this container.)
++                throw NSError(domain: "AudioRecorder", code: -4, userInfo: [NSLocalizedDescriptionKey:
++                    "無法建立錄音器：\(error.localizedDescription) | ext=\(fileURL.pathExtension) settings=\(settings)"])
++            }
+             print("🎙️ AVAudioRecorder created successfully")
+ 
+             self.audioRecorder?.isMeteringEnabled = meteringEnabled ?? false
+@@ -135,7 +174,11 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+             print("🎙️ Recorder prepared: \(prepared)")
+ 
+             if !prepared {
+-                throw NSError(domain: "AudioRecorder", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare recorder"])
++                // HAOJI: include the settings dict + session state in the error so a future
++                // prepare failure is diagnosable from the JS layer (no side effects).
++                let s = AVAudioSession.sharedInstance()
++                let diag = "cat=\(s.category.rawValue) active_sr=\(s.sampleRate) inAvail=\(s.isInputAvailable) settings=\(settings)"
++                throw NSError(domain: "AudioRecorder", code: -3, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare recorder | \(diag)"])
+             }
+ 
+             // Start recording on main queue
+@@ -386,7 +429,21 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+         let promise = Promise<String>()
+ 
+         if let recorder = self.audioRecorder, !recorder.isRecording {
+-            recorder.record()
++            // HAOJI_FIX: reactivate the session and CHECK the result. An interruption (a call) leaves
++            // the session inactive, so record() returns false — and the stock code ignored that and
++            // reported success, leaving JS "recording" into nothing while the meeting was lost. The
++            // caller can only fall back to starting a fresh part if it is told the truth.
++            do {
++                try (self.recordingSession ?? AVAudioSession.sharedInstance()).setActive(true)
++            } catch {
++                promise.reject(withError: RuntimeError.error(
++                    withMessage: "無法恢復錄音（音訊被佔用）：\(error.localizedDescription)"))
++                return promise
++            }
++            guard recorder.record() else {
++                promise.reject(withError: RuntimeError.error(withMessage: "無法恢復錄音（錄音器拒絕繼續）"))
++                return promise
++            }
+             DispatchQueue.main.async {
+                 self.startRecordTimer()
+             }
+@@ -415,11 +472,16 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+                 DispatchQueue.main.async {
+                     recorder.stop()
+                     self.stopRecordTimer()
++                    // HAOJI_FIX: nil the recorder on the MAIN queue — the same queue the metering
++                    // Timer reads `audioRecorder` and calls updateMeters()/averagePower() on. The
++                    // stock code nilled it on a background queue, so when an OS interruption (incoming
++                    // call) stopped recording WHILE our JS handler called stopRecorder, the timer
++                    // could read a half-torn-down recorder → EXC_BAD_ACCESS. Serializing the nil with
++                    // the timer on the main queue closes that race.
++                    self.audioRecorder = nil
+ 
+                     // Continue cleanup in background
+                     DispatchQueue.global(qos: .userInitiated).async {
+-                        self.audioRecorder = nil
+-
+                         // Deactivate audio session
+                         try? self.recordingSession?.setActive(false)
+                         self.recordingSession = nil
+@@ -771,6 +833,35 @@ final class HybridSound: HybridSoundSpec_base, HybridSoundSpec_protocol {
+             }
+         }
+ 
++        // HAOJI_FIX: the NitroModules C++ interop delivers AudioSet Double fields as finite
++        // garbage (e.g. 3.99e+252 for the sample rate) that passes the isFinite check in
++        // safeDouble but makes AVAudioRecorder.prepareToRecord() return false ("Failed to prepare
++        // recorder"). AVSampleRateKey is the only Double in the settings dict (the rest are Ints,
++        // which safeInt already coerces to nil). Clamp it to a valid audio range; if it's garbage,
++        // fall back to 44.1kHz.
++        if let sr = settings[AVSampleRateKey] as? Double, sr >= 8000, sr <= 192000 {
++            // sane value, keep it
++        } else if let sr = settings[AVSampleRateKey] as? Int, sr >= 8000, sr <= 192000 {
++            // sane integer value, keep it
++        } else {
++            settings[AVSampleRateKey] = 44100.0
++        }
++
++        // HAOJI_FIX: when recording LinearPCM (WAV) — which the app uses so that a crash mid-recording
++        // still leaves a readable file (unlike AAC, whose moov index is only written on a clean stop,
++        // making a crashed .m4a unplayable) — getAudioSettings above never maps the PCM-specific keys,
++        // and the NitroModules interop can drop/corrupt the ones passed from JS. Force sane 16-bit
++        // little-endian integer PCM so prepareToRecord() succeeds deterministically, and drop the AAC-
++        // only keys that don't apply to PCM.
++        if (settings[AVFormatIDKey] as? Int) == Int(kAudioFormatLinearPCM) {
++            settings[AVLinearPCMBitDepthKey] = 16
++            settings[AVLinearPCMIsFloatKey] = false
++            settings[AVLinearPCMIsBigEndianKey] = false
++            settings[AVLinearPCMIsNonInterleaved] = false
++            settings.removeValue(forKey: AVEncoderBitRateKey)
++            settings.removeValue(forKey: AVEncoderAudioQualityKey)
++        }
++
+         return settings
+     }
+ 

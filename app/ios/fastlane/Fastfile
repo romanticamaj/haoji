@@ -1,0 +1,146 @@
+default_platform(:ios)
+
+# Signing/upload identity comes from the environment (or fastlane/.env, gitignored — see
+# fastlane/.env.example), so a fork can ship under its own Apple account without editing this file.
+APP_ID = ENV.fetch("APP_IDENTIFIER", "com.garyhsieh.haoji")
+
+def asc_key
+  key_id = ENV.fetch("ASC_KEY_ID") { UI.user_error!("Set ASC_KEY_ID (see fastlane/.env.example)") }
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: ENV.fetch("ASC_ISSUER_ID") { UI.user_error!("Set ASC_ISSUER_ID") },
+    key_filepath: File.expand_path(ENV.fetch("ASC_KEY_PATH", "~/.private_keys/AuthKey_#{key_id}.p8")),
+  )
+end
+
+platform :ios do
+  desc "Build a Release archive and upload it to TestFlight"
+  lane :beta do
+    key = asc_key
+
+    # Next build number = max(latest TestFlight build, local project build) + 1.
+    # Apple remembers a CFBundleVersion even if that build FAILED processing, so we must
+    # advance past the local number too — re-sending a failed build's number is rejected.
+    latest = latest_testflight_build_number(
+      api_key: key,
+      app_identifier: APP_ID,
+      initial_build_number: 0,
+    ).to_i
+    current = (get_build_number(xcodeproj: "Haoji.xcodeproj").to_i rescue 0)
+    increment_build_number(build_number: [latest, current].max + 1, xcodeproj: "Haoji.xcodeproj")
+
+    # development: false -> Apple *Distribution* cert (needs Admin/Developer role on the ASC key)
+    cert(api_key: key, development: false, output_path: "./certs")
+
+    profile_name = "Haoji AppStore"
+    get_provisioning_profile(
+      api_key: key,
+      app_identifier: APP_ID,
+      provisioning_name: profile_name,
+      force: true,
+    )
+
+    build_app(
+      workspace: "Haoji.xcworkspace",
+      scheme: "Haoji",
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: { APP_ID => profile_name },
+      },
+    )
+
+    upload_to_testflight(
+      api_key: key,
+      skip_waiting_for_build_processing: false,
+      # "What to Test" as the tester sees it in TestFlight. A build with no notes is a build nobody
+      # knows how to check, so this is never left empty: hand-written notes win, otherwise the commit
+      # subjects since the last shipped build stand in.
+      changelog: testflight_notes,
+      distribute_external: false,
+    )
+  end
+
+  # Notes for the build about to go out. Written to fastlane/RELEASE_NOTES.md before shipping;
+  # falls back to what actually changed since the previous build bump.
+  def testflight_notes
+    path = File.join(File.dirname(__FILE__), "RELEASE_NOTES.md")
+    written = File.exist?(path) ? File.read(path).strip : ""
+    return written[0, 3900] unless written.empty?
+
+    last_bump = `git log --format=%H --grep="chore(ios): bump build" -n 1`.strip
+    range = last_bump.empty? ? "-20" : "#{last_bump}..HEAD"
+    subjects = `git log #{range} --format=%s`.lines
+      .map(&:strip)
+      .reject { |l| l.start_with?("chore(ios): bump build") }
+      .map { |l| "• #{l}" }
+    body = subjects.empty? ? "小幅修正與改進。" : subjects.join("\n")
+    ("本次變更：\n" + body)[0, 3900]
+  end
+end
+
+platform :ios do
+  desc "Attach/replace the 'What to Test' notes on a build already uploaded (fastlane notes build:64)"
+  lane :notes do |options|
+    key = asc_key
+    build = options[:build] || latest_testflight_build_number(api_key: key, app_identifier: APP_ID).to_s
+    upload_to_testflight(
+      api_key: key,
+      app_identifier: APP_ID,
+      app_version: options[:version] || "1.0",
+      build_number: build.to_s,
+      changelog: testflight_notes,
+      distribute_only: true,             # notes only — the build is already uploaded
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+    )
+    UI.success("已為 build #{build} 更新測試備註")
+  end
+end
+
+platform :ios do
+  desc "One-time: create the App Store Connect app record via the stored Apple ID session"
+  lane :bootstrap do
+    produce(
+      username: "romanticamaj@gmail.com",
+      app_identifier: APP_ID,
+      app_name: "好記",
+      language: "Traditional Chinese",
+      sku: "haoji-garyhsieh-2026",
+      company_name: "Gary Hsieh",
+      team_id: "64N77Z6TV3",
+      skip_devcenter: true,
+    )
+  end
+end
+
+platform :ios do
+  desc "Ensure an internal TestFlight group exists and add an internal tester (email via ENV TESTER_EMAIL)"
+  lane :add_tester do
+    app_store_connect_api_key(
+      key_id: "<ASC_KEY_ID>",
+      issuer_id: "<ASC_ISSUER_ID>",
+      key_filepath: File.expand_path("~/.private_keys/AuthKey_<ASC_KEY_ID>.p8"),
+    )
+    email = ENV["TESTER_EMAIL"] || "romanticamaj@gmail.com"
+    app = Spaceship::ConnectAPI::App.find(APP_ID)
+    group = app.get_beta_groups.find(&:is_internal_group)
+    if group.nil?
+      # create_beta_group always sends publicLink* attrs, which Apple rejects for internal
+      # groups — POST a clean internal-group body instead.
+      body = { data: { attributes: { name: "Internal", isInternalGroup: true, hasAccessToAllBuilds: true },
+                       relationships: { app: { data: { id: app.id, type: "apps" } } }, type: "betaGroups" } }
+      Spaceship::ConnectAPI.client.test_flight_request_client.post("v1/betaGroups", body)
+      group = app.get_beta_groups.find(&:is_internal_group)
+      UI.success("Created internal group '#{group.name}' (#{group.id})")
+    else
+      UI.message("Using internal group '#{group.name}' (#{group.id})")
+    end
+    Spaceship::ConnectAPI.client.post_beta_tester_assignment(
+      beta_group_ids: [group.id],
+      attributes: { email: email, firstName: "Gary", lastName: "Hsieh" },
+    )
+    UI.success("Added internal tester #{email} to '#{group.name}'")
+  end
+end

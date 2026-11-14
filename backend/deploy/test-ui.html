@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>好記後端測試台</title>
+<style>
+  :root { --bg:#f6f4ef; --card:#fff; --ink:#1f2430; --mut:#6b7280; --acc:#7c5cff; --ok:#1a936f; --err:#c0392b; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font-family:"Noto Sans TC",system-ui,sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:860px; margin:0 auto; display:grid; gap:16px; }
+  h1 { font-size:20px; margin:0; display:flex; align-items:center; gap:10px; }
+  .card { background:var(--card); border:1px solid #e5e1d8; border-radius:12px; padding:16px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  input[type=text] { flex:1; min-width:260px; padding:8px 10px; border:1px solid #d7d2c6; border-radius:8px; font:inherit; }
+  button { padding:8px 14px; border:0; border-radius:8px; background:var(--acc); color:#fff; font:inherit; cursor:pointer; }
+  button:disabled { background:#c7c2d9; cursor:not-allowed; }
+  button.ghost { background:#eceafe; color:var(--acc); }
+  .dot { width:10px; height:10px; border-radius:50%; background:#cbd5e1; display:inline-block; }
+  .dot.ok { background:var(--ok); } .dot.err { background:var(--err); }
+  .mut { color:var(--mut); font-size:13px; }
+  progress { width:100%; height:10px; }
+  .seg { padding:6px 10px; border-radius:8px; margin:4px 0; background:#faf9f6; border-left:4px solid #ccc; }
+  .t { color:var(--mut); font-size:12px; margin-right:8px; }
+  .sp { font-weight:700; margin-right:6px; }
+  pre.notes { white-space:pre-wrap; font-family:inherit; background:#faf9f6; padding:12px; border-radius:8px; max-height:480px; overflow:auto; }
+  .log { font-family:ui-monospace,monospace; font-size:12px; color:var(--mut); max-height:140px; overflow:auto; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>好記後端測試台 <span class="mut" style="font-weight:400">backend/deploy — 完整 pipeline 冒煙/品質測試</span></h1>
+
+  <div class="card">
+    <div class="row">
+      <span id="hdot" class="dot"></span>
+      <input id="base" type="text" value="http://127.0.0.1:7780">
+      <button id="chk" class="ghost">檢查連線</button>
+      <span id="hmsg" class="mut"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input id="file" type="file" accept="audio/*,.m4a,.mp3,.wav,.aac">
+      <button id="go">上傳並轉錄</button>
+    </div>
+    <div id="progWrap" style="display:none; margin-top:10px;">
+      <progress id="prog" max="1" value="0"></progress>
+      <div class="row"><span id="pmsg" class="mut"></span><span id="sid" class="mut"></span></div>
+    </div>
+  </div>
+
+  <div class="card" id="txCard" style="display:none;">
+    <div class="row" style="justify-content:space-between;">
+      <b>逐字稿（講者分離）</b><span id="txMeta" class="mut"></span>
+    </div>
+    <div id="segs"></div>
+    <div class="row" style="margin-top:10px;">
+      <button id="an">生成會議記錄（LLM）</button><span id="anMsg" class="mut"></span>
+    </div>
+  </div>
+
+  <div class="card" id="notesCard" style="display:none;">
+    <b>會議記錄</b>
+    <pre class="notes" id="notes"></pre>
+  </div>
+
+  <div class="card"><div class="log" id="log"></div></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const log = m => { $('log').textContent += `[${new Date().toLocaleTimeString()}] ${m}\n`; $('log').scrollTop = 1e9; };
+const base = () => $('base').value.replace(/\/+$/,'');
+const COLORS = ['#7c5cff','#1a936f','#e07a1f','#c0392b','#2a6f97','#9d4edd','#588157','#bc4749'];
+let SID = null, SEGS = null, SPEAKERS = [];
+
+async function health() {
+  $('hdot').className = 'dot'; $('hmsg').textContent = '檢查中…';
+  try {
+    const r = await fetch(base()+'/health', {signal: AbortSignal.timeout(4000)});
+    const j = await r.json();
+    const ok = j.status === 'ok';
+    $('hdot').className = 'dot ' + (ok?'ok':'err');
+    $('hmsg').textContent = ok ? `連上了（${j.service}）` : JSON.stringify(j);
+  } catch(e) { $('hdot').className='dot err'; $('hmsg').textContent = '連不上：'+e.message; }
+}
+
+async function run() {
+  const f = $('file').files[0];
+  if (!f) return alert('先選一個音檔（真實會議錄音最好）');
+  $('go').disabled = true; $('progWrap').style.display='block';
+  $('txCard').style.display='none'; $('notesCard').style.display='none';
+  try {
+    log(`建立 session…`);
+    const cid = 'test-ui-' + Date.now();
+    let r = await fetch(base()+'/api/sessions', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({client_id: cid})});
+    SID = (await r.json()).session_id;
+    $('sid').textContent = 'session: '+SID;
+    log(`session ${SID}；上傳 ${f.name}（${(f.size/1048576).toFixed(1)} MB）…`);
+    const fd = new FormData(); fd.append('file', f, f.name);
+    r = await fetch(`${base()}/api/sessions/${SID}/parts`, {method:'POST', body:fd});
+    log(`上傳完成（part count=${(await r.json()).count}）；觸發轉錄…`);
+    await fetch(`${base()}/api/sessions/${SID}/transcribe`, {method:'POST'});
+    const t0 = Date.now();
+    while (true) {
+      await new Promise(s=>setTimeout(s,2000));
+      const st = await (await fetch(`${base()}/api/sessions/${SID}`)).json();
+      $('prog').value = st.pct ?? 0; $('pmsg').textContent = `${st.message||st.status}（${Math.round((Date.now()-t0)/1000)}s）`;
+      if (st.status === 'done') { renderTranscript(st.transcript, (Date.now()-t0)/1000); break; }
+      if (st.status === 'error') { log('❌ 轉錄失敗：'+(st.error||st.message)); alert('轉錄失敗：'+(st.error||st.message)); break; }
+    }
+  } catch(e) { log('❌ '+e.message); alert(e.message); }
+  $('go').disabled = false;
+}
+
+function renderTranscript(tx, secs) {
+  SEGS = tx.segments||[]; SPEAKERS = tx.speakers||[];
+  log(`✅ 轉錄完成：${SEGS.length} 段、${SPEAKERS.length} 位講者、音長 ${Math.round(tx.duration)}s、耗時 ${Math.round(secs)}s`);
+  $('txMeta').textContent = `${SEGS.length} 段 · ${SPEAKERS.length} 位講者 · 音長 ${Math.round(tx.duration)}s · 轉錄 ${Math.round(secs)}s`;
+  const mmss = t => `${String(Math.floor(t/60)).padStart(2,'0')}:${String(Math.floor(t%60)).padStart(2,'0')}`;
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  $('segs').innerHTML = SEGS.length ? SEGS.map(s => {
+    const c = COLORS[SPEAKERS.indexOf(s.speaker) % COLORS.length];
+    return `<div class="seg" style="border-left-color:${c}"><span class="t">${mmss(s.start)}</span><span class="sp" style="color:${c}">${esc(s.speaker)}</span>${esc(s.text)}</div>`;
+  }).join('') : '<div class="mut">（沒有偵測到語音segments——純音/靜音檔屬正常）</div>';
+  $('txCard').style.display='block';
+}
+
+async function analyze() {
+  $('an').disabled = true; $('anMsg').textContent = 'LLM 生成中（10–60s）…';
+  try {
+    const t0 = Date.now();
+    const r = await fetch(`${base()}/api/sessions/${SID}/analyze`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const j = await r.json();
+    if (j.error) throw new Error(j.error);
+    $('notes').textContent = j.notes;
+    $('notesCard').style.display='block';
+    $('anMsg').textContent = `完成（${Math.round((Date.now()-t0)/1000)}s，model=${j.model}）`;
+    log(`✅ 會議記錄完成（${j.notes.length} 字）`);
+  } catch(e) { $('anMsg').textContent='失敗：'+e.message; log('❌ analyze：'+e.message); }
+  $('an').disabled = false;
+}
+
+$('chk').onclick = health; $('go').onclick = run; $('an').onclick = analyze;
+health();
+</script>
+</body>
+</html>

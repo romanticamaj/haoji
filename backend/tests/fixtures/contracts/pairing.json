@@ -1,0 +1,5 @@
+{
+  "token": "pTk_example_token_value",
+  "urls": ["http://100.64.0.5:7780", "http://192.168.1.20:7780"],
+  "qr_payload": "haoji://pair?url=http%3A%2F%2F100.64.0.5%3A7780&token=pTk_example_token_value"
+}

@@ -1,0 +1,115 @@
+import { notesMetaLine, parseTaskItem, extractNotesTitle, stripLeadingH1, looksLikeAutoTitle, promoteTitleFromNotes } from '../notesDoc';
+import { SavedSession } from '../store';
+
+describe('promoteTitleFromNotes', () => {
+  const mk = (over: Partial<SavedSession>): SavedSession =>
+    ({ id: 's', createdAt: 1, title: 't', unlocked: false, names: {}, parts: [], ...over });
+  test('replaces a timestamp title with the AI H1 topic', () => {
+    const s = mk({ title: '7/15/2026, 12:07:52 AM', notes: '# 會議記錄：AI 導入探討會\n\n## 目的\n內文' });
+    expect(promoteTitleFromNotes(s).title).toBe('AI 導入探討會');
+  });
+  test('keeps a user-typed title untouched (same reference)', () => {
+    const s = mk({ title: '客戶月會', notes: '# 會議記錄：AI 導入探討會' });
+    expect(promoteTitleFromNotes(s)).toBe(s);
+  });
+  test('no-op when there are no notes yet', () => {
+    const s = mk({ title: '7/15/2026, 12:07 AM' });
+    expect(promoteTitleFromNotes(s)).toBe(s);
+  });
+});
+
+describe('extractNotesTitle', () => {
+  test('pulls the H1 topic and drops a 會議記錄： prefix', () => {
+    expect(extractNotesTitle('# 會議記錄：AI 系統導入探討會\n\n## 會議目的\n...')).toBe('AI 系統導入探討會');
+    expect(extractNotesTitle('#  會議紀錄: 產品週會')).toBe('產品週會');
+  });
+  test('keeps an H1 that has no prefix', () => {
+    expect(extractNotesTitle('# Q3 規劃\n內文')).toBe('Q3 規劃');
+  });
+  test('returns null when there is no H1', () => {
+    expect(extractNotesTitle('## 會議摘要\n沒有一級標題')).toBeNull();
+  });
+});
+
+describe('stripLeadingH1', () => {
+  test('removes a leading H1 and following blank lines', () => {
+    expect(stripLeadingH1('# 標題\n\n## 會議目的\n內文')).toBe('## 會議目的\n內文');
+  });
+  test('leaves body without a leading H1 unchanged', () => {
+    expect(stripLeadingH1('## 會議目的\n內文')).toBe('## 會議目的\n內文');
+  });
+});
+
+describe('looksLikeAutoTitle', () => {
+  test('true for timestamp defaults', () => {
+    expect(looksLikeAutoTitle('7/15/2026, 12:07:52 AM')).toBe(true);
+    expect(looksLikeAutoTitle('2026/7/15 上午12:07')).toBe(true);
+    expect(looksLikeAutoTitle('')).toBe(true);
+    // The zh-TW recovered-recording stamp stays replaceable by the AI title.
+    expect(looksLikeAutoTitle('已復原的錄音（10月29日 下午4:31）')).toBe(true);
+  });
+  test('false for a user-typed name', () => {
+    expect(looksLikeAutoTitle('產品週會')).toBe(false);
+    expect(looksLikeAutoTitle('AI 系統導入探討會')).toBe(false);
+  });
+});
+
+const NOW = new Date('2026-07-10T14:30:00').getTime();
+
+function session(over: Partial<SavedSession> = {}): SavedSession {
+  return {
+    id: 's', createdAt: NOW, title: 't', unlocked: false, names: {}, parts: [], ...over,
+  };
+}
+
+describe('notesMetaLine', () => {
+  test('full line: minutes · speakers · relative day', () => {
+    const s = session({
+      parts: [{ uri: 'a', durationMs: 42 * 60000 }],
+      transcript: { speakers: ['A', 'B', 'C', 'D'], segments: [] },
+    });
+    expect(notesMetaLine(s, NOW)).toBe('42 分鐘 · 4 位參與者 · 今天 14:30');
+  });
+
+  test('omits duration chip when total is 0', () => {
+    const s = session({
+      parts: [{ uri: 'a', durationMs: 0 }],
+      transcript: { speakers: ['A', 'B'], segments: [] },
+    });
+    expect(notesMetaLine(s, NOW)).toBe('2 位參與者 · 今天 14:30');
+  });
+
+  test('omits speaker chip when there is no transcript', () => {
+    const s = session({ parts: [{ uri: 'a', durationMs: 5 * 60000 }] });
+    expect(notesMetaLine(s, NOW)).toBe('5 分鐘 · 今天 14:30');
+  });
+
+  test('relative day only when nothing else is known', () => {
+    expect(notesMetaLine(session(), NOW)).toBe('今天 14:30');
+  });
+});
+
+describe('parseTaskItem', () => {
+  test('returns null for a non-task bullet', () => {
+    expect(parseTaskItem('一般重點')).toBeNull();
+    expect(parseTaskItem('[未完成] 不是 checkbox')).toBeNull();
+  });
+
+  test('unchecked task', () => {
+    expect(parseTaskItem('[ ] 彙整匯出功能需求規格')).toEqual({ done: false, text: '彙整匯出功能需求規格' });
+  });
+
+  test('checked task (x and X)', () => {
+    expect(parseTaskItem('[x] 整理留存數據儀表板')).toEqual({ done: true, text: '整理留存數據儀表板' });
+    expect(parseTaskItem('[X] 完成')).toEqual({ done: true, text: '完成' });
+  });
+
+  test('parses a trailing @owner', () => {
+    expect(parseTaskItem('[ ] 彙整需求規格 @陳專員')).toEqual({ done: false, text: '彙整需求規格', owner: '陳專員' });
+  });
+
+  test('parses a trailing (owner) / （owner）', () => {
+    expect(parseTaskItem('[x] 整理儀表板（宏）')).toEqual({ done: true, text: '整理儀表板', owner: '宏' });
+    expect(parseTaskItem('[ ] 排程 (Gary)')).toEqual({ done: false, text: '排程', owner: 'Gary' });
+  });
+});

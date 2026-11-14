@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "ok": false,
+  "checks": [
+    {"id": "data_writable", "ok": true, "label": "資料夾可寫入", "hint": ""},
+    {"id": "sqlite", "ok": true, "label": "資料庫", "hint": ""},
+    {"id": "ffmpeg", "ok": true, "label": "ffmpeg", "hint": ""},
+    {"id": "breeze_asr", "ok": true, "label": "語音辨識（Breeze ASR）", "hint": ""},
+    {"id": "ollama", "ok": true, "label": "Ollama", "hint": ""},
+    {"id": "llm_model", "ok": false, "label": "會議記錄模型", "hint": "到「模型」頁下載 gemma4:e4b-it-qat，或改選已安裝的模型。"}
+  ],
+  "queue": {"active": 1, "queued": 0},
+  "llm": {"model": "gemma4:e4b-it-qat", "reachable": true},
+  "pairing_required": false
+}

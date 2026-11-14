@@ -1,0 +1,5 @@
+[
+  {"name": "qwen3:8b", "status": "pulling manifest", "completed": 0, "total": 0, "pct": 0},
+  {"name": "qwen3:8b", "status": "downloading", "completed": 2600000000, "total": 5200000000, "pct": 0.5},
+  {"name": "qwen3:8b", "status": "success", "completed": 5200000000, "total": 5200000000, "pct": 1}
+]

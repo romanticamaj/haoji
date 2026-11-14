@@ -1,0 +1,50 @@
+# Node / Expo / React Native
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Native
+ios/Pods/
+ios/build/
+android/.gradle/
+android/build/
+android/app/build/
+*.keystore
+!debug.keystore
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.superpowers/
+
+# Python / backend
+__pycache__/
+*.py[cod]
+.pytest_cache/
+backend/data/
+*.db
+*.p8
+backend/deploy/.env
+backend/deploy/docker-compose.override.yml
+.playwright-mcp/
+
+# local backend test venv (not part of the Docker deploy)
+backend/.venv/
+
+# APNs key mounted into the backend container
+backend/deploy/secrets/
+
+# Android native build cache (CMake) — absolute local paths, never commit
+.cxx/

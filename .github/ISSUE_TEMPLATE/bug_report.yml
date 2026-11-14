@@ -1,0 +1,32 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part?
+      options: [Mobile app (iOS), Mobile app (Android), Backend / server, Control console, Deployment (Docker)]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. …\n2. …"
+    validations: { required: true }
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: App build / device + OS, server version (console → 設定), GPU, Docker version.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`docker compose logs haoji-backend` (remove anything private — transcripts never need to be shared)."
+      render: text
