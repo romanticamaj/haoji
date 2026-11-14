@@ -29,11 +29,11 @@ test('no transcript, offline: generate is disabled with the reassurance', async 
   getByText('主機沒有回應，錄音還在手機上。');
 });
 
-test('with transcript, offline: the transcript still shows and 重新生成 is disabled', async () => {
-  const { getByText, getByRole } = await render(
+test('with transcript, offline: the transcript still shows; 重新生成 is only in `…` (disabled there, see ResultsScreen)', async () => {
+  const { getByText, queryByRole } = await render(
     <TranscriptTab session={withParts(seg)} onUpdate={() => {}} onRegenerate={() => {}} gate="offline" />);
   getByText('你好');
-  expect(getByRole('button', { name: '重新生成逐字稿' })).toBeDisabled();
+  expect(queryByRole('button', { name: '重新生成逐字稿' })).toBeNull();
 });
 
 test('with transcript, unpaired: the chip offers to connect', async () => {

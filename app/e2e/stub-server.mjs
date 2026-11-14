@@ -59,7 +59,7 @@ const server = http.createServer(async (req, res) => {
 
   if (p.startsWith('/api/sessions')) {
     if (TOKEN && req.headers.authorization !== `Bearer ${TOKEN}`) {
-      return send(res, 401, { error: { code: 'unauthorized', message: '配對金鑰不對。', hint: '' } });
+      return send(res, 401, { error: { code: 'unauthorized', message: '配對碼不對。', hint: '' } });
     }
     if (req.method === 'POST' && p === '/api/sessions') {
       const id = `stub${String(++seq).padStart(4, '0')}`;

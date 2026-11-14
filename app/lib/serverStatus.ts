@@ -22,7 +22,7 @@ export const MESSAGES: Record<FailReason, string> = {
   unreachable: '連不到這個網址，確認主機有開、手機和主機在同一個網路或 Tailscale 上。',
   not_haoji: '這個網址不是好記主機。',
   too_old: '主機版本太舊，請更新主機後再試。',
-  unauthorized: '配對金鑰不對，請重新掃描主機上的 QR code。',
+  unauthorized: '配對碼不對，請重新掃描主機上的 QR code。',
 };
 
 export const VALIDATE_TIMEOUT_MS = 5000;
@@ -92,7 +92,10 @@ export async function validateServer(
 }
 
 export type Tone = 'ready' | 'busy' | 'offline' | 'unpaired';
-export type Summary = { tone: Tone; label: string; detail: string[] };
+/** One 狀態 row: a muted label on the left, a dot + value on the right. */
+export type StatusRow = { label: string; value: string; ok: boolean };
+/** `rows`: per-service state. `detail`: the remaining sentences (queue, hints). */
+export type Summary = { tone: Tone; label: string; rows: StatusRow[]; detail: string[] };
 
 export const TONE_LABEL: Record<Tone, string> = {
   ready: '主機已連線',
@@ -120,8 +123,8 @@ export function transcribeGate(s: Summary, loading: boolean): Gate {
 
 /** Reduce a status (or the lack of one) to phone words. Never says GPU, Ollama, model or 後端. */
 export function summarize(s: PublicStatus | null, err?: unknown): Summary {
-  if (err) return { tone: 'offline', label: TONE_LABEL.offline, detail: ['確認主機有開、手機和主機在同一個網路或 Tailscale 上。'] };
-  if (!s) return { tone: 'unpaired', label: TONE_LABEL.unpaired, detail: ['連接你的主機後，就能生成逐字稿。'] };
+  if (err) return { tone: 'offline', label: TONE_LABEL.offline, rows: [], detail: ['確認主機有開、手機和主機在同一個網路或 Tailscale 上。'] };
+  if (!s) return { tone: 'unpaired', label: TONE_LABEL.unpaired, rows: [], detail: ['連接你的主機後，就能生成逐字稿。'] };
 
   const ok = (id: string) => s.checks.find((c) => c.id === id)?.ok !== false;
   const asr = ok('breeze_asr');
@@ -130,13 +133,11 @@ export function summarize(s: PublicStatus | null, err?: unknown): Summary {
   const active = s.queue?.active ?? 0;
   const queued = s.queue?.queued ?? 0;
 
-  const detail = [
-    `語音辨識：${asr ? '正常' : '還沒準備好'}`,
-    `會議記錄：${notes ? '正常' : '還沒準備好'}`,
-    `處理中 ${active} 場，排隊中 ${queued} 場`,
-  ];
+  const row = (label: string, ok: boolean): StatusRow => ({ label, value: ok ? '正常' : '還沒準備好', ok });
+  const rows = [row('語音辨識', asr), row('會議記錄', notes)];
+  const detail = [active + queued === 0 ? '目前沒有在整理的錄音。' : `處理中 ${active} 場，排隊中 ${queued} 場`];
   if (!setup) detail.push('主機的設定需要處理，請到主機的管理頁查看。');
 
   const tone: Tone = !TRANSCRIPT_CHECKS.every(ok) ? 'offline' : active + queued > 0 ? 'busy' : 'ready';
-  return { tone, label: TONE_LABEL[tone], detail };
+  return { tone, label: TONE_LABEL[tone], rows, detail };
 }

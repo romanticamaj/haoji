@@ -57,6 +57,26 @@ export function applyTurnEdit(
   return [...segments.slice(0, startIdx), merged, ...segments.slice(endIdx + 1)];
 }
 
+// Speakers in the order they first speak — the order the avatar stacks on Home and Results use, so
+// the first face is whoever opened the meeting. `index` is the speaker's position in `speakers`
+// (its colour and 「講者 N」 number, as in the transcript turns); a speaker missing from the list takes
+// 0, the same fallback the turns use. Listed speakers who never speak follow, in list order.
+export type OrderedSpeaker = { speaker: string; index: number };
+
+export function speakersByFirstAppearance(segments: Segment[], speakers: string[] = []): OrderedSpeaker[] {
+  const out: OrderedSpeaker[] = [];
+  const seen = new Set<string>();
+  const add = (sp: string) => {
+    if (seen.has(sp)) return;
+    seen.add(sp);
+    const i = speakers.indexOf(sp);
+    out.push({ speaker: sp, index: i >= 0 ? i : 0 });
+  };
+  segments.forEach((s) => add(s.speaker));
+  speakers.forEach(add);
+  return out;
+}
+
 // Who is in this meeting, and how much did each of them say.
 //
 // Ordered by speaking time, most first: with a dozen auto-detected speakers a transcript-order list

@@ -104,23 +104,23 @@ describe('status derivation', () => {
 
 describe('avatarSpec', () => {
   test('no transcript → no avatars', () => {
-    expect(avatarSpec(mk())).toEqual({ initials: [], overflow: 0 });
+    expect(avatarSpec(mk())).toMatchObject({ initials: [], overflow: 0 });
   });
   test('uses index number when unnamed', () => {
     const s = mk({ transcript: transcript(['S0', 'S1']) });
-    expect(avatarSpec(s)).toEqual({ initials: ['1', '2'], overflow: 0 });
+    expect(avatarSpec(s)).toMatchObject({ initials: ['1', '2'], overflow: 0 });
   });
   test('uses first char of mapped name when named', () => {
     const s = mk({ transcript: transcript(['S0', 'S1']), names: { S0: '郁婷', S1: '建宏' } });
-    expect(avatarSpec(s)).toEqual({ initials: ['郁', '建'], overflow: 0 });
+    expect(avatarSpec(s)).toMatchObject({ initials: ['郁', '建'], overflow: 0 });
   });
   test('caps at 3 and reports overflow', () => {
     const s = mk({ transcript: transcript(['S0', 'S1', 'S2', 'S3', 'S4']) });
-    expect(avatarSpec(s)).toEqual({ initials: ['1', '2', '3'], overflow: 2 });
+    expect(avatarSpec(s)).toMatchObject({ initials: ['1', '2', '3'], overflow: 2 });
   });
   test('exactly 3 speakers → no overflow', () => {
     const s = mk({ transcript: transcript(['S0', 'S1', 'S2']) });
-    expect(avatarSpec(s)).toEqual({ initials: ['1', '2', '3'], overflow: 0 });
+    expect(avatarSpec(s)).toMatchObject({ initials: ['1', '2', '3'], overflow: 0 });
   });
 });
 

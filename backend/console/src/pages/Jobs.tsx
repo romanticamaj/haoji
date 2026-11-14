@@ -20,6 +20,21 @@ const STATUS: Record<Job['status'], [StatusState, string]> = {
   error: ['offline', '失敗'],
 };
 
+// GUIDELINE §1.6: a failure says what is still safe and what to do, not only what went wrong.
+// The phone keeps the recording (transcribe) or the transcript (analyze), so both can be sent again.
+const KEPT: Record<Job['kind'], string> = {
+  transcribe: '錄音還在手機上，可以再送一次。',
+  analyze: '逐字稿還在手機上，可以再整理一次。',
+};
+
+export function jobErrorText(j: Pick<Job, 'kind' | 'error'>): string {
+  const raw = (j.error ?? '').trim();
+  const kept = KEPT[j.kind] ?? KEPT.transcribe;
+  if (/Breeze ASR|breeze-asr|7765/i.test(raw)) return `語音辨識沒有回應（breeze-asr:7765）。${kept}`;
+  if (raw.includes(kept)) return raw;
+  return `${raw}${/[。.!！?？]$/.test(raw) ? '' : '。'}${kept}`;
+}
+
 export function Jobs() {
   const { data, error, refresh } = usePoll(fetchJobs);
   const retry = () => void refresh();
@@ -117,7 +132,7 @@ function JobRow({ j }: { j: Job }) {
           {live ? (
             <div className="row">
               <div className="grow">
-                <ProgressBar value={j.pct} label={`${j.id} 進度`} tone="accent" />
+                <ProgressBar value={j.pct} label={`${j.id} 進度`} />
               </div>
               <span className="num small muted" style={{ width: 36, textAlign: 'right' }}>
                 {Math.round(j.pct * 100)}%
@@ -147,7 +162,7 @@ function JobRow({ j }: { j: Job }) {
         <tr id={errId}>
           <td />
           <td colSpan={6}>
-            <p className="inline-error">{j.error}</p>
+            <p className="inline-error">{jobErrorText(j)}</p>
           </td>
         </tr>
       )}

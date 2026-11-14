@@ -28,6 +28,26 @@ describe('Models', () => {
     expect(screen.getByText('5.2 GB')).toBeInTheDocument();
   });
 
+  it('read-only rows show a lock in the radio column', async () => {
+    mockFetch(base);
+    render(<Models />);
+    const asrRow = (await screen.findByText('Breeze ASR 25')).closest('tr')!;
+    const lock = asrRow.querySelector('td:first-child svg.lucide-lock');
+    expect(lock).not.toBeNull();
+    expect(lock).toHaveAttribute('width', '14');
+    const llmRow = screen.getByRole('radio', { name: /qwen3:8b/ }).closest('tr')!;
+    expect(llmRow.querySelector('svg.lucide-lock')).toBeNull();
+  });
+
+  it('下載 stays outlined until a name is typed', async () => {
+    mockFetch(base);
+    render(<Models />);
+    const btn = await screen.findByRole('button', { name: '下載' });
+    expect(btn).not.toHaveClass('btn-primary');
+    fireEvent.change(screen.getByLabelText('模型名稱'), { target: { value: 'qwen3:8b' } });
+    expect(btn).toHaveClass('btn-primary');
+  });
+
   it('select model PUTs', async () => {
     const m = mockFetch({ ...base, 'PUT /api/settings': { json: fx.settings } });
     render(<Models />);

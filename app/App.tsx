@@ -105,11 +105,13 @@ export default function App() {
             />
             <Stack.Screen name="Record" component={RecordScreen} options={{ title: '錄音' }} />
             <Stack.Screen name="ImportConfirm" component={ImportConfirmScreen} options={{ title: '確認音檔' }} />
-            <Stack.Screen name="Review" component={ReviewScreen} options={{ title: '錄音檢視', headerBackVisible: false }} />
-            <Stack.Screen name="Processing" component={ProcessingScreen} options={{ title: '整理中', headerBackVisible: false }} />
+            {/* Review, Processing, Settings and Pair draw the flat ScreenHeader themselves (no native glass
+                back button, no shadow); Review and Processing have no back. */}
+            <Stack.Screen name="Review" component={ReviewScreen} options={{ title: '錄音檢視', headerShown: false }} />
+            <Stack.Screen name="Processing" component={ProcessingScreen} options={{ title: '整理中', headerShown: false }} />
             <Stack.Screen name="Results" component={ResultsScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '設定' }} />
-            <Stack.Screen name="Pair" component={PairScreen} options={{ title: '連接主機' }} />
+            <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '設定', headerShown: false }} />
+            <Stack.Screen name="Pair" component={PairScreen} options={{ title: '連接主機', headerShown: false }} />
             <Stack.Screen
               name="Onboarding"
               component={OnboardingScreen}

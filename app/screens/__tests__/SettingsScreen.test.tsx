@@ -1,10 +1,13 @@
 import React from 'react';
-import { Alert, Linking } from 'react-native';
-import { render, fireEvent, act, waitFor } from '@testing-library/react-native';
+import { Alert, Linking, ScrollView, StyleSheet } from 'react-native';
+import { render, fireEvent, act, waitFor, within } from '@testing-library/react-native';
+import { colors } from '../../lib/theme';
 
 const mockNavigate = jest.fn();
+let mockParams: any;
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: mockNavigate, addListener: () => () => {} }),
+  useRoute: () => ({ params: mockParams }),
 }));
 
 import SettingsScreen from '../SettingsScreen';
@@ -17,6 +20,7 @@ const respond = (body: any) => { global.fetch = jest.fn().mockResolvedValue({ ok
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockParams = undefined;
   await server.forgetServer();
 });
 afterEach(() => jest.restoreAllMocks());
@@ -31,13 +35,16 @@ const renderSettings = async () => {
 test('ready: shows the server address, latency and phone-word status rows', async () => {
   await server.saveServer({ url: 'http://box:7780', token: 't', pairedAt: 1 });
   respond(green);
-  const { getByText, getByLabelText } = await renderSettings();
+  const { getByText, getAllByText, getByLabelText } = await renderSettings();
   await waitFor(() => getByText('主機已連線'));
   getByText('http://box:7780');
   getByText(/\d+ ms/);
-  getByText('語音辨識：正常');
-  getByText('會議記錄：正常');
-  getByText('處理中 0 場，排隊中 0 場');
+  // 狀態 rows: muted label on the left, dot + value on the right (issue #32 item 7).
+  getByLabelText('語音辨識：正常');
+  getByLabelText('會議記錄：正常');
+  getByText('語音辨識');
+  getAllByText('正常');
+  getByText('目前沒有在整理的錄音。');
   getByLabelText('主機狀態：主機已連線');
   getByText('錄音只在處理時傳到你的主機，處理完就刪除。');
 });
@@ -45,9 +52,9 @@ test('ready: shows the server address, latency and phone-word status rows', asyn
 test('busy: the contract fixture (one job running, notes not ready)', async () => {
   await server.saveServer({ url: 'http://box:7780', pairedAt: 1 });
   respond(status);
-  const { getByText } = await renderSettings();
+  const { getByText, getByLabelText } = await renderSettings();
   await waitFor(() => getByText('主機忙碌中'));
-  getByText('會議記錄：還沒準備好');
+  getByLabelText('會議記錄：還沒準備好');
   getByText('處理中 1 場，排隊中 0 場');
 });
 
@@ -98,11 +105,42 @@ test('forget asks for confirmation, then clears the server', async () => {
   expect(await server.loadServer()).toBeNull();
 });
 
+test('中斷連線 is a danger text button, not an outlined one', async () => {
+  await server.saveServer({ url: 'http://box:7780', pairedAt: 1 });
+  respond(green);
+  const { getByRole } = await renderSettings();
+  const btn = getByRole('button', { name: '中斷連線' });
+  const st = StyleSheet.flatten(btn.props.style) ?? {};
+  expect(st.borderWidth ?? 0).toBe(0);
+  expect(within(btn).getByText('中斷連線')).toHaveStyle({ color: colors.danger });
+});
+
 test('no 中斷連線 when the address comes from the build, not from pairing', async () => {
   respond(green);   // jest-setup gives a build-time API_BASE
   const { getByText, queryByText } = await renderSettings();
   await waitFor(() => getByText('主機已連線'));
   expect(queryByText('中斷連線')).toBeNull();
+});
+
+// Issue #32 item 6: Home's status badge opens Settings with focus: 'status' and lands on 狀態.
+test('focus: status scrolls to the 狀態 card once it is laid out', async () => {
+  const scrollTo = (ScrollView as any).prototype.scrollTo as jest.Mock;
+  respond(green);
+  mockParams = { focus: 'status' };
+  const { getByTestId } = await renderSettings();
+  scrollTo.mockClear();
+  await act(async () => { fireEvent(getByTestId('settings-card-status'), 'layout', { nativeEvent: { layout: { x: 0, y: 320, width: 300, height: 100 } } }); });
+  expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: expect.any(Number) }));
+  expect(scrollTo.mock.calls[0][0].y).toBeGreaterThan(0);
+});
+
+test('without focus, Settings opens at the top', async () => {
+  const scrollTo = (ScrollView as any).prototype.scrollTo as jest.Mock;
+  respond(green);
+  const { getByTestId } = await renderSettings();
+  scrollTo.mockClear();
+  await act(async () => { fireEvent(getByTestId('settings-card-status'), 'layout', { nativeEvent: { layout: { x: 0, y: 320, width: 300, height: 100 } } }); });
+  expect(scrollTo).not.toHaveBeenCalled();
 });
 
 test('關於 shows the version and opens the source link', async () => {

@@ -15,7 +15,8 @@ export type RootStackParamList = {
   // `focusSegment`: a transcript segment index to scroll to (a search hit on Home); absent = top.
   Results: { sessionId: string; session?: SavedSession; focusSegment?: number };
   // Server connection + status, privacy, about.
-  Settings: undefined;
+  // `focus: 'status'`: scroll to the 狀態 card (Home's status badge).
+  Settings: { focus?: 'status' } | undefined;
   // Connect to a server. url/token arrive prefilled from a haoji://pair link; `error` when the link
   // was not a valid pair link (see lib/linking.ts).
   Pair: { url?: string; token?: string; error?: string } | undefined;

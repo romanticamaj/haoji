@@ -47,7 +47,7 @@ export function MiniPlayer({
   const time = `${mmss(pos / 1000)} / ${known ? mmss(totalMs / 1000) : '--:--'}`;
 
   return (
-    <View style={styles.dock}>
+    <View testID="mini-dock" style={styles.dock}>
       {expanded && (
         <Pressable
           onPress={() => onExpandChange(false)}
@@ -118,7 +118,7 @@ export function MiniPlayer({
 }
 
 const styles = StyleSheet.create({
-  dock: { backgroundColor: colors.background, borderTopWidth: layout.border, borderTopColor: colors.outline },
+  dock: { backgroundColor: colors.surface, borderTopWidth: layout.border, borderTopColor: colors.outline },
   collapse: { alignItems: 'center', justifyContent: 'center', height: 28 },
   clip: { overflow: 'hidden' },
   // Absolutely placed so it lays out at its natural height inside a clip that may be 0 high (the
@@ -130,8 +130,8 @@ const styles = StyleSheet.create({
   },
   play: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   mid: { flex: 1, minHeight: layout.minTouchTarget, justifyContent: 'center', gap: spacing.xs },
-  track: { height: 3, borderRadius: radius.round, backgroundColor: colors.outline, overflow: 'hidden' },
-  fill: { height: 3, backgroundColor: colors.primary },
+  track: { height: 4, borderRadius: radius.round, backgroundColor: colors.outline, overflow: 'hidden' },
+  fill: { height: 4, backgroundColor: colors.primary },
   speed: {
     height: layout.chipHeight, minWidth: 52, paddingHorizontal: spacing.md, borderRadius: radius.chip,
     backgroundColor: colors.surface, borderWidth: layout.border, borderColor: colors.outline,

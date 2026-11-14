@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Download, Trash2 } from 'lucide-react';
+import { Download, Lock, Trash2 } from 'lucide-react';
 import { api, describeError } from '../api';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -157,6 +157,8 @@ function ModelTableRow({
             aria-label={`使用 ${m.name} 寫會議記錄`}
           />
         )}
+        {/* Managed by its own container: nothing to choose here, and the lock says so. */}
+        {!isLlm && <Lock size={14} strokeWidth={1.8} aria-hidden style={{ color: 'var(--muted)' }} />}
       </td>
       <td>
         <span className={isLlm ? 'mono' : undefined} style={{ color: 'var(--heading)', fontWeight: 500 }}>
@@ -286,7 +288,7 @@ function PullCard({ onDone }: { onDone: () => void }) {
             spellCheck={false}
             autoComplete="off"
           />
-          <Button type="submit" variant="primary" icon={Download} disabled={!!pulling || !name.trim()}>
+          <Button type="submit" variant={name.trim() ? 'primary' : 'secondary'} icon={Download} disabled={!!pulling || !name.trim()}>
             {pulling ? '下載中…' : '下載'}
           </Button>
         </div>

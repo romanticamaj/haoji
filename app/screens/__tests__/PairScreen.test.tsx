@@ -27,7 +27,7 @@ test('a pair link prefills the address and the token', async () => {
   mockParams = { url: 'http://100.64.0.5:7780', token: 'pTk' };
   const { getByLabelText } = await render(<PairScreen />);
   expect(getByLabelText('主機網址').props.value).toBe('http://100.64.0.5:7780');
-  expect(getByLabelText('配對金鑰（選填）').props.value).toBe('pTk');
+  expect(getByLabelText('配對碼（選填）').props.value).toBe('pTk');
 });
 
 test('shows how to get the link', async () => {
@@ -52,6 +52,24 @@ test('success saves the server, says 已連上, then goes back', async () => {
   expect(mockGoBack).not.toHaveBeenCalled();
   await act(async () => { await jest.advanceTimersByTimeAsync(1500); });
   expect(mockGoBack).toHaveBeenCalled();
+});
+
+// Issue #32 item 7: once connected, a pinned 「完成」 primary closes the screen without waiting.
+test('once connected, a sticky 完成 button closes the screen', async () => {
+  mockParams = { url: 'http://100.64.0.5:7780' };
+  global.fetch = answer(200, status) as any;
+  const { getByRole, queryByRole, getByText } = await render(<PairScreen />);
+  expect(queryByRole('button', { name: '完成' })).toBeNull();
+  await fireEvent.press(getByRole('button', { name: '連接' }));
+  await waitFor(() => getByText('已連上 100.64.0.5:7780'));
+  await fireEvent.press(getByRole('button', { name: '完成' }));
+  expect(mockGoBack).toHaveBeenCalledTimes(1);
+});
+
+test('the token field is called 配對碼, never 金鑰', async () => {
+  const { getByText, queryByText } = await render(<PairScreen />);
+  getByText('配對碼（選填）');
+  expect(queryByText(/金鑰/)).toBeNull();
 });
 
 test('a typed address is normalised before it is saved', async () => {

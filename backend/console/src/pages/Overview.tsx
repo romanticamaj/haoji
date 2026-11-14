@@ -1,4 +1,4 @@
-import { AlertCircle, AudioLines, Cpu, Layers, NotebookPen } from 'lucide-react';
+import { AudioLines, CircleAlert, Cpu, Layers, NotebookPen } from 'lucide-react';
 import { api } from '../api';
 import { Card } from '../components/Card';
 import { OfflineCard, StaleBanner } from '../components/Offline';
@@ -131,7 +131,7 @@ function GpuCard({ gpu }: { gpu: StatusDetail['gpu'] }) {
 
 function Checklist({ checks }: { checks: Check[] }) {
   return (
-    <Card title="還差幾步" icon={AlertCircle} labelledBy="card-checklist">
+    <Card title="還差幾步" icon={CircleAlert} labelledBy="card-checklist">
       <p className="muted" style={{ marginBottom: 12 }}>
         下面這些完成後，手機就能把錄音整理成逐字稿和會議記錄。
       </p>
@@ -139,7 +139,7 @@ function Checklist({ checks }: { checks: Check[] }) {
         {checks.map((c) => (
           <div className="check-row" key={c.id}>
             <span className="check-icon" aria-hidden>
-              <AlertCircle size={14} strokeWidth={2} />
+              <CircleAlert size={14} strokeWidth={1.8} />
             </span>
             <div>
               <p className="notice-title">{c.label}</p>

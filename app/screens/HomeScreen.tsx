@@ -171,7 +171,7 @@ export default function HomeScreen() {
         status={{
           tone: srv.summary.tone,
           label: srv.loading ? '正在確認…' : srv.summary.label,
-          onPress: () => nav.navigate('Settings'),
+          onPress: () => nav.navigate('Settings', { focus: 'status' }),
         }}
       />
 
@@ -267,7 +267,7 @@ export default function HomeScreen() {
 function SessionCard({ session, now, onPress }: { session: SavedSession; now: number; onPress: () => void }) {
   const dur = durationLabel(session);
   const speakers = speakerCount(session);
-  const { initials, overflow } = avatarSpec(session);
+  const { initials, colorIndex, overflow } = avatarSpec(session);
   // The status rides at the end of the meta line (· 已有逐字稿 / · 處理中 / · 還沒生成).
   const meta = [relativeDay(session.createdAt, now), dur, speakers > 0 ? `${speakers} 位講者` : null, inlineStatus(session)]
     .filter(Boolean).join(' · ');
@@ -285,7 +285,7 @@ function SessionCard({ session, now, onPress }: { session: SavedSession; now: nu
       {initials.length > 0 && (
         <View style={styles.avatars}>
           {initials.map((ch, i) => (
-            <View key={i} style={[styles.av, { backgroundColor: speakerColor(i), marginLeft: i === 0 ? 0 : -6 }]}>
+            <View key={i} style={[styles.av, { backgroundColor: speakerColor(colorIndex[i]), marginLeft: i === 0 ? 0 : -6 }]}>
               <AppText variant="small" color="onPrimary" style={styles.avText}>{ch}</AppText>
             </View>
           ))}
