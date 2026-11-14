@@ -72,3 +72,14 @@ def test_error_shape():
     r = errors.api_error("setting_locked", "m", "h", status=409)
     assert r.status_code == 409
     assert json.loads(r.body) == {"error": {"code": "setting_locked", "message": "m", "hint": "h"}}
+
+
+def test_default_env_seeds_without_locking(monkeypatch):
+    # docker-compose passes *_DEFAULT so the console can still change the value
+    monkeypatch.setenv("OLLAMA_BASE_URL_DEFAULT", "http://ollama:11434")
+    monkeypatch.setenv("LLM_MODEL_DEFAULT", "gemma4:e4b-it-qat")
+    d = settings.describe()
+    assert d["ollama_base_url"] == {"value": "http://ollama:11434", "locked": False,
+                                    "default": "http://ollama:11434"}
+    settings.set("llm_model", "qwen3:8b")
+    assert settings.llm_model() == "qwen3:8b"

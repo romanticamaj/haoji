@@ -80,8 +80,16 @@ def _env(key):
     return v if v not in (None, "") else None
 
 
+def _default(key):
+    """Built-in default, overridable by <ENV>_DEFAULT — a deployer-supplied default that, unlike the
+    plain env var, does NOT lock the field (docker-compose uses this for the ollama URL and model)."""
+    env_name, default, _, _ = SETTINGS[key]
+    return (os.environ.get(env_name + "_DEFAULT") or "").strip() or default
+
+
 def get(key):
-    env_name, default, validate, _ = SETTINGS[key]
+    env_name, _, validate, _ = SETTINGS[key]
+    default = _default(key)
     v = _env(key)
     if v is not None:
         return v.strip().rstrip("/") if validate in (_url, _optional_url) else v.strip()
@@ -104,7 +112,8 @@ def set(key, value):  # noqa: A001 — mirrors get()
 
 def describe():
     out = {}
-    for key, (_, default, _, secret) in SETTINGS.items():
+    for key, (_, _, _, secret) in SETTINGS.items():
+        default = _default(key)
         locked = _env(key) is not None
         if secret:
             out[key] = {"configured": bool(get(key)), "locked": locked}

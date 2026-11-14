@@ -67,11 +67,16 @@ sleep 30
 curl -s "http://127.0.0.1:7780/api/sessions/$SID"    # 期望 "status":"done"（純音無語音，segments 可為空）
 ```
 
-## 3. App 指向
+## 3. 連接手機與管理頁
 
-把 App 的 `Config.API_BASE`（`app/lib/config.ts` / `.env` 的 `API_BASE`）指到
-`http://<部署機>:7780`，並同步 iOS ATS 例外（`ios/Haoji/Info.plist`）與 Android
-`network_security_config.xml` 的位址。
+1. 取得管理金鑰：`docker compose exec haoji-backend cat /data/admin_token`（或在 `.env` 設 `HAOJI_ADMIN_TOKEN`）。
+2. 打開 `http://<部署機>:7780/console`，登入後「總覽」會列出還沒就緒的項目與怎麼處理。
+3. 在 `.env` 設 `HAOJI_PUBLIC_URLS=http://<手機連得到的位址>:7780`（Tailscale／區網，可多個，第一個放進 QR code），
+   重新 `docker compose up -d`。
+4. 管理頁「配對手機」→ 用手機相機掃 QR code，好記會打開並連上。也可以在 App 的「設定 → 連接主機」手動輸入網址。
+5. 手機都配對好後，建議設 `HAOJI_REQUIRE_TOKEN=1`：沒有配對碼的請求一律拒絕。
+
+App 不再需要在編譯時寫死後端位址；`app/.env` 的 `API_BASE` 只是維護者自己 build 的預設值。
 
 ### 推播通知（逐字稿完成）
 

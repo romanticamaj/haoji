@@ -9,9 +9,19 @@ services:
       - "${WEB_PORT:-7780}:7780"
     environment:
       ASR_BASE_URL: http://breeze-asr:7765
-      OLLAMA_BASE_URL: http://ollama:11434
-      LLM_MODEL: ${LLM_MODEL:-gemma4:e4b-it-qat}
+      # *_DEFAULT seeds the value without locking it, so the console can switch models / point at
+      # another Ollama. Setting the plain OLLAMA_BASE_URL / LLM_MODEL here would lock those fields.
+      OLLAMA_BASE_URL_DEFAULT: http://ollama:11434
+      LLM_MODEL_DEFAULT: ${LLM_MODEL:-gemma4:e4b-it-qat}
       DATA_DIR: /data
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      HAOJI_PUBLIC_URLS: ${HAOJI_PUBLIC_URLS:-}
+      HAOJI_ALLOWED_HOSTS: ${HAOJI_ALLOWED_HOSTS:-}
+      HAOJI_ADMIN_TOKEN: ${HAOJI_ADMIN_TOKEN:-}
+      HAOJI_REQUIRE_TOKEN: ${HAOJI_REQUIRE_TOKEN:-0}
+      HAOJI_RETENTION_HOURS: ${HAOJI_RETENTION_HOURS:-24}
       # Push "逐字稿完成" to the phone (APNs). Blank APNS_KEY_ID = push off; see DEPLOY.md §3.
       APNS_KEY_PATH: /secrets/apns.p8
       APNS_KEY_ID: ${APNS_KEY_ID:-}
