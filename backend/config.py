@@ -7,6 +7,8 @@ and inside the docker-compose deployable unit (.env-driven).
 """
 import os, shutil
 
+VERSION = "1.0.0"
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR") or os.path.join(ROOT, "data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
@@ -32,6 +34,10 @@ LLM_TIMEOUT = 300
 LLM_NUM_CTX_MAX = 32768
 LLM_OUTPUT_TOKENS = 4096
 LLM_THINK = True
+
+# How long the server keeps a finished transcript/notes before blanking them (hours). The phone is the
+# source of truth; the server copy only exists so a backgrounded client can collect its result.
+RETENTION_HOURS = int(os.environ.get("HAOJI_RETENTION_HOURS") or "24")
 
 # Push notifications (APNs, token-based .p8 auth). All three of key/key-id/team must be set or push is
 # a no-op — see push.py. The topic is the app's bundle id.

@@ -51,3 +51,20 @@ def test_detect_asr_base_env_url_unhealthy_returns_none(monkeypatch):
     monkeypatch.setattr(asr, "_asr_cache", None)
     monkeypatch.setattr(asr, "_is_breeze", lambda url: False)
     assert asr.detect_asr_base(force=True) is None
+
+
+def test_quick_probe_single_attempt_no_sleep(monkeypatch):
+    import asr, config, time
+    monkeypatch.setattr(config, "ASR_BASE_URL", "http://breeze-asr:7765")
+    calls = []
+    monkeypatch.setattr(asr, "_health", lambda url: calls.append(url) or None)
+    monkeypatch.setattr(time, "sleep", lambda s: (_ for _ in ()).throw(AssertionError("slept")))
+    assert asr.quick_probe() == (None, None)
+    assert calls == ["http://breeze-asr:7765"]
+
+
+def test_quick_probe_returns_health(monkeypatch):
+    import asr, config
+    monkeypatch.setattr(config, "ASR_BASE_URL", "http://breeze-asr:7765")
+    monkeypatch.setattr(asr, "_health", lambda url: {"status": "ok", "model": "Breeze-ASR-25"})
+    assert asr.quick_probe() == ("http://breeze-asr:7765", {"status": "ok", "model": "Breeze-ASR-25"})

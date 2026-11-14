@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 import config
-import asr, sessions, llm, media, push, settings, auth, errors, jobs
+import asr, sessions, llm, media, push, settings, auth, errors, jobs, status
 from fastapi import Request
 
 # --- logging: rotating file (backend/logs/haoji.log) + console ---------------
@@ -75,6 +75,7 @@ async def _log_requests(request: Request, call_next):
 
 app.include_router(auth.router)
 app.include_router(jobs.router)
+app.include_router(status.router)
 
 _executor = ThreadPoolExecutor(max_workers=2)
 # Notes generation gets its OWN pool. Sharing the transcription pool meant a couple of long jobs
