@@ -1,0 +1,40 @@
+{
+  "name": "haoji-console",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tokens": "tsx scripts/gen-tokens.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "^1.72.0",
+    "qrcode": "^1.5.4",
+    "react": "~19.1.0",
+    "react-dom": "~19.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.10",
+    "@types/node": "^26.6.6",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "~19.1",
+    "@types/react-dom": "~19.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^31.0.1",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9",
+    "vite": "^6.4.6",
+    "vitest": "^3.2.7"
+  }
+}
