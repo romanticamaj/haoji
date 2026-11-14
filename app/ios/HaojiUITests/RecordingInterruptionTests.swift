@@ -30,6 +30,16 @@ final class RecordingInterruptionTests: XCTestCase {
                   "畫面上沒有出現「\(label)」", file: file, line: line)
   }
 
+  /// e2e-recording.mjs starts from a fresh install, so the first recording meets the system
+  /// microphone prompt. Answer it the way a user would (springboard owns the alert).
+  private func allowMicrophoneIfAsked() {
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    for label in ["Allow", "允許", "好"] {
+      let b = springboard.buttons[label]
+      if b.waitForExistence(timeout: 2) { b.tap(); return }
+    }
+  }
+
   /// The mm:ss the recorder is showing right now, as seconds.
   private func timerSeconds(file: StaticString = #filePath, line: UInt = #line) -> Int {
     // The timer's accessibility label is a sentence (「已錄 00:04」), so match the mm:ss at the end.
@@ -46,6 +56,7 @@ final class RecordingInterruptionTests: XCTestCase {
     if skip.waitForExistence(timeout: 3) { skip.tap() }
     tap("記下來：開始錄音")
     tap("開始錄音")
+    allowMicrophoneIfAsked()
     assertText("錄音中")
   }
 
@@ -92,7 +103,9 @@ final class RecordingInterruptionTests: XCTestCase {
 
     E2ETrigger.callEndsResuming()
     assertText("錄音中")
-    wait(5)
+    // 6s, not 5: the resumed part has to clear e2e-recording.mjs's "> 4 s per part" audio check with
+    // room for the ~1s the session takes to reactivate.
+    wait(6)
 
     XCTAssertGreaterThan(timerSeconds(), beforeCall, "續錄後總長必須大於通話前")
     stopRecording()
