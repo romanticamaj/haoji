@@ -649,8 +649,9 @@ input {
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: var(--accentSoft);
-  color: var(--accent);
+  /* An open step, not an alarm: muted on sage-soft. Peach stays rare (GUIDELINE §1.1). */
+  background: var(--primarySoft);
+  color: var(--muted);
 }
 
 /* ---------- login ---------- */

@@ -42,12 +42,36 @@ describe('Jobs', () => {
     mockFetch({ 'GET /api/jobs': { json: fx.jobs } });
     render(<Jobs />);
     await screen.findByText('0a9b8c');
-    expect(screen.queryByText('找不到 Breeze ASR server（port 7765）。')).not.toBeInTheDocument();
+    const COPY = '語音辨識沒有回應（breeze-asr:7765）。錄音還在手機上，可以再送一次。';
+    expect(screen.queryByText(COPY)).not.toBeInTheDocument();
     const toggle = screen.getByRole('button', { name: /看原因/ });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('找不到 Breeze ASR server（port 7765）。')).toBeInTheDocument();
+    // GUIDELINE §1.6: a failure says what is kept, in plain words, not the raw backend string.
+    expect(screen.getByText(COPY)).toBeInTheDocument();
+    expect(screen.queryByText('找不到 Breeze ASR server（port 7765）。')).not.toBeInTheDocument();
+  });
+
+  it('any other failure still says what is kept', async () => {
+    const j = clone(fx.jobs) as { active: Record<string, unknown>[]; recent: Record<string, unknown>[] };
+    j.recent[1].error = 'ffmpeg 轉檔失敗。';
+    j.recent[0] = { ...j.recent[0], status: 'error', error: 'Ollama 逾時。' };
+    mockFetch({ 'GET /api/jobs': { json: j } });
+    render(<Jobs />);
+    await screen.findByText('0a9b8c');
+    screen.getAllByRole('button', { name: /看原因/ }).forEach((b) => fireEvent.click(b));
+    expect(screen.getByText('ffmpeg 轉檔失敗。錄音還在手機上，可以再送一次。')).toBeInTheDocument();
+    expect(screen.getByText('Ollama 逾時。逐字稿還在手機上，可以再整理一次。')).toBeInTheDocument();
+  });
+
+  it('the 處理中 bar is sage, never peach', async () => {
+    mockFetch({ 'GET /api/jobs': { json: fx.jobs } });
+    render(<Jobs />);
+    const running = (await screen.findByText('a1b2c3')).closest('tr')!;
+    const bar = within(running).getByRole('progressbar');
+    expect(bar).toHaveClass('progress-primary');
+    expect(bar).not.toHaveClass('progress-accent');
   });
 
   it('shows a calm empty state', async () => {
