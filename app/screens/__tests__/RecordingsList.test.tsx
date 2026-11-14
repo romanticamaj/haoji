@@ -91,3 +91,42 @@ test('shows a clear notice when the audio file is missing (not a dead player)', 
   expect(queryByTestId('play-0')).toBeNull();           // no transport on a missing file
   expect(queryByLabelText('waveform-/doc/p1')).toBeNull(); // and no waveform extraction attempted
 });
+
+// The Results mini player drives the list from outside: one play/pause, one speed for every part, and
+// a status report so the docked bar can show the right icon and time.
+describe('external control (Results mini player)', () => {
+  test('toggle() starts the first part, then pauses it; onState follows', async () => {
+    const handle = React.createRef<any>();
+    const onState = jest.fn();
+    const { findByLabelText } = await render(<RecordingsList ref={handle} parts={parts} onState={onState} />);
+    await findByLabelText('waveform-/doc/p1');
+    await act(async () => { handle.current.toggle(); });
+    await waitFor(() => expect(onState).toHaveBeenLastCalledWith(expect.objectContaining({ playing: true })));
+    await act(async () => { handle.current.toggle(); });
+    await waitFor(() => expect(onState).toHaveBeenLastCalledWith(expect.objectContaining({ playing: false })));
+  });
+
+  test('onState reports the whole meeting length across parts', async () => {
+    const onState = jest.fn();
+    await render(<RecordingsList parts={parts} onState={onState} />);
+    await waitFor(() => expect(onState).toHaveBeenCalledWith(expect.objectContaining({ totalMs: 186000, speed: 1 })));
+  });
+
+  test('cycleSpeed() changes the speed for every part at once', async () => {
+    const handle = React.createRef<any>();
+    const onState = jest.fn();
+    const { findAllByText } = await render(<RecordingsList ref={handle} parts={parts} onState={onState} />);
+    await act(async () => { handle.current.cycleSpeed(); });
+    expect((await findAllByText('1.5×')).length).toBe(2);
+    await waitFor(() => expect(onState).toHaveBeenLastCalledWith(expect.objectContaining({ speed: 1.5 })));
+  });
+
+  test('showExport={false} leaves exporting to the caller; exportParts shares every part', async () => {
+    const Share = require('react-native-share');
+    const { queryByLabelText } = await render(<RecordingsList parts={parts} showExport={false} />);
+    expect(queryByLabelText('匯出錄音')).toBeNull();
+    const { exportParts } = require('../RecordingsList');
+    await exportParts(parts);
+    expect(Share.open).toHaveBeenCalledWith(expect.objectContaining({ urls: ['file:///doc/p1', 'file:///doc/p2'] }));
+  });
+});

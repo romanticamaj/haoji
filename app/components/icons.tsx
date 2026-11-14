@@ -48,6 +48,7 @@ export const IconChevronDown = make(ChevronDown, colors.heading);
 export const IconChevronRight = make(ChevronRight, colors.muted);
 export const IconChevronLeft = make(ChevronLeft, colors.heading);
 export const IconMore = make(Ellipsis, colors.heading);
+export const IconRegenerate = make(RotateCw, colors.heading);
 export const IconMic = make(Mic, colors.onPrimary);
 export const IconStop = make(Square, colors.onPrimary, { fill: true });
 export const IconUndo = make(Undo2, colors.heading);
