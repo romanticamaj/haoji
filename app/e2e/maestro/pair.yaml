@@ -1,0 +1,14 @@
+# Pair by deep link (what scanning the console QR does), then land on Home connected.
+# Run: STUB_HOST=<mac LAN ip or 10.0.2.2 on Android emulator> maestro test e2e/maestro/pair.yaml
+appId: com.garyhsieh.haoji
+env:
+  STUB_HOST: 127.0.0.1
+---
+- launchApp:
+    clearState: true
+- openLink: "haoji://pair?url=http%3A%2F%2F${STUB_HOST}%3A7799&token=e2e"
+- assertVisible: "連接"
+- tapOn: "連接"
+- extendedWaitUntil:
+    visible: "已連上.*"
+    timeout: 10000

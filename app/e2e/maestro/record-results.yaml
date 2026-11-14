@@ -1,0 +1,31 @@
+# Record 3 s → stop → 生成逐字稿 → the stub's canned transcript is shown.
+appId: com.garyhsieh.haoji
+---
+- runFlow: pair.yaml
+- launchApp
+- tapOn:
+    id: "record-button"
+    optional: true
+- tapOn:
+    text: "記下來"
+    optional: true
+- runFlow:
+    when:
+      visible: "允許"
+    commands:
+      - tapOn: "允許"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "錄音中"
+    timeout: 5000
+- swipe: { direction: UP, duration: 3000 }   # ~3 s of recording
+- tapOn:
+    text: "再按一次就結束錄音"
+    optional: true
+- tapOn:
+    id: "stop-button"
+    optional: true
+- tapOn: "生成逐字稿"
+- extendedWaitUntil:
+    visible: "今天主要確認下一季的產品方向。"
+    timeout: 30000

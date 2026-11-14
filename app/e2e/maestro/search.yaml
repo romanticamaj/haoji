@@ -1,0 +1,11 @@
+# After record-results: search a word from the transcript and open the hit.
+appId: com.garyhsieh.haoji
+---
+- launchApp
+- tapOn: "搜尋會議"
+- inputText: "時程"
+- extendedWaitUntil:
+    visible: ".*時程.*"
+    timeout: 5000
+- tapOn: ".*時程.*"
+- assertVisible: "逐字稿"
