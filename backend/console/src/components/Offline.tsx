@@ -1,8 +1,32 @@
-import { CloudOff, RotateCw } from 'lucide-react';
+import { CloudOff, RotateCw, ShieldAlert } from 'lucide-react';
+import { ApiError } from '../api';
 import { Button } from './Button';
 
+/** The backend refuses domain-name Hosts not listed in HAOJI_ALLOWED_HOSTS / HAOJI_PUBLIC_URLS. */
+export const isForbiddenHost = (e: unknown): e is ApiError => e instanceof ApiError && e.code === 'forbidden_host';
+
 /** Full-card state when the very first load failed: what failed, what is safe, what to do. */
-export function OfflineCard({ onRetry }: { onRetry: () => void }) {
+export function OfflineCard({ onRetry, error }: { onRetry: () => void; error?: unknown }) {
+  if (isForbiddenHost(error)) {
+    return (
+      <section className="card" aria-live="polite">
+        <div className="row" style={{ alignItems: 'flex-start', gap: 16 }}>
+          <span className="check-icon" style={{ width: 40, height: 40 }} aria-hidden>
+            <ShieldAlert size={20} strokeWidth={1.8} />
+          </span>
+          <div className="card-body grow">
+            <h2 className="section-title">{error.message}</h2>
+            {error.hint && <p>{error.hint}</p>}
+            <div>
+              <Button icon={RotateCw} onClick={onRetry}>
+                重試
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="card" aria-live="polite">
       <div className="row" style={{ alignItems: 'flex-start', gap: 16 }}>

@@ -18,6 +18,10 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn: () => void }) {
       onLoggedIn();
     } catch (err) {
       const status = err instanceof ApiError ? err.status : 0;
+      if (err instanceof ApiError && err.code === 'forbidden_host') {
+        setError([err.message, err.hint].filter(Boolean).join(' '));
+        return;
+      }
       setError(
         status === 401 || status === 403
           ? '金鑰不對，請再確認一次。'
@@ -70,12 +74,11 @@ export function LoginCard({ onLoggedIn }: { onLoggedIn: () => void }) {
         </button>
 
         <div id="token-hint" className="field-hint card-body">
-          <p>金鑰在哪裡：</p>
           <p>
-            在主機上執行 <code className="code">docker compose logs haoji-backend | grep "admin token"</code>
+            在主機上執行 <code className="code">docker compose exec haoji-backend cat /data/admin_token</code> 取得管理金鑰。
           </p>
           <p>
-            或打開資料夾裡的 <code className="code">DATA_DIR/admin_token</code>
+            不是用 Docker 安裝的話，金鑰在 <code className="code">DATA_DIR/admin_token</code>。
           </p>
         </div>
       </form>

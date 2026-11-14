@@ -22,7 +22,7 @@ export function Overview() {
       lede={data ? `好記主機 ${data.version} · 每 3 秒更新` : '這台主機的狀態，每 3 秒更新。'}
       actions={data && <StatusDot state={data.ok ? 'ready' : 'working'} label={data.ok ? '一切就緒' : '還有設定沒完成'} />}
     >
-      {!data && error ? <OfflineCard onRetry={retry} /> : null}
+      {!data && error ? <OfflineCard onRetry={retry} error={error} /> : null}
       {data && error ? <StaleBanner onRetry={retry} /> : null}
       {!data && loading ? <p className="muted">正在讀取主機狀態…</p> : null}
       {data && <Dashboard s={data} />}

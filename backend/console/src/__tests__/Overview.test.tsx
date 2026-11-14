@@ -54,6 +54,19 @@ describe('Overview', () => {
     expect(screen.queryByText('連不到主機')).not.toBeInTheDocument();
   });
 
+  it('forbidden_host: shows the hint, not a generic offline message', async () => {
+    mockFetch({
+      [KEY]: {
+        status: 403,
+        json: { error: { code: 'forbidden_host', message: '這個網址沒有被允許。', hint: '把 haoji.example.com 加到 HAOJI_ALLOWED_HOSTS 或 HAOJI_PUBLIC_URLS。' } },
+      },
+    });
+    render(<Overview />);
+    expect(await screen.findByText('把 haoji.example.com 加到 HAOJI_ALLOWED_HOSTS 或 HAOJI_PUBLIC_URLS。')).toBeInTheDocument();
+    expect(screen.getByText('這個網址沒有被允許。')).toBeInTheDocument();
+    expect(screen.queryByText('連不到主機')).not.toBeInTheDocument();
+  });
+
   it('no GPU: says it will use the CPU', async () => {
     const s = clone(fx.statusDetail) as Record<string, unknown>;
     s.gpu = { available: false };
