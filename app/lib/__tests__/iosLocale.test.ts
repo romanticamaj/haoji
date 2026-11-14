@@ -27,3 +27,5 @@ test('Xcode project: zh-Hant is the development region and a known region', () =
   expect(known).toMatch(/"zh-Hant"/);
   expect(known).toMatch(/Base/);
 });
+
+export {};

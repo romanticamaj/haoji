@@ -89,7 +89,14 @@ export default function ResultsScreen() {
   // re-upload the on-device parts (the old backend session's parts are deleted after each attempt).
   // We don't touch the store here, so if the re-run fails (e.g. backend down) the existing
   // transcript/backendId are preserved. ProcessingScreen persists the new ids only on success.
-  const regenerate = () => nav.replace('Processing', { sessionId: id, regen: true });
+  // One run only: a second confirm (or tap) before the screen is replaced must not start the job twice.
+  // A ref, because taps arrive faster than a re-render.
+  const regenStartedRef = useRef(false);
+  const regenerate = () => {
+    if (regenStartedRef.current) return;
+    regenStartedRef.current = true;
+    nav.replace('Processing', { sessionId: id, regen: true });
+  };
   // Watch a job that's already running — no `regen`, so it attaches instead of restarting.
   const viewProgress = () => nav.navigate('Processing', { sessionId: id });
 

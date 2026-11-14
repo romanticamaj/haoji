@@ -111,6 +111,34 @@ test('overflow 重新生成逐字稿 confirms, then restarts processing', async 
   } finally { spy.mockRestore(); }
 });
 
+// Moved here from the transcript toolbar (issue #32 item 4): `…` is now the only way to re-run it.
+// A transcript has no version history, so the dialog says the current one cannot be recovered.
+test('overflow 重新生成逐字稿 says the current transcript cannot be recovered; 取消 leaves it alone', async () => {
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  try {
+    const r = await renderResults();
+    await openMenu(r);
+    await fireEvent.press(r.getByTestId('overflow-regen'));
+    expect(mockNav.replace).not.toHaveBeenCalled();           // nothing happens without confirming
+    const [, body, buttons] = spy.mock.calls[0] as any[];
+    expect(body).toMatch(/無法還原/);
+    buttons[0].onPress?.();                                    // 取消
+    expect(mockNav.replace).not.toHaveBeenCalled();
+  } finally { spy.mockRestore(); }
+});
+
+test('confirming 重新生成逐字稿 twice still starts only one run', async () => {
+  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  try {
+    const r = await renderResults();
+    await openMenu(r);
+    await fireEvent.press(r.getByTestId('overflow-regen'));
+    const confirm = (spy.mock.calls[0] as any[])[2][1].onPress;
+    await act(async () => { confirm(); confirm(); });
+    expect(mockNav.replace).toHaveBeenCalledTimes(1);
+  } finally { spy.mockRestore(); }
+});
+
 test('overflow 刪除這場會議 confirms, warns by haptic, removes and goes home', async () => {
   const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   try {
@@ -164,11 +192,10 @@ test('Results offline keeps player', async () => {
   const play = await r.findByTestId('mini-play');
   expect(play).not.toBeDisabled();
   r.getByText('嗨大家好');
-  // …only the server action is off, and says why.
-  await waitFor(() => expect(r.getByRole('button', { name: '重新生成逐字稿' })).toBeDisabled());
-  const menu = await openMenu(r);
-  const regen = within(menu).getByTestId('overflow-regen');
-  expect(regen).toBeDisabled();
+  // …only the server action (in `…`) is off, and says why.
+  await openMenu(r);
+  await waitFor(() => expect(within(r.getByTestId('overflow-menu')).getByTestId('overflow-regen')).toBeDisabled());
+  const menu = r.getByTestId('overflow-menu');
   within(menu).getByText('主機沒有回應，錄音還在手機上。');
   expect(within(menu).getByTestId('overflow-export')).not.toBeDisabled();
   expect(within(menu).getByTestId('overflow-append')).not.toBeDisabled();

@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  ScrollView, View, TextInput, Pressable, StyleSheet, Alert,
+  ScrollView, View, TextInput, Pressable, StyleSheet,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SavedSession } from '../lib/store';
@@ -49,31 +49,18 @@ export default function TranscriptTab(
   const stats = React.useMemo(() => speakerStats(segs, speakers), [segs, speakers]);
   // The toolbar's avatar stack: first to speak first, the same order and cap as the Home card.
   const stackOrder = React.useMemo(() => speakersByFirstAppearance(segs, speakers), [segs, speakers]);
-  // One trigger only. The chip stays disabled from the moment it is confirmed until this screen is
+  // 生成逐字稿 (empty state) fires once. The button stays disabled from the tap until this screen is
   // replaced by 分析中 — without it a second tap in that window starts the whole job twice.
   // A ref, not just state: taps arrive faster than React re-renders, so a state read inside the
   // handler is still false on the second tap and both would fire. The state exists only to redraw
-  // the button as disabled.
+  // the button as disabled. (Re-running an existing transcript lives in Results' `…` menu.)
   const [regenStarted, setRegenStarted] = React.useState(false);
   const regenStartedRef = React.useRef(false);
-  const confirmOpenRef = React.useRef(false);   // one dialog at a time
   const startRegenerate = () => {
     if (regenStartedRef.current) return;
     regenStartedRef.current = true;
     setRegenStarted(true);
     onRegenerate?.();
-  };
-  // Unlike the meeting notes, a transcript has NO version history: re-running overwrites it, taking
-  // any text corrections with it. Say so rather than discovering it afterwards.
-  const confirmRegenerate = () => {
-    if (regenStartedRef.current || confirmOpenRef.current) return;
-    confirmOpenRef.current = true;
-    Alert.alert(
-      '重新生成逐字稿？',
-      '會用原本的錄音重新辨識一次。目前的逐字稿會被取代，包含你修改過的文字；逐字稿沒有版本紀錄，無法還原。',
-      [{ text: '取消', style: 'cancel', onPress: () => { confirmOpenRef.current = false; } },
-       { text: '重新生成', style: 'destructive', onPress: startRegenerate }],
-    );
   };
   const namedCount = stats.filter((x) => !!session.names[x.speaker]).length;
   // Which paragraph is being edited INLINE (index into `turns`), plus its working draft text. Long-press
@@ -165,15 +152,10 @@ export default function TranscriptTab(
 
   return (
     <View style={styles.wrap}>
-      {/* Sticky: the transcript scrolls under these. Burying 講者 / 複製 / 重新生成 in the scroll
-          meant they vanished as soon as you started reading, which is exactly when they are wanted. */}
+      {/* Sticky: the transcript scrolls under these. One fixed row: 講者, 複製 and at most one
+          contextual chip (查看進度 / 連接主機). 重新生成逐字稿 lives in Results' `…` menu only. */}
       <View style={styles.toolbar}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.toolbarRow}
-          keyboardShouldPersistTaps="handled"
-        >
+        <View testID="transcript-toolbar" style={styles.toolbarRow}>
           {stats.length > 0 && (
             // Avatar stack: who is in this meeting at a glance, in the same colours as the turns below.
             <Pressable
@@ -218,16 +200,8 @@ export default function TranscriptTab(
             <Chip testID="view-progress" label={`查看進度（${busyPct}%）`} onPress={onViewProgress} />
           ) : hasParts && onRegenerate && gate === 'unpaired' && onConnect ? (
             <Chip testID="connect-server" label="連接主機" onPress={onConnect} />
-          ) : hasParts && onRegenerate ? (
-            <Chip
-              testID="regenerate-transcript"
-              label={regenStarted ? '準備中…' : '重新生成逐字稿'}
-              onPress={confirmRegenerate}
-              // Offline: the server can't take it now; the transcript above is untouched.
-              disabled={regenStarted || gate !== 'ok'}
-            />
           ) : null}
-        </ScrollView>
+        </View>
       </View>
       <ScrollView
         ref={scrollRef}
@@ -358,7 +332,7 @@ const styles = StyleSheet.create({
   emptyCta: { alignSelf: 'center', marginTop: -spacing.xxxl },
 
   toolbar: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline, backgroundColor: colors.background },
-  toolbarRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: layout.screenPaddingH, paddingVertical: spacing.md },
+  toolbarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: layout.screenPaddingH, paddingVertical: spacing.md },
   // teaches the two paragraph gestures (tap = seek, long-press = edit)
   howto: { paddingTop: spacing.md, paddingBottom: spacing.xs },
 
