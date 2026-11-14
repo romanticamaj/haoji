@@ -59,6 +59,9 @@ describe('Models', () => {
     expect(es.url).toBe('/api/llm/pull/qwen3%3A8b/events');
     expect(screen.getByRole('button', { name: /下載/ })).toBeDisabled();
 
+    // The backend seeds PULLS[name] with status "queued" before Ollama answers.
+    act(() => es.emit({ name: 'qwen3:8b', status: 'queued', completed: 0, total: 0, pct: 0 }));
+    expect(screen.getByText('準備下載…')).toBeInTheDocument();
     act(() => es.emit(fx.pullEvents[0]));
     expect(screen.getByText(/讀取清單/)).toBeInTheDocument();
     act(() => es.emit(fx.pullEvents[1]));

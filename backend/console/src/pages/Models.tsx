@@ -206,6 +206,7 @@ function ModelTableRow({
 }
 
 const PULL_WORD: [RegExp, string][] = [
+  [/^queued/, '準備下載…'],
   [/^pulling manifest/, '讀取清單…'],
   [/^(downloading|pulling)/, '下載中…'],
   [/^verifying/, '驗證檔案…'],
