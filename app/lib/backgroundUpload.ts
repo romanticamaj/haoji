@@ -11,6 +11,8 @@ import { NativeModules, DeviceEventEmitter, Platform } from 'react-native';
 // simulator quirk) `available` is false and callers fall back to the ordinary foreground upload.
 type Native = {
   enqueue(url: string, filePath: string, taskId: string): Promise<string>;
+  // Same, plus extra request headers (the pairing token). Absent on builds older than pairing.
+  enqueueWithHeaders?(url: string, filePath: string, taskId: string, headers: Record<string, string>): Promise<string>;
   pendingTasks(): Promise<string[]>;
 };
 
@@ -35,8 +37,16 @@ export const parseTaskId = (taskId: string): { sessionId: string; index: number 
 };
 
 /** Hand one part to the OS. Resolves as soon as it is queued — NOT when the upload finishes. */
-export async function enqueue(url: string, fileUri: string, taskId: string): Promise<void> {
+export async function enqueue(
+  url: string, fileUri: string, taskId: string, headers?: Record<string, string>,
+): Promise<void> {
   if (!native) throw new Error('background upload unavailable');
+  // The URL comes from the same runtime server as every api call (api.partPutUrl); the pairing token
+  // rides along as a header, since the OS performs this request without any JS in the loop.
+  if (headers && Object.keys(headers).length > 0 && native.enqueueWithHeaders) {
+    await native.enqueueWithHeaders(url, fileUri, taskId, headers);
+    return;
+  }
   await native.enqueue(url, fileUri, taskId);
 }
 

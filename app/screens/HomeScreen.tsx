@@ -25,6 +25,7 @@ import { resumeAllJobs, onJobChange } from '../lib/jobRunner';
 import { isActive, overallPct } from '../lib/job';
 import { isNotesActive } from '../lib/notesJob';
 import { useImport } from '../hooks/useImport';
+import { useServerStatus } from '../hooks/useServerStatus';
 
 // Repair crash-truncated WAV headers once per app launch (not on every screen focus).
 let wavRepairDone = false;
@@ -38,6 +39,7 @@ export default function HomeScreen() {
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   const imp = useImport({ leave: 'navigate' });
+  const srv = useServerStatus();
 
   // Soft delete: the meeting disappears at once and 復原 brings it back; only when the snackbar
   // times out (or another delete / leaving the screen supersedes it) are its files actually removed.
@@ -135,7 +137,15 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <BrandHeader onSearch={visible.length > 0 ? toggleSearch : undefined} searching={searching} />
+      <BrandHeader
+        onSearch={visible.length > 0 ? toggleSearch : undefined}
+        searching={searching}
+        status={{
+          tone: srv.summary.tone,
+          label: srv.loading ? '正在確認…' : srv.summary.label,
+          onPress: () => nav.navigate('Settings'),
+        }}
+      />
 
       {searching && (
         <View style={styles.searchWrap}>

@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Linking } from 'react-native';
 import {
   NavigationContainer, DefaultTheme, type Theme, createNavigationContainerRef,
 } from '@react-navigation/native';
@@ -13,6 +14,11 @@ import ImportConfirmScreen from './screens/ImportConfirmScreen';
 import ReviewScreen from './screens/ReviewScreen';
 import ProcessingScreen from './screens/ProcessingScreen';
 import ResultsScreen from './screens/ResultsScreen';
+import SettingsScreen from './screens/SettingsScreen';
+import PairScreen from './screens/PairScreen';
+import OnboardingScreen from './screens/OnboardingScreen';
+import { linking } from './lib/linking';
+import { shouldShowOnboarding } from './lib/store';
 
 // Paint every scene with the app's paper background from frame one. Without this the native push
 // briefly reveals the default (black) window layer behind the incoming screen, which read as buttons
@@ -47,13 +53,33 @@ function PushOpener({ ready }: { ready: boolean }) {
   return null;
 }
 
+/**
+ * First run: show Onboarding once, only when the phone is neither onboarded nor pointed at a server.
+ * A launch from a pair link goes straight to Pair instead — that person already has a server.
+ */
+function OnboardingGate({ ready }: { ready: boolean }) {
+  useEffect(() => {
+    if (!ready) return;
+    let alive = true;
+    (async () => {
+      const initial = await Linking.getInitialURL().catch(() => null);
+      if (initial && /^haoji:\/\/pair/i.test(initial)) return;
+      if (alive && (await shouldShowOnboarding()) && navRef.isReady()) navRef.navigate('Onboarding');
+    })();
+    return () => { alive = false; };
+  }, [ready]);
+  return null;
+}
+
 export default function App() {
   const [navReady, setNavReady] = React.useState(false);
   return (
     <SafeAreaProvider>
       <StoreProvider>
         <PushOpener ready={navReady} />
-        <NavigationContainer theme={navTheme} ref={navRef} onReady={() => setNavReady(true)}>
+        <OnboardingGate ready={navReady} />
+        {/* linking: haoji://pair → Pair (prefilled). haoji://e2e/… is consumed natively and filtered out. */}
+        <NavigationContainer theme={navTheme} ref={navRef} linking={linking} onReady={() => setNavReady(true)}>
           <Stack.Navigator
             screenOptions={{
               // KEEPLACE native header: ivory, no shadow, 17/600 heading title, chevron-only back.
@@ -82,6 +108,13 @@ export default function App() {
             <Stack.Screen name="Review" component={ReviewScreen} options={{ title: '錄音檢視', headerBackVisible: false }} />
             <Stack.Screen name="Processing" component={ProcessingScreen} options={{ title: '整理中', headerBackVisible: false }} />
             <Stack.Screen name="Results" component={ResultsScreen} options={{ title: '' }} />
+            <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '設定' }} />
+            <Stack.Screen name="Pair" component={PairScreen} options={{ title: '連接主機' }} />
+            <Stack.Screen
+              name="Onboarding"
+              component={OnboardingScreen}
+              options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }}
+            />
           </Stack.Navigator>
         </NavigationContainer>
       </StoreProvider>

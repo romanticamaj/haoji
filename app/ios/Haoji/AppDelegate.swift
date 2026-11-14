@@ -40,11 +40,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     return true
   }
 
-  /// Simulator-only test hooks (E2EHooks is empty on device builds). Returning false for anything
-  /// else keeps normal URL handling untouched.
+  /// haoji://e2e/… goes to the simulator-only test hooks first (E2EHooks is empty on device builds,
+  /// so it returns false there). Everything else — haoji://pair?url=…&token=… — is handed to React
+  /// Native's Linking, which routes it to the Pair screen (lib/linking.ts).
   func application(_ app: UIApplication, open url: URL,
                    options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-    return E2EHooks.handle(url)
+    if E2EHooks.handle(url) { return true }
+    return RCTLinkingManager.application(app, open: url, options: options)
   }
 
   func application(_ application: UIApplication,

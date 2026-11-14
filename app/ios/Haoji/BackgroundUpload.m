@@ -11,6 +11,13 @@ RCT_EXTERN_METHOD(enqueue:(NSString *)urlString
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(enqueueWithHeaders:(NSString *)urlString
+                  filePath:(NSString *)filePath
+                  taskId:(NSString *)taskId
+                  headers:(NSDictionary *)headers
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(pendingTasks:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

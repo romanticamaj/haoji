@@ -4,9 +4,13 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
 import { ensureJob, restartJob, onJobChange } from '../lib/jobRunner';
-import { overallPct } from '../lib/job';
+import { overallPct, stageOf } from '../lib/job';
+import { transcribeGate } from '../lib/serverStatus';
+import { useServerStatus } from '../hooks/useServerStatus';
 import { AppText } from '../components/AppText';
-import { PrimaryButton, SecondaryButton } from '../components/Buttons';
+import { SecondaryButton } from '../components/Buttons';
+import { TranscribeButton } from '../components/TranscribeButton';
+import { StageRow } from '../components/StageRow';
 import { IconAlert, IconLoader } from '../components/icons';
 import { colors, layout, spacing, tabularNums } from '../lib/theme';
 
@@ -29,6 +33,9 @@ export default function ProcessingScreen() {
   // still carrying job.stage === 'done', and acting on that before the restart cleared it bounced
   // straight back to the results — "重新生成逐字稿 一進去就跳出".
   const [started, setStarted] = useState(false);
+  // Retrying needs a server: unpaired → offer to connect; offline → say so and keep 重試 disabled.
+  const srv = useServerStatus();
+  const gate = transcribeGate(srv.summary, srv.loading);
 
   useEffect(() => {
     let alive = true;
@@ -71,7 +78,12 @@ export default function ProcessingScreen() {
       <AppText variant="body" color="muted" style={styles.centerText}>錄音還在手機上，沒有不見。</AppText>
       {!!job.error && <AppText variant="small" color="muted" style={styles.centerText}>{job.error}</AppText>}
       <View style={styles.actions}>
-        <PrimaryButton label="重試" onPress={() => void restartJob(sessionId, store)} />
+        <TranscribeButton
+          gate={gate}
+          label="重試"
+          onPress={() => void restartJob(sessionId, store)}
+          onConnect={() => nav.navigate('Pair')}
+        />
         <SecondaryButton label="返回" onPress={() => nav.popToTop()} />
       </View>
     </View>
@@ -82,6 +94,7 @@ export default function ProcessingScreen() {
     <View style={styles.center}>
       <View style={styles.iconCircle}><IconLoader size={28} color={colors.primaryDark} /></View>
       <AppText variant="section" color="heading" accessibilityRole="header">正在整理逐字稿…</AppText>
+      <StageRow current={stageOf(job)} />
       <AppText variant="small" color="muted">{job?.message || '準備中…'}</AppText>
       <View style={styles.barTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: pct }}>
         <View style={[styles.barFill, { width: `${pct}%` }]} />

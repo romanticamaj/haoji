@@ -8,7 +8,10 @@ import { deleteSessionFiles } from '../lib/recordings';
 import RecordingsList from './RecordingsList';
 import { AppText } from '../components/AppText';
 import { IconTrash } from '../components/icons';
-import { colors, layout, radius, spacing } from '../lib/theme';
+import { TranscribeButton } from '../components/TranscribeButton';
+import { useServerStatus } from '../hooks/useServerStatus';
+import { transcribeGate } from '../lib/serverStatus';
+import { colors, layout, spacing } from '../lib/theme';
 
 // Sits between recording and analysis: listen back to what was just captured, then either kick off
 // transcription (開始分析) or throw the take away (捨棄). Nothing is transcribed until the user opts in,
@@ -42,6 +45,10 @@ export default function ReviewScreen() {
   // Save as a draft and leave: the recording is already persisted (RecordScreen upserts it on stop),
   // so we just go Home. The user can open it later and tap 生成逐字稿 — the work is fully interruptible.
   const saveDraft = () => nav.popToTop();
+  // Transcribing needs the server. Unpaired → 「連接主機後就能生成逐字稿」; offline → disabled, with a
+  // line saying the recording is safe. Either way 稍後再說 still saves the take (local-first).
+  const srv = useServerStatus();
+  const gate = transcribeGate(srv.summary, srv.loading);
 
   const discard = () => {
     if (hasTranscript) {
@@ -87,13 +94,12 @@ export default function ReviewScreen() {
 
       {/* Sticky CTA (KEEPLACE FormScreen): one primary on the canvas, a hairline rule above it. */}
       <View style={[styles.actions, { paddingBottom: insets.bottom + spacing.md }]}>
-        <Pressable
-          style={({ pressed }) => [styles.primary, pressed && styles.pressedFill]}
+        <TranscribeButton
+          gate={gate}
+          label={hasTranscript ? '重新辨識整場' : '生成逐字稿'}
           onPress={generate}
-          accessibilityRole="button"
-        >
-          <AppText variant="cardTitle" color="onPrimary" style={styles.bold}>{hasTranscript ? '重新辨識整場' : '生成逐字稿'}</AppText>
-        </Pressable>
+          onConnect={() => nav.navigate('Pair')}
+        />
         <View style={styles.secondaryRow}>
           <Pressable
             style={({ pressed }) => [styles.textBtn, pressed && styles.pressedIcon]}
@@ -131,16 +137,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.screenPaddingH, paddingTop: spacing.md, gap: spacing.xs,
     backgroundColor: colors.background, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.outline,
   },
-  primary: {
-    backgroundColor: colors.primary, borderRadius: radius.button, height: layout.buttonHeight,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  bold: { fontWeight: '600' },
   secondaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxl },
   textBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
     minHeight: layout.minTouchTarget, paddingHorizontal: spacing.lg,
   },
-  pressedFill: { opacity: 0.8 },
   pressedIcon: { opacity: 0.6 },
 });

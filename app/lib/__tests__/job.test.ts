@@ -170,6 +170,13 @@ test('background upload: gives up if the parts never land instead of polling for
   expect(h.session.job?.error).toMatch(/錄音沒有傳送完成/);
 });
 
+test('background upload: the part URL may be resolved asynchronously (runtime server)', async () => {
+  const h = bgHarness(base, [{ status: 'done', pct: 1, message: '完成', transcript }]);
+  h.deps.bg!.partUrl = async (backendId, i) => `http://paired:7780/api/sessions/${backendId}/parts/${i}`;
+  await runJob('local-1', h.deps);
+  expect(h.enqueued[0].url).toBe('http://paired:7780/api/sessions/backend-1/parts/0');
+});
+
 test('background upload unavailable → falls back to uploading in the foreground', async () => {
   const h = harness(base, [{ status: 'done', pct: 1, message: '完成', transcript }]);
   h.deps.bg = { available: false, enqueue: jest.fn(), pendingTasks: jest.fn(async () => []), partUrl: () => '' };

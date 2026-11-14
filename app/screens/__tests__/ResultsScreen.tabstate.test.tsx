@@ -8,6 +8,8 @@ jest.mock('../../lib/api', () => ({
   createSession: jest.fn().mockResolvedValue('backend-1'),
   analyzeInBackground: (...a: any[]) => mockAnalyzeBg(...a),
   getSession: (...a: any[]) => mockGetSession(...a),
+  // The server-status poll (useServerStatus): a connected server (busy still accepts work).
+  getStatus: jest.fn().mockResolvedValue(require('../../../backend/tests/fixtures/contracts/status.json')),
   getModels: jest.fn().mockResolvedValue({ ok: true, models: [], default: '' }),
 }));
 jest.mock('@react-native-clipboard/clipboard', () => ({ setString: jest.fn() }));
