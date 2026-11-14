@@ -18,6 +18,7 @@ import {
 } from '../lib/importSelection';
 import { mmss } from '../lib/transcript';
 import { IconCheck, IconAlert, IconPlay, IconPause, IconGrip } from '../components/icons';
+import { zhDateTime } from '../lib/dateFormat';
 import { colors, layout, radius, spacing, tabularNums } from '../lib/theme';
 
 const ROW_GAP = 8;
@@ -67,7 +68,7 @@ export default function ImportConfirmScreen() {
 
     const id = makeLocalId();
     const createdAt = Date.now();
-    const title = new Date().toLocaleString();
+    const title = zhDateTime(Date.now());
     const parts: { uri: string; durationMs: number }[] = [];
     try {
       for (let i = 0; i < chosen.length; i++) {

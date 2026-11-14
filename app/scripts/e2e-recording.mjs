@@ -78,6 +78,9 @@ const xcargs = [
 ];
 
 console.log(`模擬器 ${device}`);
+// Start from an empty app: the ffprobe pass below reads EVERY part on disk, so seeded scenarios
+// (sim-setup.sh, including the deliberately broken one) would otherwise be judged as test output.
+try { sh('xcrun', ['simctl', 'uninstall', device, BUNDLE]); } catch { /* not installed */ }
 console.log(`跑 XCUITest（畫面層）…\n`);
 const run = spawnSync('xcodebuild', xcargs, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const log = (run.stdout || '') + (run.stderr || '');
@@ -108,8 +111,15 @@ check('錄音格式是 16 kHz 單聲道', parts.every((p) => p.format === '16000
   [...new Set(parts.map((p) => p.format))].join(' / ') || '—');
 // The interruption tests each record on both sides of a call; anything much shorter means one side
 // was lost — which is exactly how the bug presented.
-check('中斷前後的音訊都在（每段 > 4 秒）', parts.every((p) => p.duration > 4),
-  parts.map((p) => `${p.duration.toFixed(1)}s`).join(', ') || '—');
+// Every meeting keeps what was recorded before the call (its first part, > 4 s — each test records
+// at least 5 s first), and no part is an empty stub. A part recorded AFTER a call may be short: the
+// failed-resume test deliberately ends a few seconds into a recovered take.
+const bySession = new Map();
+for (const p of parts) bySession.set(p.sid, [...(bySession.get(p.sid) || []), p]);
+const lostBefore = [...bySession.values()].filter((ps) => ps[0].duration <= 4);
+const empty = parts.filter((p) => p.duration < 0.5);
+check('中斷前的音訊都在（每場第一段 > 4 秒），且沒有空段落', parts.length > 0 && !lostBefore.length && !empty.length,
+  [...bySession.values()].map((ps) => ps.map((p) => `${p.duration.toFixed(1)}s`).join('+')).join(', ') || '—');
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} 通過`);

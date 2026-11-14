@@ -1,23 +1,28 @@
 import React from 'react';
 import {
-  ScrollView, View, TextInput, Pressable, StyleSheet, Alert,
+  ScrollView, View, TextInput, Pressable, StyleSheet,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SavedSession } from '../lib/store';
-import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText, speakerStats } from '../lib/transcript';
+import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText, speakerStats, speakersByFirstAppearance } from '../lib/transcript';
+import { STACK_MAX, avatarInitial } from '../lib/sessionList';
 import SpeakerSheet from '../components/SpeakerSheet';
-import { IconCheck, IconCopy, IconLoader, IconSpeakers, IconTranscript, IconTrash, IconAudioLines } from '../components/icons';
+import { IconCheck, IconCopy, IconLoader, IconTranscript, IconTrash, IconAudioLines } from '../components/icons';
 import { AppText } from '../components/AppText';
 import { EmptyState } from '../components/EmptyState';
-import { Chip, DangerButton, PrimaryButton } from '../components/Buttons';
+import { Chip, DangerButton } from '../components/Buttons';
+import { TranscribeButton } from '../components/TranscribeButton';
+import type { Gate } from '../lib/serverStatus';
 import { isActive, overallPct } from '../lib/job';
-import { colors, layout, radius, spacing, tabularNums, speakerColor, typography } from '../lib/theme';
+import { colors, fontScale, layout, radius, spacing, tabularNums, speakerColor, typography } from '../lib/theme';
 
 export default function TranscriptTab(
-  { session, onUpdate, onRegenerate, onViewProgress, onSeek, activeMs = 0, onDelete }:
+  { session, onUpdate, onRegenerate, onViewProgress, onSeek, activeMs = 0, onDelete, gate = 'ok', onConnect }:
   {
     session: SavedSession; onUpdate(s: SavedSession): void; onRegenerate?(): void;
     onViewProgress?(): void; onSeek?(globalMs: number): void; activeMs?: number;
+    /** Can a transcript be made now (lib/serverStatus transcribeGate)? The transcript itself always shows. */
+    gate?: Gate; onConnect?(): void;
     /** 刪除這場會議 — always the last thing on the page. */
     onDelete?(): void;
   },
@@ -42,31 +47,20 @@ export default function TranscriptTab(
   // The speaker sheet: null = closed, '' = opened from the toolbar, otherwise the speaker to focus.
   const [editing, setEditing] = React.useState<string | null>(null);
   const stats = React.useMemo(() => speakerStats(segs, speakers), [segs, speakers]);
-  // One trigger only. The chip stays disabled from the moment it is confirmed until this screen is
+  // The toolbar's avatar stack: first to speak first, the same order and cap as the Home card.
+  const stackOrder = React.useMemo(() => speakersByFirstAppearance(segs, speakers), [segs, speakers]);
+  // 生成逐字稿 (empty state) fires once. The button stays disabled from the tap until this screen is
   // replaced by 分析中 — without it a second tap in that window starts the whole job twice.
   // A ref, not just state: taps arrive faster than React re-renders, so a state read inside the
   // handler is still false on the second tap and both would fire. The state exists only to redraw
-  // the button as disabled.
+  // the button as disabled. (Re-running an existing transcript lives in Results' `…` menu.)
   const [regenStarted, setRegenStarted] = React.useState(false);
   const regenStartedRef = React.useRef(false);
-  const confirmOpenRef = React.useRef(false);   // one dialog at a time
   const startRegenerate = () => {
     if (regenStartedRef.current) return;
     regenStartedRef.current = true;
     setRegenStarted(true);
     onRegenerate?.();
-  };
-  // Unlike the meeting notes, a transcript has NO version history: re-running overwrites it, taking
-  // any text corrections with it. Say so rather than discovering it afterwards.
-  const confirmRegenerate = () => {
-    if (regenStartedRef.current || confirmOpenRef.current) return;
-    confirmOpenRef.current = true;
-    Alert.alert(
-      '重新生成逐字稿？',
-      '會用原本的錄音重新辨識一次。目前的逐字稿會被取代，包含你修改過的文字；逐字稿沒有版本紀錄，無法還原。',
-      [{ text: '取消', style: 'cancel', onPress: () => { confirmOpenRef.current = false; } },
-       { text: '重新生成', style: 'destructive', onPress: startRegenerate }],
-    );
   };
   const namedCount = stats.filter((x) => !!session.names[x.speaker]).length;
   // Which paragraph is being edited INLINE (index into `turns`), plus its working draft text. Long-press
@@ -113,9 +107,11 @@ export default function TranscriptTab(
               description="這段錄音還沒整理成逐字稿。準備好了就按下面開始。"
             />
             {onRegenerate && (
-              <PrimaryButton
+              <TranscribeButton
+                gate={gate}
                 label={regenStarted ? '準備中…' : '生成逐字稿'}
                 onPress={startRegenerate}
+                onConnect={() => onConnect?.()}
                 disabled={regenStarted}
                 style={styles.emptyCta}
               />
@@ -134,6 +130,11 @@ export default function TranscriptTab(
   }
 
   const turns = React.useMemo(() => mergedParagraphs(segs), [segs]);
+  // The naming prompt shows once per speaker — on their first turn — not on every paragraph they speak.
+  const firstTurn = React.useMemo(() => {
+    const seen = new Set<string>();
+    return turns.map((t) => { const first = !seen.has(t.speaker); seen.add(t.speaker); return first; });
+  }, [turns]);
   // Paragraph currently being spoken (for follow-along highlight); -1 when not playing.
   const activeIdx = React.useMemo(() => activeParagraph(turns.map((t) => t.start), activeMs), [turns, activeMs]);
 
@@ -151,23 +152,42 @@ export default function TranscriptTab(
 
   return (
     <View style={styles.wrap}>
-      {/* Sticky: the transcript scrolls under these. Burying 講者 / 複製 / 重新生成 in the scroll
-          meant they vanished as soon as you started reading, which is exactly when they are wanted. */}
+      {/* Sticky: the transcript scrolls under these. One fixed row: 講者, 複製 and at most one
+          contextual chip (查看進度 / 連接主機). 重新生成逐字稿 lives in Results' `…` menu only. */}
       <View style={styles.toolbar}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.toolbarRow}
-          keyboardShouldPersistTaps="handled"
-        >
+        <View testID="transcript-toolbar" style={styles.toolbarRow}>
           {stats.length > 0 && (
-            <Chip
+            // Avatar stack: who is in this meeting at a glance, in the same colours as the turns below.
+            <Pressable
               testID="open-speakers"
-              label={`講者 ${namedCount}/${stats.length}`}
-              icon={<IconSpeakers size={16} />}
               onPress={() => setEditing('')}
-              accessibilityLabel="管理講者"
-            />
+              accessibilityRole="button"
+              accessibilityLabel={`管理講者，${stats.length} 位，已命名 ${namedCount} 位`}
+              hitSlop={4}
+              style={({ pressed }) => [styles.stackChip, pressed && styles.pressedRow]}
+            >
+              <View style={styles.stack}>
+                {stackOrder.slice(0, STACK_MAX).map(({ speaker: sp, index }, k) => (
+                  <View
+                    key={sp}
+                    testID={`stack-avatar-${sp}`}
+                    style={[styles.stackAv, k > 0 && styles.stackOverlap, { backgroundColor: speakerColor(index) }]}
+                  >
+                    <AppText variant="small" color="onPrimary" style={styles.stackText} maxFontSizeMultiplier={fontScale.chrome}>
+                      {avatarInitial(sp, index, session.names)}
+                    </AppText>
+                  </View>
+                ))}
+                {stackOrder.length > STACK_MAX && (
+                  <View style={[styles.stackAv, styles.stackOverlap, styles.stackMore]}>
+                    <AppText variant="small" color="heading" style={styles.stackText} maxFontSizeMultiplier={fontScale.chrome}>
+                      +{stackOrder.length - STACK_MAX}
+                    </AppText>
+                  </View>
+                )}
+              </View>
+              <AppText variant="cardTitle" color="heading" maxFontSizeMultiplier={fontScale.chrome}>{`講者 ${namedCount}/${stats.length}`}</AppText>
+            </Pressable>
           )}
           <Chip
             testID="copy-transcript"
@@ -178,15 +198,10 @@ export default function TranscriptTab(
           />
           {busy && onViewProgress ? (
             <Chip testID="view-progress" label={`查看進度（${busyPct}%）`} onPress={onViewProgress} />
-          ) : hasParts && onRegenerate ? (
-            <Chip
-              testID="regenerate-transcript"
-              label={regenStarted ? '準備中…' : '重新生成逐字稿'}
-              onPress={confirmRegenerate}
-              disabled={regenStarted}
-            />
+          ) : hasParts && onRegenerate && gate === 'unpaired' && onConnect ? (
+            <Chip testID="connect-server" label="連接主機" onPress={onConnect} />
           ) : null}
-        </ScrollView>
+        </View>
       </View>
       <ScrollView
         ref={scrollRef}
@@ -201,7 +216,7 @@ export default function TranscriptTab(
           const idx = speakerIndex[p.speaker] ?? 0;
           const color = speakerColor(idx);
           const named = !!session.names[p.speaker];
-          const display = nameOf(p.speaker, session.names);
+          const display = named ? nameOf(p.speaker, session.names) : `講者 ${idx + 1}`;
           const initial = named ? display.trim().charAt(0) : String(idx + 1);
           const active = i === activeIdx;
           return (
@@ -212,32 +227,35 @@ export default function TranscriptTab(
               onLayout={(e) => { turnY.current[i] = e.nativeEvent.layout.y; }}
             >
               <Pressable
-                testID={`turn-head-${p.speaker}`}
+                // The speaker's first turn keeps the plain id (it carries the naming prompt).
+                testID={firstTurn[i] ? `turn-head-${p.speaker}` : `turn-head-${p.speaker}-${i}`}
                 style={({ pressed }) => [styles.turnHead, pressed && styles.pressedRow]}
                 onPress={() => setEditing(p.speaker)}
                 accessibilityRole="button"
                 // Never read the raw diarisation code (SPEAKER_01) aloud — an unnamed speaker is 講者 N.
-                accessibilityLabel={named ? `重新命名 ${display}` : `講者 ${idx + 1}，點一下命名`}
+                accessibilityLabel={named ? `${display}，點兩下改名` : `講者 ${idx + 1}，還沒命名，點兩下命名`}
               >
-                {named ? (
+                {named || !firstTurn[i] ? (
+                  // Every avatar wears the speaker's palette colour, named or not, so you can follow
+                  // one person down the page before anyone has been named.
                   <>
-                    <View style={[styles.av, { backgroundColor: color }]}>
-                      <AppText variant="small" color="onPrimary" style={styles.avText}>{initial}</AppText>
+                    <View testID={`turn-avatar-${i}`} style={[styles.av, { backgroundColor: color }]}>
+                      <AppText variant="small" color="onPrimary" style={styles.avText} maxFontSizeMultiplier={fontScale.chrome}>{initial}</AppText>
                     </View>
-                    <AppText variant="cardTitle" color="heading" style={styles.who}>{display}</AppText>
+                    <AppText variant="cardTitle" color="heading" style={styles.who} maxFontSizeMultiplier={fontScale.chrome}>{display}</AppText>
                   </>
                 ) : (
-                  // Unnamed speakers wear the one peach accent: a dashed chip asking to be named.
+                  // An unnamed speaker's FIRST turn asks to be named: the dashed peach chip, once.
                   <View style={styles.chipUnset}>
-                    <View style={[styles.av, styles.avUnset]}>
-                      <AppText variant="small" color="onPrimary" style={styles.avText}>{initial}</AppText>
+                    <View testID={`turn-avatar-${i}`} style={[styles.av, styles.avUnset, { backgroundColor: color }]}>
+                      <AppText variant="small" color="onPrimary" style={styles.avText} maxFontSizeMultiplier={fontScale.chrome}>{initial}</AppText>
                     </View>
-                    <AppText variant="small" color="accent" style={styles.unsetText}>
+                    <AppText variant="small" color="accent" style={styles.unsetText} maxFontSizeMultiplier={fontScale.chrome}>
                       講者 {idx + 1} · 點一下命名
                     </AppText>
                   </View>
                 )}
-                <AppText variant="small" color="muted" style={[styles.tc, tabularNums]}>{mmss(p.start)}</AppText>
+                <AppText variant="small" color="muted" style={[styles.tc, tabularNums]} maxFontSizeMultiplier={fontScale.chrome}>{mmss(p.start)}</AppText>
               </Pressable>
               {editIdx === i ? (
                 <View style={styles.editBox}>
@@ -274,9 +292,16 @@ export default function TranscriptTab(
                   onLongPress={() => beginEdit(i, p.text)}
                   delayLongPress={280}
                   accessibilityRole="button"
-                  accessibilityLabel={`跳到 ${mmss(p.start)} 播放，長按可修改文字`}
+                  accessibilityLabel={p.text}
+                  accessibilityHint={`點兩下從 ${mmss(p.start)} 播放，長按可修改文字`}
+                  // VoiceOver / TalkBack: the rotor offers 從這裡播放 and 修改文字 by name.
+                  accessibilityActions={[{ name: 'activate', label: '從這裡播放' }, { name: 'longpress', label: '修改文字' }]}
+                  onAccessibilityAction={(e) => {
+                    if (e.nativeEvent.actionName === 'activate') onSeek?.(Math.round(p.start * 1000));
+                    else if (e.nativeEvent.actionName === 'longpress') beginEdit(i, p.text);
+                  }}
                 >
-                  <AppText variant="body" color={active ? 'heading' : 'body'}>{p.text}</AppText>
+                  <AppText variant="body" color={active ? 'heading' : 'body'} maxFontSizeMultiplier={fontScale.content}>{p.text}</AppText>
                 </Pressable>
               )}
             </View>
@@ -308,7 +333,7 @@ const styles = StyleSheet.create({
   emptyCta: { alignSelf: 'center', marginTop: -spacing.xxxl },
 
   toolbar: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline, backgroundColor: colors.background },
-  toolbarRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: layout.screenPaddingH, paddingVertical: spacing.md },
+  toolbarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: layout.screenPaddingH, paddingVertical: spacing.md },
   // teaches the two paragraph gestures (tap = seek, long-press = edit)
   howto: { paddingTop: spacing.md, paddingBottom: spacing.xs },
 
@@ -341,7 +366,23 @@ const styles = StyleSheet.create({
     borderWidth: layout.border, borderStyle: 'dashed', borderColor: colors.accent,
     borderRadius: radius.chip, paddingVertical: 2, paddingLeft: 2, paddingRight: spacing.md,
   },
-  avUnset: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.accent },
+  avUnset: { width: 24, height: 24, borderRadius: 12 },
+
+  // toolbar avatar stack (opens the speaker sheet)
+  stackChip: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    height: layout.chipHeight, borderRadius: radius.chip, paddingLeft: spacing.xs, paddingRight: spacing.lg,
+    backgroundColor: colors.surface, borderWidth: layout.border, borderColor: colors.outline,
+  },
+  stack: { flexDirection: 'row', alignItems: 'center' },
+  // A surface-coloured ring separates overlapping faces without a shadow.
+  stackAv: {
+    width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: colors.surface,
+  },
+  stackOverlap: { marginLeft: -8 },
+  stackMore: { backgroundColor: colors.primarySoft },
+  stackText: { fontWeight: '600', fontSize: 11, lineHeight: 14 },
   unsetText: { fontWeight: '500' },
 
   delete: { marginTop: spacing.xxxl },

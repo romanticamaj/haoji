@@ -14,8 +14,8 @@
 - Bundle id **`com.garyhsieh.haoji`**; display name **`好記`**.
 - Zero `expo*` dependencies or Expo config files at the end.
 - `RecorderApi` (hooks/useRecorder.ts), `SessionStore` (lib/store.ts), and `api.ts` public signatures stay **byte-for-byte identical**.
-- Backend base URL default (Release): `http://100.106.118.45:8780`; LAN alt: `http://192.168.100.10:8780`.
-- ASC API key: id `S4KA24P9A5`, issuer `efcfbd71-5d12-4d85-8efc-5cee020286d9`, team `64N77Z6TV3`, key file `~/.private_keys/AuthKey_S4KA24P9A5.p8`.
+- Backend base URL default (Release): `http://<tailscale-ip>:8780`; LAN alt: `http://<lan-ip>:8780`.
+- ASC API key: id `<ASC_KEY_ID>`, issuer `<ASC_ISSUER_ID>`, team `64N77Z6TV3`, key file `~/.private_keys/AuthKey_<ASC_KEY_ID>.p8`.
 - Mic usage string: `好記需要麥克風來錄製會議音訊。`
 - All work on branch `eject-expo-bare-rn`. Commit after every task.
 - `npm test` (jest, `react-native` preset) must stay green from Task 4 onward.
@@ -49,7 +49,7 @@ Expected: `Haoji/` with `ios/Haoji.xcodeproj`, `ios/Haoji/AppDelegate.swift` (`m
 - [ ] **Step 2: Fix app/.gitignore, then copy native shell into app/**
 
 ```bash
-D=/Users/gary.hsieh/garysrc/haoji/app
+D=~/garysrc/haoji/app
 # Review F13: these Expo-era lines would silently drop the committed native dirs
 sed -i '' '/^\/ios$/d; /^\/android$/d' $D/.gitignore
 S=<scratchpad>/Haoji
@@ -166,7 +166,7 @@ import Config from 'react-native-config';
 export const API_BASE: string = Config.API_BASE ?? 'http://127.0.0.1:8780';
 ```
 
-- [ ] **Step 4: `.env`** → `API_BASE=http://100.106.118.45:8780`; `.env.example` documents LAN alt `http://192.168.100.10:8780`. Add `.env` to `app/.gitignore`.
+- [ ] **Step 4: `.env`** → `API_BASE=http://<tailscale-ip>:8780`; `.env.example` documents LAN alt `http://<lan-ip>:8780`. Add `.env` to `app/.gitignore`.
 
 - [ ] **Step 5: Run — expect PASS.** `npx jest config.test -v`
 
@@ -383,7 +383,7 @@ class AudioInterruption: RCTEventEmitter {
 **Files:**
 - Modify: `app/ios/Haoji/Info.plist`, `app/ios/Podfile`
 
-- [ ] **Step 1: Info.plist** — add `NSMicrophoneUsageDescription` = `好記需要麥克風來錄製會議音訊。`; `UIBackgroundModes` = `[audio]`; `NSAppTransportSecurity` exception dict for `100.106.118.45` and `192.168.100.10` (`NSExceptionAllowsInsecureHTTPLoads=true`).
+- [ ] **Step 1: Info.plist** — add `NSMicrophoneUsageDescription` = `好記需要麥克風來錄製會議音訊。`; `UIBackgroundModes` = `[audio]`; `NSAppTransportSecurity` exception dict for `<tailscale-ip>` and `<lan-ip>` (`NSExceptionAllowsInsecureHTTPLoads=true`).
 - [ ] **Step 2: Podfile** — ensure `use_native_modules!` + New Arch; add `permissions`/config pods only if a lib requires. `react-native-config` needs its `podspec` autolinked (default). 
 - [ ] **Step 3: Install pods** — `cd app/ios && pod install` (global CocoaPods 1.16.2, **not** `bundle exec` — review F1). Expected: succeeds, links nitro-sound / fs / share / picker / clipboard / config; New-Arch pods generate.
 - [ ] **Step 4: Metro + build to booted simulator**
@@ -402,7 +402,7 @@ Expected: app builds, boots, Home screen renders. (Recording won't function on s
 - Modify: `app/android/app/src/main/AndroidManifest.xml`, create `app/android/app/src/main/res/xml/network_security_config.xml`
 
 - [ ] **Step 1:** Add `<uses-permission android:name="android.permission.RECORD_AUDIO"/>`.
-- [ ] **Step 2:** Create `network_security_config.xml` allowing cleartext to `100.106.118.45` + `192.168.100.10`; reference via `android:networkSecurityConfig` + `android:usesCleartextTraffic="false"` on `<application>`.
+- [ ] **Step 2:** Create `network_security_config.xml` allowing cleartext to `<tailscale-ip>` + `<lan-ip>`; reference via `android:networkSecurityConfig` + `android:usesCleartextTraffic="false"` on `<application>`.
 - [ ] **Step 3:** `cd app/android && ./gradlew assembleDebug` — expect BUILD SUCCESSFUL (compile parity only; not installed).
 - [ ] **Step 4: Commit** — `git commit -am "chore(android): RECORD_AUDIO + cleartext config; debug build passes"`
 
@@ -438,9 +438,9 @@ platform :ios do
   desc "Build and upload to TestFlight"
   lane :beta do
     key = app_store_connect_api_key(
-      key_id: "S4KA24P9A5",
-      issuer_id: "efcfbd71-5d12-4d85-8efc-5cee020286d9",
-      key_filepath: File.expand_path("~/.private_keys/AuthKey_S4KA24P9A5.p8"),
+      key_id: "<ASC_KEY_ID>",
+      issuer_id: "<ASC_ISSUER_ID>",
+      key_filepath: File.expand_path("~/.private_keys/AuthKey_<ASC_KEY_ID>.p8"),
     )
     increment_build_number(
       build_number: latest_testflight_build_number(api_key: key, app_identifier: "com.garyhsieh.haoji").to_i + 1,

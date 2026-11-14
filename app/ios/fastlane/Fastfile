@@ -1,20 +1,29 @@
 default_platform(:ios)
 
+# Signing/upload identity comes from the environment (or fastlane/.env, gitignored — see
+# fastlane/.env.example), so a fork can ship under its own Apple account without editing this file.
+APP_ID = ENV.fetch("APP_IDENTIFIER", "com.garyhsieh.haoji")
+
+def asc_key
+  key_id = ENV.fetch("ASC_KEY_ID") { UI.user_error!("Set ASC_KEY_ID (see fastlane/.env.example)") }
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: ENV.fetch("ASC_ISSUER_ID") { UI.user_error!("Set ASC_ISSUER_ID") },
+    key_filepath: File.expand_path(ENV.fetch("ASC_KEY_PATH", "~/.private_keys/AuthKey_#{key_id}.p8")),
+  )
+end
+
 platform :ios do
   desc "Build a Release archive and upload it to TestFlight"
   lane :beta do
-    key = app_store_connect_api_key(
-      key_id: "S4KA24P9A5",
-      issuer_id: "efcfbd71-5d12-4d85-8efc-5cee020286d9",
-      key_filepath: File.expand_path("~/.private_keys/AuthKey_S4KA24P9A5.p8"),
-    )
+    key = asc_key
 
     # Next build number = max(latest TestFlight build, local project build) + 1.
     # Apple remembers a CFBundleVersion even if that build FAILED processing, so we must
     # advance past the local number too — re-sending a failed build's number is rejected.
     latest = latest_testflight_build_number(
       api_key: key,
-      app_identifier: "com.garyhsieh.haoji",
+      app_identifier: APP_ID,
       initial_build_number: 0,
     ).to_i
     current = (get_build_number(xcodeproj: "Haoji.xcodeproj").to_i rescue 0)
@@ -26,7 +35,7 @@ platform :ios do
     profile_name = "Haoji AppStore"
     get_provisioning_profile(
       api_key: key,
-      app_identifier: "com.garyhsieh.haoji",
+      app_identifier: APP_ID,
       provisioning_name: profile_name,
       force: true,
     )
@@ -38,7 +47,7 @@ platform :ios do
       export_method: "app-store",
       export_options: {
         signingStyle: "manual",
-        provisioningProfiles: { "com.garyhsieh.haoji" => profile_name },
+        provisioningProfiles: { APP_ID => profile_name },
       },
     )
 
@@ -74,15 +83,11 @@ end
 platform :ios do
   desc "Attach/replace the 'What to Test' notes on a build already uploaded (fastlane notes build:64)"
   lane :notes do |options|
-    key = app_store_connect_api_key(
-      key_id: "S4KA24P9A5",
-      issuer_id: "efcfbd71-5d12-4d85-8efc-5cee020286d9",
-      key_filepath: File.expand_path("~/.private_keys/AuthKey_S4KA24P9A5.p8"),
-    )
-    build = options[:build] || latest_testflight_build_number(api_key: key, app_identifier: "com.garyhsieh.haoji").to_s
+    key = asc_key
+    build = options[:build] || latest_testflight_build_number(api_key: key, app_identifier: APP_ID).to_s
     upload_to_testflight(
       api_key: key,
-      app_identifier: "com.garyhsieh.haoji",
+      app_identifier: APP_ID,
       app_version: options[:version] || "1.0",
       build_number: build.to_s,
       changelog: testflight_notes,
@@ -99,7 +104,7 @@ platform :ios do
   lane :bootstrap do
     produce(
       username: "romanticamaj@gmail.com",
-      app_identifier: "com.garyhsieh.haoji",
+      app_identifier: APP_ID,
       app_name: "好記",
       language: "Traditional Chinese",
       sku: "haoji-garyhsieh-2026",
@@ -114,12 +119,12 @@ platform :ios do
   desc "Ensure an internal TestFlight group exists and add an internal tester (email via ENV TESTER_EMAIL)"
   lane :add_tester do
     app_store_connect_api_key(
-      key_id: "S4KA24P9A5",
-      issuer_id: "efcfbd71-5d12-4d85-8efc-5cee020286d9",
-      key_filepath: File.expand_path("~/.private_keys/AuthKey_S4KA24P9A5.p8"),
+      key_id: "<ASC_KEY_ID>",
+      issuer_id: "<ASC_ISSUER_ID>",
+      key_filepath: File.expand_path("~/.private_keys/AuthKey_<ASC_KEY_ID>.p8"),
     )
     email = ENV["TESTER_EMAIL"] || "romanticamaj@gmail.com"
-    app = Spaceship::ConnectAPI::App.find("com.garyhsieh.haoji")
+    app = Spaceship::ConnectAPI::App.find(APP_ID)
     group = app.get_beta_groups.find(&:is_internal_group)
     if group.nil?
       # create_beta_group always sends publicLink* attrs, which Apple rejects for internal

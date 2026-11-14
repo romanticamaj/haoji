@@ -85,7 +85,7 @@ def _find(name, fallback):
         return p
     return fallback if os.path.exists(fallback) else name
 
-_WINGET = (r"C:\Users\gary.hsieh\AppData\Local\Microsoft\WinGet\Packages"
+_WINGET = (r"%USERPROFILE%\AppData\Local\Microsoft\WinGet\Packages"
            r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin")
 FFMPEG = _find("ffmpeg", os.path.join(_WINGET, "ffmpeg.exe"))
 FFPROBE = _find("ffprobe", os.path.join(_WINGET, "ffprobe.exe"))

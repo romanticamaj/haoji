@@ -323,3 +323,26 @@ test('a resume that cannot restart stays PAUSED, never idle', async () => {
   expect(result.current.wasInterrupted).toBe(true);   // the 繼續 prompt stays put
   expect(result.current.parts.map((p) => p.uri)).toEqual(['haoji/s/part-0.wav']);   // still ours
 });
+
+// Found on the Pixel 7 emulator: Android's MediaRecorder can't write WAV, yet parts were named
+// `part-0.wav` while holding an MP4/AAC stream at 48 kHz. The WAV-only code (crash repair, merge)
+// must never see that file as WAV. Android records honestly: .m4a, AAC, 16 kHz mono.
+describe('Android', () => {
+  const { Platform, PermissionsAndroid } = require('react-native');
+  beforeEach(() => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    jest.spyOn(PermissionsAndroid, 'request').mockResolvedValue('granted');
+  });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test('records straight to .m4a (never names AAC as .wav) at 16 kHz mono', async () => {
+    const { result } = await renderHook(() => useRecorder('s'));
+    await act(async () => { await result.current.start(); });
+    expect(S.startRecorder).toHaveBeenCalledTimes(1);
+    const [path, set] = S.startRecorder.mock.calls[0];
+    expect(path).toMatch(/\.m4a$/);
+    expect(set).toMatchObject({ AudioSamplingRate: 16000, AudioChannels: 1, OutputFormatAndroid: 2, AudioEncoderAndroid: 3 });
+    await act(async () => { await result.current.stop(); });
+    expect(onDisk.files).toEqual(['haoji/s/part-0.m4a']);
+  });
+});

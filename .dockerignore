@@ -1,0 +1,21 @@
+# Build context is the repo root (backend/Dockerfile). Keep it small: only backend/ and app/lib/theme.ts are used.
+**/node_modules
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+.git
+.claude
+app/*
+!app/lib
+app/lib/*
+!app/lib/theme.ts
+backend/data
+backend/logs
+backend/deploy
+backend/console/dist
+backend/console/qa
+backend/console/test-results
+design
+docs

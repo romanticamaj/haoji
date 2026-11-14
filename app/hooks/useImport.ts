@@ -6,6 +6,7 @@ import RNFS from 'react-native-fs';
 import { moveToPart, fsPath } from '../lib/recordings';
 import { isVideo, storageExtFor } from '../lib/importMedia';
 import * as audioExtract from '../lib/audioExtract';
+import { zhDateTime } from '../lib/dateFormat';
 import { useStore } from '../lib/store-context';
 
 // Importing audio/video into a new meeting — shared by Home's bottom bar (匯入) and the Record screen.
@@ -31,7 +32,7 @@ export function useImport({ leave }: { leave: 'replace' | 'navigate' }) {
   async function ingestLocalFiles(localUris: string[]) {
     const id = makeLocalId();
     const createdAt = Date.now();
-    const title = new Date().toLocaleString();
+    const title = zhDateTime(Date.now());
     const parts: { uri: string; durationMs: number }[] = [];
     for (let i = 0; i < localUris.length; i++) {
       const src = localUris[i];

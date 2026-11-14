@@ -1,0 +1,18 @@
+{
+  "version": "1.0.0",
+  "ok": true,
+  "checks": [
+    {"id": "data_writable", "ok": true, "label": "資料夾可寫入", "hint": "", "message": "/data"},
+    {"id": "sqlite", "ok": true, "label": "資料庫", "hint": "", "message": "/data/haoji.db"},
+    {"id": "ffmpeg", "ok": true, "label": "ffmpeg", "hint": "", "message": "/usr/bin/ffmpeg"},
+    {"id": "breeze_asr", "ok": true, "label": "語音辨識（Breeze ASR）", "hint": "", "message": "http://breeze-asr:7765"},
+    {"id": "ollama", "ok": true, "label": "Ollama", "hint": "", "message": "0.12.3 · http://ollama:11434"},
+    {"id": "llm_model", "ok": true, "label": "會議記錄模型", "hint": "", "message": "gemma4:e4b-it-qat"}
+  ],
+  "queue": {"active": 0, "queued": 0},
+  "llm": {"model": "gemma4:e4b-it-qat", "reachable": true, "provider": "ollama", "base_url": "http://ollama:11434"},
+  "asr": {"base_url": "http://breeze-asr:7765"},
+  "gpu": {"available": true, "name": "NVIDIA GeForce RTX 5070 Ti", "vram_used_mb": 9120, "vram_total_mb": 16303, "util_pct": 12},
+  "server": {"port": 7780, "data_dir": "/data", "retention_hours": 24, "push_enabled": false, "admin_token_source": "file"},
+  "pairing_required": false
+}

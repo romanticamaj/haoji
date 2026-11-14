@@ -1,4 +1,5 @@
-import { API_BASE } from './config';
+import { serverBase, authHeaders, NotPairedError } from './server';
+import { isPublicStatus, VALIDATE_TIMEOUT_MS, type PublicStatus } from './serverStatus';
 import { SessionStatus, Transcript } from './types';
 
 // RN's fetch has no default timeout, so a stalled backend (or a half-open Tailscale connection)
@@ -18,9 +19,29 @@ async function timedFetch(url: string, opts: RequestInit, ms: number): Promise<R
   }
 }
 
+// The server is picked at runtime (lib/server.ts), so resolve it on EVERY call: re-pairing then takes
+// effect immediately. Unpaired → NotPairedError, before anything touches the network.
+async function base(): Promise<string> {
+  const b = await serverBase();
+  if (!b) throw new NotPairedError();
+  return b;
+}
+
+// Every call carries the pairing token (when there is one) as a Bearer header.
+async function call(path: string, opts: RequestInit, ms: number): Promise<Response> {
+  const url = `${await base()}${path}`;
+  const headers = { ...((opts.headers as Record<string, string>) ?? {}), ...(await authHeaders()) };
+  return timedFetch(url, { ...opts, headers }, ms);
+}
+
 async function asJson(res: Response) {
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((body as any).error || `整理用的電腦沒有回應（${res.status}），請再試一次。`);
+  if (!res.ok) {
+    // Legacy routes answer {error: "text"}; the control plane answers {error: {code, message, hint}}.
+    const err = (body as any).error;
+    const msg = typeof err === 'string' ? err : err?.message;
+    throw new Error(msg || `整理用的電腦沒有回應（${res.status}），請再試一次。`);
+  }
   return body;
 }
 
@@ -33,7 +54,7 @@ export async function createSession(
 ): Promise<string> {
   // expectedParts tells the backend how many parts to wait for: once they have all arrived it starts
   // transcription ITSELF, so an upload finished by the OS with the app closed still gets processed.
-  const res = await timedFetch(`${API_BASE}/api/sessions`, {
+  const res = await call(`/api/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -51,21 +72,22 @@ export async function uploadPart(
   form.append('file', { uri: file.uri, name: file.name, type: file.mime } as any);
   // The index makes the upload idempotent: re-sending part i overwrites slot i server-side instead
   // of appending a duplicate. Long deadline — a video part can be hundreds of MB over Tailscale/LAN.
-  const res = await timedFetch(`${API_BASE}/api/sessions/${id}/parts?index=${index}`, { method: 'POST', body: form }, 600000);
+  const res = await call(`/api/sessions/${id}/parts?index=${index}`, { method: 'POST', body: form }, 600000);
   return ((await asJson(res)) as any).count;
 }
 // URL for the raw-body part upload used by the iOS background session (it can only send a file, not
 // a multipart form). Same idempotency as the multipart route: index N overwrites slot N.
-export const partPutUrl = (backendId: string, index: number) =>
-  `${API_BASE}/api/sessions/${backendId}/parts/${index}`;
+// Async because the base is resolved per call, exactly like the fetch-based routes.
+export const partPutUrl = async (backendId: string, index: number): Promise<string> =>
+  `${await base()}/api/sessions/${backendId}/parts/${index}`;
 
 export async function transcribe(id: string): Promise<void> {
   // Only submits the background job; returns fast.
-  await asJson(await timedFetch(`${API_BASE}/api/sessions/${id}/transcribe`, { method: 'POST' }, 20000));
+  await asJson(await call(`/api/sessions/${id}/transcribe`, { method: 'POST' }, 20000));
 }
 
 export async function getSession(id: string): Promise<SessionStatus> {
-  const res = await timedFetch(`${API_BASE}/api/sessions/${id}`, {}, 20000);
+  const res = await call(`/api/sessions/${id}`, {}, 20000);
   return (await asJson(res)) as SessionStatus;
 }
 
@@ -73,7 +95,7 @@ export async function analyze(
   id: string,
   opts: { model?: string; names?: Record<string, string> },
 ): Promise<{ notes: string; model: string }> {
-  const res = await timedFetch(`${API_BASE}/api/sessions/${id}/analyze`, {
+  const res = await call(`/api/sessions/${id}/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),
@@ -87,7 +109,7 @@ export async function analyzeInBackground(
   id: string,
   opts: { model?: string; names?: Record<string, string>; transcript?: Transcript; clientId?: string },
 ): Promise<void> {
-  await asJson(await timedFetch(`${API_BASE}/api/sessions/${id}/analyze`, {
+  await asJson(await call(`/api/sessions/${id}/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     // client_id links a server row recreated on demand back to this local session.
@@ -98,7 +120,24 @@ export async function analyzeInBackground(
   }, 20000));
 }
 
+// The meeting was deleted on the phone: ask the server to drop its copy too (transcript, notes).
+// Best-effort and fire-and-forget — the phone is the source of truth, so being unpaired, offline,
+// or the server not knowing the id must never surface as an error.
+export async function deleteRemote(id: string): Promise<void> {
+  try {
+    if (!(await serverBase())) return;
+    await call(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }, 20000);
+  } catch { /* best-effort */ }
+}
+
+/** GET /api/status (public). Throws if the answer isn't a Haoji status; NotPairedError when unpaired. */
+export async function getStatus(): Promise<PublicStatus> {
+  const body = await asJson(await call('/api/status', {}, VALIDATE_TIMEOUT_MS));
+  if (!isPublicStatus(body)) throw new Error('這個網址不是好記主機。');
+  return body;
+}
+
 export async function getModels(): Promise<{ ok: boolean; models: string[]; default: string }> {
-  const res = await timedFetch(`${API_BASE}/api/llm/models`, {}, 20000);
+  const res = await call(`/api/llm/models`, {}, 20000);
   return (await asJson(res)) as { ok: boolean; models: string[]; default: string };
 }

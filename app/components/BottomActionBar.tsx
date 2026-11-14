@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from './AppText';
+import { Touchable, dimOnPress } from './Buttons';
 import { IconMic, type IconProps } from './icons';
 import { colors, layout, spacing } from '../lib/theme';
 
@@ -15,22 +16,23 @@ export function BottomActionBar({ left, right, onRecord }: { left?: Side; right?
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       {left ? <SideItem {...left} /> : <View style={styles.item} />}
-      <Pressable
+      <Touchable
         testID="home-record"
         accessibilityRole="button"
         accessibilityLabel="記下來：開始錄音"
         onPress={onRecord}
         style={styles.item}
+        pressedStyle={null}
       >
         {({ pressed }) => (
           <>
-            <View style={[styles.action, pressed && styles.pressedFill]}>
+            <View style={[styles.action, dimOnPress(pressed) && styles.pressedFill]}>
               <IconMic size={26} color={colors.onPrimary} strokeWidth={2} />
             </View>
             <AppText variant="tabLabel" color="muted" maxFontSizeMultiplier={1.3}>記下來</AppText>
           </>
         )}
-      </Pressable>
+      </Touchable>
       {right ? <SideItem {...right} /> : <View style={styles.item} />}
     </View>
   );
@@ -38,16 +40,17 @@ export function BottomActionBar({ left, right, onRecord }: { left?: Side; right?
 
 function SideItem({ label, a11y, Icon, onPress, testID }: Side) {
   return (
-    <Pressable
+    <Touchable
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={a11y}
       onPress={onPress}
-      style={({ pressed }) => [styles.item, pressed && styles.pressed]}
+      style={styles.item}
+      pressedStyle={styles.pressed}
     >
       <View style={styles.iconBox}><Icon size={24} color={colors.muted} /></View>
       <AppText variant="tabLabel" color="muted" maxFontSizeMultiplier={1.3}>{label}</AppText>
-    </Pressable>
+    </Touchable>
   );
 }
 

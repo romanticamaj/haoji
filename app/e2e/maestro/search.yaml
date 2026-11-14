@@ -1,0 +1,13 @@
+# After record-results: search a word from the transcript and open the hit.
+appId: com.garyhsieh.haoji
+---
+- launchApp
+- tapOn:
+    id: "home-search-toggle"
+# Maestro's iOS driver can't type CJK, so the stub transcript carries an ASCII token to search for.
+- inputText: "Q1"
+- extendedWaitUntil:
+    visible: ".*Q1.*"
+    timeout: 5000
+- tapOn: ".*Q1.*"
+- assertVisible: "逐字稿"

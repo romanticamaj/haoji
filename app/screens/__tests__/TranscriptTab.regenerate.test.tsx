@@ -29,19 +29,6 @@ test('empty transcript but no parts: no regenerate button (nothing to re-run)', 
   expect(queryByText('重新生成逐字稿')).toBeNull();
 });
 
-test('with transcript: confirming from the toolbar chip fires onRegenerate', async () => {
-  const onRegenerate = jest.fn();
-  const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
-  const { getByText } = await render(
-    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
-  getByText('你好'); // transcript rendered
-  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-  fireEvent.press(getByText('重新生成逐字稿'));
-  (spy.mock.calls[0] as any[])[2][1].onPress();      // 重新生成
-  expect(onRegenerate).toHaveBeenCalled();
-  spy.mockRestore();
-});
-
 // Nothing exists to lose yet, so no dialog — but a double tap must not queue two jobs.
 //
 // Keep this ABOVE the tests that open the confirmation dialog: those leave a spied Alert and a
@@ -94,7 +81,7 @@ test('job in flight WITH a transcript: the toolbar offers 查看進度 instead o
   expect(onViewProgress).toHaveBeenCalled();
 });
 
-test('no job: the normal 生成逐字稿 / 重新生成逐字稿 buttons are unchanged', async () => {
+test('no job: the normal 生成逐字稿 button is unchanged', async () => {
   const onRegenerate = jest.fn();
   const { getByText } = await render(
     <TranscriptTab session={withParts({ speakers: [], segments: [] })} onUpdate={() => {}}
@@ -103,72 +90,26 @@ test('no job: the normal 生成逐字稿 / 重新生成逐字稿 buttons are unc
   expect(onRegenerate).toHaveBeenCalled();
 });
 
-// 重新生成逐字稿 used to sit at the BOTTOM of the transcript: on a long meeting that meant scrolling
-// past every paragraph to reach it. It now lives in the persistent toolbar, like the analysis tab's
-// actions — visible without scrolling, next to 講者 and 複製.
-test('重新生成逐字稿 sits in the toolbar, alongside 講者 and 複製', async () => {
-  const onRegenerate = jest.fn();
+// 重新生成逐字稿 lives only in Results' `…` menu now (issue #32 item 4): its confirmation, cancel and
+// one-run guard are covered in ResultsScreen.restructure.test.tsx. The toolbar keeps 講者, 複製 and the
+// contextual chips (查看進度, 連接主機) on one row that does not scroll.
+test('the toolbar has no 重新生成逐字稿 chip, only 講者 and 複製, on a non-scrolling row', async () => {
   const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
-  const { getByTestId } = await render(
-    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
-
-  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-  fireEvent.press(getByTestId('regenerate-transcript'));
-  (spy.mock.calls[0] as any[])[2][1].onPress();      // 重新生成
-  expect(onRegenerate).toHaveBeenCalled();
-  getByTestId('copy-transcript');          // the toolbar it shares
+  const { getByTestId, queryByTestId, queryByText } = await render(
+    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={() => {}} />);
+  expect(queryByTestId('regenerate-transcript')).toBeNull();
+  expect(queryByText('重新生成逐字稿')).toBeNull();
+  const row = getByTestId('transcript-toolbar');
+  expect(row.props.horizontal).toBeUndefined();
+  getByTestId('copy-transcript');
   getByTestId('open-speakers');
-  spy.mockRestore();
 });
 
-// Re-running the transcript is destructive in a way regenerating the notes is not: the notes are
-// archived to 版本紀錄 first, a transcript is simply overwritten — inline text corrections included.
-test('重新生成逐字稿 asks first, and says the current transcript cannot be recovered', async () => {
-  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-  const onRegenerate = jest.fn();
+test('unpaired: the toolbar still offers 連接主機', async () => {
+  const onConnect = jest.fn();
   const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
   const { getByTestId } = await render(
-    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
-
-  fireEvent.press(getByTestId('regenerate-transcript'));
-  expect(onRegenerate).not.toHaveBeenCalled();               // nothing happens without confirming
-
-  const [title, body, buttons] = spy.mock.calls[0] as any[];
-  expect(title).toMatch(/重新生成逐字稿/);
-  expect(body).toMatch(/無法還原/);
-  buttons[1].onPress();
-  expect(onRegenerate).toHaveBeenCalledTimes(1);
-  spy.mockRestore();
-});
-
-test('cancelling leaves the transcript alone', async () => {
-  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-  const onRegenerate = jest.fn();
-  const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
-  const { getByTestId } = await render(
-    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
-
-  fireEvent.press(getByTestId('regenerate-transcript'));
-  const [, , buttons] = spy.mock.calls[0] as any[];
-  buttons[0].onPress?.();                                    // 取消
-  expect(onRegenerate).not.toHaveBeenCalled();
-  spy.mockRestore();
-});
-
-// The screen is replaced by 分析中 right after, but a second tap lands inside that window.
-test('confirming twice still starts only one run', async () => {
-  const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-  const onRegenerate = jest.fn();
-  const s = withParts({ speakers: ['SPEAKER_00'], segments: [{ start: 0, end: 2, speaker: 'SPEAKER_00', text: '你好' }] });
-  const { getByTestId } = await render(
-    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={onRegenerate} />);
-
-  fireEvent.press(getByTestId('regenerate-transcript'));
-  await act(async () => { (spy.mock.calls[0] as any[])[2][1].onPress(); });
-  fireEvent.press(getByTestId('regenerate-transcript'));     // second tap before the screen changes
-  fireEvent.press(getByTestId('regenerate-transcript'));
-
-  expect(onRegenerate).toHaveBeenCalledTimes(1);
-  expect(spy).toHaveBeenCalledTimes(1);                      // and no second dialog
-  spy.mockRestore();
+    <TranscriptTab session={s} onUpdate={() => {}} onRegenerate={() => {}} gate="unpaired" onConnect={onConnect} />);
+  fireEvent.press(getByTestId('connect-server'));
+  expect(onConnect).toHaveBeenCalled();
 });

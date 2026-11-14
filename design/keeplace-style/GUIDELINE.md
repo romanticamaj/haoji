@@ -41,7 +41,7 @@ How to read the rules: **must** means keep it exactly. **Should** is the default
 | `primaryDark` | `#536550` | Active text and icons, "done" ticks, pressed primary, links | `brandPress`, `good` |
 | `heading` | `#262626` | Titles, selected tab label and underline, dark snackbar | `ink` |
 | `body` | `#343630` | Paragraphs, transcript text | — |
-| `muted` | `#77746E` | Secondary text, timestamps, inactive icons | `ink2` |
+| `muted` | `#6F6C66` | Secondary text, timestamps, inactive icons | `ink2` |
 | `hint` | `#A6A29A` | Placeholders only (2.3:1 contrast, so never for information) | `ink3` |
 | `outline` | `#DEDCD3` | All borders and dividers | `hairline`, `neutralSoft` |
 | `accent` | `#C58D75` | **Sparingly**: unnamed-speaker chip, live "recording" dot and timer | `speakerUnset` |

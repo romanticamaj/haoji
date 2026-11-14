@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transcript } from './types';
 import type { Job } from './job';
 import type { NotesJob } from './notesJob';
+import { serverBase } from './server';
 
 export type SavedSession = {
   id: string; createdAt: number; title: string;
@@ -69,4 +70,22 @@ export function createAsyncStorageStore(): SessionStore {
     async upsert(s) { const m = await read(); m[s.id] = s; await write(m); },
     async remove(id) { const m = await read(); delete m[id]; await write(m); },
   };
+}
+
+// --- First-run onboarding ------------------------------------------------------------------------
+// Shown once, and only to a phone that is neither onboarded nor pointed at a server. Skipping it is
+// fine: recording never depends on a server (local-first).
+export const ONBOARDED_KEY = 'haoji.onboarded';
+
+export async function isOnboarded(): Promise<boolean> {
+  try { return (await AsyncStorage.getItem(ONBOARDED_KEY)) === '1'; } catch { return false; }
+}
+
+export async function setOnboarded(): Promise<void> {
+  try { await AsyncStorage.setItem(ONBOARDED_KEY, '1'); } catch { /* worst case it shows once more */ }
+}
+
+export async function shouldShowOnboarding(): Promise<boolean> {
+  if (await isOnboarded()) return false;
+  return (await serverBase()) === null;
 }

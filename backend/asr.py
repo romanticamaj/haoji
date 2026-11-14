@@ -24,15 +24,33 @@ def _local_ips():
         pass
     return ips
 
-def _is_breeze(url):
+def _health(url):
+    """The ASR server's /health JSON if it looks like Breeze, else None. One attempt, no retry."""
     try:
         r = requests.get(url + config.ASR_HEALTH, timeout=config.ASR_CONNECT_TIMEOUT)
         if not r.ok:
-            return False
+            return None
         j = r.json()
-        return "breeze" in str(j.get("model", "")).lower() or j.get("status") == "ok"
+        return j if ("breeze" in str(j.get("model", "")).lower() or j.get("status") == "ok") else None
     except Exception:
-        return False
+        return None
+
+
+def _is_breeze(url):
+    return _health(url) is not None
+
+
+def quick_probe():
+    """(base_url, health_json) with a single probe and no retry/sleep — for status polling, where
+    detect_asr_base's job-protecting retries (up to ~16s) would stall the console."""
+    if config.ASR_BASE_URL:
+        h = _health(config.ASR_BASE_URL)
+        return (config.ASR_BASE_URL, h) if h else (None, None)
+    base = _asr_cache or detect_asr_base()
+    if not base:
+        return (None, None)
+    h = _health(base)
+    return (base, h) if h else (None, None)
 
 def detect_asr_base(force=False):
     global _asr_cache

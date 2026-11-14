@@ -50,12 +50,12 @@ export default function SpeakerSheet(
       footer={<PrimaryButton testID="speakers-done" label="完成" onPress={commit} style={styles.cta} />}
     >
       <ScrollView style={styles.list} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
-        {stats.map((s) => {
+        {stats.map((s, i) => {
           const value = draft[s.speaker] ?? '';
           const shown = value.trim();
           const initial = shown ? shown.charAt(0) : String(s.index + 1);
           return (
-            <View key={s.speaker} style={styles.row} testID={`speaker-row-${s.speaker}`}>
+            <View key={s.speaker} style={[styles.row, i < stats.length - 1 && styles.divider]} testID={`speaker-row-${s.speaker}`}>
               <View style={[styles.av, { backgroundColor: shown ? speakerColor(s.index) : colors.accent }]}>
                 <AppText variant="cardTitle" color="onPrimary" style={styles.avText}>{initial}</AppText>
               </View>
@@ -87,8 +87,9 @@ const styles = StyleSheet.create({
   list: { flexShrink: 1, marginTop: spacing.sm },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline,
   },
+  // Between rows only, never under the last one.
+  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline },
   av: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   avText: { fontWeight: '600' },
   rowMain: { flex: 1 },

@@ -10,12 +10,12 @@ import math, os, json, re, time, logging, threading
 from typing import Optional
 from logging.handlers import RotatingFileHandler
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 import config
-import asr, sessions, llm, media, push
+import asr, sessions, llm, media, push, settings, auth, errors, jobs, status, ollama_admin
 from fastapi import Request
 
 # --- logging: rotating file (backend/logs/haoji.log) + console ---------------
@@ -38,10 +38,35 @@ log = logging.getLogger("haoji")
 logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 
 app = FastAPI(title="好記 Haoji API")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# No wildcard CORS: the phone app doesn't need CORS at all and the console is same-origin. A deployer
+# who serves another web client can list its origin(s) in HAOJI_CORS_ORIGINS.
+_cors = [o.strip() for o in (os.environ.get("HAOJI_CORS_ORIGINS") or "").split(",") if o.strip()]
+if _cors:
+    app.add_middleware(CORSMiddleware, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"])
 
 # skip noisy pollers: /health and the GET status poll during transcription
 _SKIP_LOG = re.compile(r"^/health$|^/api/sessions/[^/]+$")
+
+@app.exception_handler(errors.ApiError)
+async def _api_error(request: Request, e: errors.ApiError):
+    return errors.api_error(e.code, e.message, e.hint, status=e.status)
+
+
+@app.middleware("http")
+async def _guards(request: Request, call_next):
+    # Origin guard first (any state-changing browser request from another site), then the optional
+    # phone pairing token on the session API. See auth.py.
+    if not auth.host_ok(request):
+        return errors.api_error("forbidden_host", "這個主機名稱不在允許清單裡。",
+                                "把它加到 .env 的 HAOJI_ALLOWED_HOSTS（或 HAOJI_PUBLIC_URLS）後重新啟動。",
+                                status=403)
+    if not auth.origin_ok(request):
+        return errors.api_error("forbidden_origin", "這個請求不是從主機本身的管理頁發出的。", status=403)
+    if request.url.path.startswith("/api/sessions") and not auth.pairing_ok(request):
+        return errors.api_error("unauthorized", "配對金鑰不對。",
+                                "在主機的管理頁「配對手機」重新掃描 QR code。", status=401)
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def _log_requests(request: Request, call_next):
@@ -51,6 +76,11 @@ async def _log_requests(request: Request, call_next):
         log.info("%s %s -> %s (%.0fms)", request.method, request.url.path,
                  resp.status_code, (time.time() - t0) * 1000)
     return resp
+
+app.include_router(auth.router)
+app.include_router(jobs.router)
+app.include_router(status.router)
+app.include_router(ollama_admin.router)
 
 _executor = ThreadPoolExecutor(max_workers=2)
 # Notes generation gets its OWN pool. Sharing the transcription pool meant a couple of long jobs
@@ -69,6 +99,15 @@ os.makedirs(PARTS_DIR, exist_ok=True)
 @app.on_event("startup")
 def _startup():
     sessions.init_db()
+    settings.init()
+    threading.Thread(target=_retention_sweep, daemon=True, name="retention").start()
+    # Never log the token itself — only where to read it.
+    if auth.admin_token_source() == "env":
+        log.info("console: /console — admin token set by HAOJI_ADMIN_TOKEN")
+    else:
+        auth.admin_token()                      # make sure it exists
+        log.info("console: /console — admin token in %s "
+                 "(docker: `docker compose exec haoji-backend cat /data/admin_token`)", auth.admin_token_path())
     log.info("好記 backend up on :%s", config.WEB_PORT)
 
 @app.get("/health")
@@ -222,17 +261,21 @@ def _run_analyze(sid, text, model_arg, model_label):
     with _analyze_lock:
         if sid in _notes_waiting:
             _notes_waiting.remove(sid)
+    jobs.start(sid, "analyze")
     try:
         sessions.update_session(sid, notes_status="running", notes_pct=0.0, notes_message="生成中…")
         threading.Thread(target=_tick, daemon=True, name=f"notes-tick-{sid}").start()
-        notes = llm.get_provider("ollama").generate_meeting_notes(
+        notes = llm.active_provider().generate_meeting_notes(
             text, model=model_arg, on_progress=on_progress)
+        # fetched_at reset: with retention 0 the row must survive until the phone collects the notes.
         sessions.update_session(sid, notes=notes, notes_status="done", notes_error=None,
-                                notes_pct=1.0, notes_message="完成")
+                                notes_pct=1.0, notes_message="完成", fetched_at=None)
         log.info("[%s] analyze(bg) done: %d chars notes, took %.0fs", sid, len(notes), time.time() - t0)
+        jobs.finish(sid, "analyze", ok=True)
     except Exception as e:
         log.exception("[%s] analyze(bg) FAILED: %s", sid, e)
         sessions.update_session(sid, notes_status="error", notes_error=str(e))
+        jobs.finish(sid, "analyze", ok=False, error=e)
     finally:
         stop_tick.set()
         with _analyze_lock:
@@ -254,6 +297,7 @@ def _submit_transcribe(sid):
             return False
         _submitted.add(sid)
     sessions.update_session(sid, status="queued", message="排隊中…", error=None)
+    jobs.queued(sid, "transcribe")
     _executor.submit(_run_transcribe, sid)
     return True
 
@@ -292,6 +336,7 @@ async def put_part(sid: str, index: int, req: Request):
 def _run_transcribe(sid):
     parts = [p for p in sessions.get_parts(sid) if p]  # skip empty index slots
     t0 = time.time()
+    jobs.start(sid, "transcribe")
     try:
         log.info("[%s] transcribe start: concat %d part(s)", sid, len(parts))
         sessions.update_session(sid, status="running", pct=0.1, message="串接音檔…")
@@ -332,9 +377,11 @@ def _run_transcribe(sid):
         log.info("[%s] transcribe done: %d segs, %d speakers, %.0fs audio, took %.0fs",
                  sid, len(norm["segments"]), len(norm["speakers"]),
                  norm.get("duration", 0), time.time() - t0)
+        jobs.finish(sid, "transcribe", ok=True)
     except Exception as e:
         log.exception("[%s] transcribe FAILED: %s", sid, e)
         sessions.update_session(sid, status="error", message=str(e), error=str(e))
+        jobs.finish(sid, "transcribe", ok=False, error=e)
     finally:
         for p in parts + [os.path.join(config.UPLOAD_DIR, sid + ".wav")]:
             try: os.remove(p)
@@ -365,12 +412,16 @@ def session_status(sid: str):
     out = {"status": s["status"], "pct": s["pct"], "message": s["message"]}
     if s.get("transcript"):
         out["transcript"] = json.loads(s["transcript"])
+        if s["status"] == "done":
+            sessions.mark_fetched(sid, time.time())
     if s.get("error"):
         out["error"] = s["error"]
     # Notes are reported here too so a client that vanished mid-generation (backgrounded, killed) can
     # collect the finished result on its next run instead of re-running the LLM.
     if s.get("notes"):
         out["notes"] = s["notes"]
+        if s.get("notes_status") in (None, "done"):
+            sessions.mark_fetched(sid, time.time())
     if s.get("notes_status"):
         out["notes_status"] = s["notes_status"]
     if s.get("notes_error"):
@@ -385,7 +436,34 @@ def session_status(sid: str):
             out["notes_queue_position"] = pos
     return out
 
-@app.get("/api/debug/jobs")
+@app.delete("/api/sessions/{sid}")
+def delete_session(sid: str):
+    """The phone deleted this meeting: drop the server copy too, including any part files still on
+    disk (an upload that never got transcribed). A job already running for it finds no row afterwards
+    and its own finally-block removes what it was using."""
+    for p in [p for p in sessions.get_parts(sid) if p] + [os.path.join(config.UPLOAD_DIR, sid + ".wav")]:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    if not sessions.delete_session(sid):
+        return JSONResponse({"error": "查無此工作"}, status_code=404)
+    log.info("[%s] session deleted by client", sid)
+    return {"ok": True}
+
+
+def _retention_sweep():
+    while True:
+        try:
+            n = sessions.purge_expired(time.time(), config.RETENTION_HOURS * 3600)
+            if n:
+                log.info("retention: purged transcript/notes of %d session(s)", n)
+        except Exception as e:
+            log.warning("retention sweep failed: %s", e)
+        time.sleep(60 if config.RETENTION_HOURS == 0 else 900)
+
+
+@app.get("/api/debug/jobs", dependencies=[Depends(auth.require_admin)])
 def debug_jobs():
     """What the server is actually working on — the first thing to check when something 'hangs'.
 
@@ -408,7 +486,7 @@ def debug_jobs():
 @app.get("/api/llm/models")
 def llm_models():
     ok, names, _ = llm.llm_status()
-    return {"ok": ok, "models": names, "default": config.LLM_MODEL}
+    return {"ok": ok, "models": names, "default": settings.llm_model()}
 
 @app.post("/api/sessions/{sid}/analyze")
 async def analyze(sid: str, req: Request):
@@ -438,7 +516,7 @@ async def analyze(sid: str, req: Request):
     text = sessions.build_transcript_text(data["segments"], body.get("names") or {})
     if not text.strip():
         return JSONResponse({"error": "沒有逐字稿內容"}, status_code=400)
-    model = body.get("model") or config.LLM_MODEL
+    model = body.get("model") or settings.llm_model()
 
     # Background mode: queue the generation and return immediately. The notes are written to the DB
     # when it finishes, so a client that is backgrounded/killed mid-generation collects them from
@@ -455,6 +533,7 @@ async def analyze(sid: str, req: Request):
             _notes_waiting.append(sid)
         sessions.update_session(sid, notes_status="queued", notes_error=None,
                                 notes_pct=0.0, notes_message="排隊中…")
+        jobs.queued(sid, "analyze")
         _notes_executor.submit(_run_analyze, sid, text, body.get("model") or None, model)
         log.info("[%s] analyze queued in background -> LLM %s", sid, model)
         return {"ok": True, "background": True}
@@ -466,13 +545,24 @@ async def analyze(sid: str, req: Request):
         # responsive (otherwise /health and every other request freeze for the
         # whole 10-20s generation).
         notes = await run_in_threadpool(
-            llm.get_provider("ollama").generate_meeting_notes, text, model=body.get("model") or None)
+            llm.active_provider().generate_meeting_notes, text, model=body.get("model") or None)
     except Exception as e:
         log.error("[%s] analyze FAILED: %s", sid, e)
         return JSONResponse({"error": str(e)}, status_code=502)
     sessions.update_session(sid, notes=notes)
     log.info("[%s] analyze done: %d chars notes, took %.0fs", sid, len(notes), time.time() - t0)
     return {"notes": notes, "model": model}
+
+# Control console (static SPA). Mounted last so it never shadows an API route.
+if os.path.isdir(config.CONSOLE_DIR):
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import RedirectResponse
+    app.mount("/console", StaticFiles(directory=config.CONSOLE_DIR, html=True), name="console")
+
+    @app.get("/", include_in_schema=False)
+    def _root():
+        return RedirectResponse("/console/")
+
 
 if __name__ == "__main__":
     import uvicorn

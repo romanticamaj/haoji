@@ -1,7 +1,7 @@
 # 好記 App — Manual QA (dev build / TestFlight)
 
 Jest covers logic + component behaviour with native modules mocked. The backend URL comes
-from `.env` (`react-native-config`), defaulting to the Tailscale IP `100.106.118.45:7780`.
+from `.env` (`react-native-config`), defaulting to the Tailscale IP `<tailscale-ip>:7780`.
 
 **Recording and call interruption are no longer on this list.** They run on a simulator:
 

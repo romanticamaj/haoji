@@ -1,6 +1,6 @@
 import {
   relativeDay, groupSessions, totalDurationMs, durationLabel, speakerCount,
-  hasTranscript, hasNotes, avatarSpec,
+  hasTranscript, hasNotes, avatarSpec, inlineStatus,
 } from '../sessionList';
 import { SavedSession } from '../store';
 import { Transcript } from '../types';
@@ -104,22 +104,42 @@ describe('status derivation', () => {
 
 describe('avatarSpec', () => {
   test('no transcript → no avatars', () => {
-    expect(avatarSpec(mk())).toEqual({ initials: [], overflow: 0 });
+    expect(avatarSpec(mk())).toMatchObject({ initials: [], overflow: 0 });
   });
   test('uses index number when unnamed', () => {
     const s = mk({ transcript: transcript(['S0', 'S1']) });
-    expect(avatarSpec(s)).toEqual({ initials: ['1', '2'], overflow: 0 });
+    expect(avatarSpec(s)).toMatchObject({ initials: ['1', '2'], overflow: 0 });
   });
   test('uses first char of mapped name when named', () => {
     const s = mk({ transcript: transcript(['S0', 'S1']), names: { S0: '郁婷', S1: '建宏' } });
-    expect(avatarSpec(s)).toEqual({ initials: ['郁', '建'], overflow: 0 });
+    expect(avatarSpec(s)).toMatchObject({ initials: ['郁', '建'], overflow: 0 });
   });
   test('caps at 3 and reports overflow', () => {
     const s = mk({ transcript: transcript(['S0', 'S1', 'S2', 'S3', 'S4']) });
-    expect(avatarSpec(s)).toEqual({ initials: ['1', '2', '3'], overflow: 2 });
+    expect(avatarSpec(s)).toMatchObject({ initials: ['1', '2', '3'], overflow: 2 });
   });
   test('exactly 3 speakers → no overflow', () => {
     const s = mk({ transcript: transcript(['S0', 'S1', 'S2']) });
-    expect(avatarSpec(s)).toEqual({ initials: ['1', '2', '3'], overflow: 0 });
+    expect(avatarSpec(s)).toMatchObject({ initials: ['1', '2', '3'], overflow: 0 });
+  });
+});
+
+describe('inlineStatus (the word at the end of a card meta line)', () => {
+  const job = (stage: string) => ({ stage, uploaded: 0, pct: 0, message: '', updatedAt: 0 }) as any;
+  test('an upload or transcription in flight → 處理中', () => {
+    expect(inlineStatus(mk({ job: job('uploading') }))).toBe('處理中');
+    expect(inlineStatus(mk({ job: job('transcribing') }))).toBe('處理中');
+  });
+  test('notes being written also count as 處理中', () => {
+    expect(inlineStatus(mk({ transcript: transcript(['S0']), notesJob: { stage: 'generating' } as any }))).toBe('處理中');
+  });
+  test('a transcript → 已有逐字稿', () => {
+    expect(inlineStatus(mk({ transcript: transcript(['S0']), notes: '# x' }))).toBe('已有逐字稿');
+  });
+  test('a failed run with nothing to show says so', () => {
+    expect(inlineStatus(mk({ job: job('error') }))).toBe('整理沒有完成');
+  });
+  test('otherwise → 還沒生成', () => {
+    expect(inlineStatus(mk())).toBe('還沒生成');
   });
 });

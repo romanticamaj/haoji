@@ -130,3 +130,27 @@ test('stopping with no recorded parts creates no session and navigates back', as
   expect(mockStore.upsert).not.toHaveBeenCalled();
   expect(mockReplace).not.toHaveBeenCalled();
 });
+
+// Haptics (lib/haptics.ts): start and pause feel light, stop feels like a success.
+describe('haptics', () => {
+  const trigger = () => require('react-native-haptic-feedback').default.trigger as jest.Mock;
+  test('start → impactLight', async () => {
+    const { getByLabelText } = await render(<RecordScreen />);
+    fireEvent.press(getByLabelText('開始錄音'));
+    expect(trigger().mock.calls.map((c) => c[0])).toEqual(['impactLight']);
+  });
+  test('pause → impactLight', async () => {
+    mockRecApi.state = 'recording';
+    const { getByLabelText } = await render(<RecordScreen />);
+    fireEvent.press(getByLabelText('暫停錄音'));
+    expect(mockRecApi.pause).toHaveBeenCalled();
+    expect(trigger().mock.calls.map((c) => c[0])).toEqual(['impactLight']);
+  });
+  test('stop → notificationSuccess', async () => {
+    mockRecApi.state = 'recording';
+    const { getByLabelText } = await render(<RecordScreen />);
+    fireEvent.press(getByLabelText('停止錄音'));
+    await waitFor(() => expect(mockRecApi.stop).toHaveBeenCalled());
+    expect(trigger().mock.calls.map((c) => c[0])).toEqual(['notificationSuccess']);
+  });
+});

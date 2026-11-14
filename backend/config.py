@@ -7,6 +7,8 @@ and inside the docker-compose deployable unit (.env-driven).
 """
 import os, shutil
 
+VERSION = "1.0.0"
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get("DATA_DIR") or os.path.join(ROOT, "data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
@@ -33,6 +35,10 @@ LLM_NUM_CTX_MAX = 32768
 LLM_OUTPUT_TOKENS = 4096
 LLM_THINK = True
 
+# How long the server keeps a finished transcript/notes before blanking them (hours). The phone is the
+# source of truth; the server copy only exists so a backgrounded client can collect its result.
+RETENTION_HOURS = int(os.environ.get("HAOJI_RETENTION_HOURS") or "24")
+
 # Push notifications (APNs, token-based .p8 auth). All three of key/key-id/team must be set or push is
 # a no-op — see push.py. The topic is the app's bundle id.
 APNS_KEY_PATH = os.environ.get("APNS_KEY_PATH") or ""
@@ -51,10 +57,11 @@ def _find(name, fallback):
         return p
     return fallback if os.path.exists(fallback) else name
 
-# Windows dev-box fallback; inside the container ffmpeg is on PATH so _find wins.
-_WINGET = (r"C:\Users\gary.hsieh\AppData\Local\Microsoft\WinGet\Packages"
-           r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin")
-FFMPEG = os.environ.get("FFMPEG_PATH") or _find("ffmpeg", os.path.join(_WINGET, "ffmpeg.exe"))
-FFPROBE = os.environ.get("FFPROBE_PATH") or _find("ffprobe", os.path.join(_WINGET, "ffprobe.exe"))
+# ffmpeg/ffprobe: PATH (the Docker image ships them), or FFMPEG_PATH / FFPROBE_PATH.
+FFMPEG = os.environ.get("FFMPEG_PATH") or _find("ffmpeg", "ffmpeg")
+FFPROBE = os.environ.get("FFPROBE_PATH") or _find("ffprobe", "ffprobe")
+
+# Built control console (backend/console → npm run build). Served at /console when present.
+CONSOLE_DIR = os.environ.get("HAOJI_CONSOLE_DIR") or os.path.join(ROOT, "console", "dist")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)

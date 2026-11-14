@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
+import { View, Pressable, StyleSheet, ActivityIndicator, Linking, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useRecorder } from '../hooks/useRecorder';
 import { useImport } from '../hooks/useImport';
+import { useAndroidBack } from '../hooks/useAndroidBack';
 import { mergeSessionParts } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
@@ -12,6 +13,9 @@ import BreathingRing from '../components/BreathingRing';
 import { AppText } from '../components/AppText';
 import { IconImage, IconFile, IconMic, IconStop, IconPause, IconPlay } from '../components/icons';
 import { colors, layout, radius, spacing, tabularNums, typography } from '../lib/theme';
+import { haptic } from '../lib/haptics';
+import { zhDateTime } from '../lib/dateFormat';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 // Recording is local-first: the session id is generated on-device so the record button is never
 // gated on a backend round-trip (the GPU box is often unreachable from the phone unless Tailscale
@@ -64,7 +68,7 @@ export default function RecordScreen() {
   const insets = useSafeAreaInsets();
 
   // Stable session metadata so the incremental saves and the final save all agree on id/date/title.
-  const [meta] = useState(() => ({ createdAt: Date.now(), title: new Date().toLocaleString() }));
+  const [meta] = useState(() => ({ createdAt: Date.now(), title: zhDateTime(Date.now()) }));
   // MERGE, don't overwrite: appending to an existing meeting must keep its title, transcript, notes
   // and speaker names — a plain upsert here would wipe them.
   const persist = useCallback(async (parts: { uri: string; durationMs: number }[]) => {
@@ -84,7 +88,14 @@ export default function RecordScreen() {
   // and the launch-time recovery scan backfills anything that wasn't stored yet.
   useEffect(() => { if (rec.parts.length > 0) void persist(rec.parts); }, [rec.parts, persist]);
 
+  function onStart() { haptic('recordStart'); rec.start(); }
+  function onPauseResume() {
+    haptic('pause');
+    if (rec.state === 'paused') rec.resume(); else rec.pause();
+  }
+
   async function onStop() {
+    haptic('recordStop');
     const parts = await rec.stop();
     // Nothing was captured (opened + left, or a zero-length take) → don't create an empty record.
     if (parts.length === 0) { nav.goBack(); return; }
@@ -108,6 +119,19 @@ export default function RecordScreen() {
   const isPaused = rec.state === 'paused';
   const isStarting = rec.state === 'starting';
 
+  // Android back mid-take asks first. 結束 is exactly the stop button (onStop → rec.stop(), which
+  // finalizes the part per useRecorder's C1/I2 ordering, then saves and opens Review) — back never
+  // drops a take on the floor. Idle → back is left to navigation.
+  function confirmLeave() {
+    Alert.alert('要結束這段錄音嗎？', '錄好的部分會留在手機上。', [
+      { text: '繼續錄音', style: 'cancel' },
+      { text: '結束', onPress: () => { void onStop(); } },
+    ]);
+  }
+  useAndroidBack(() => { confirmLeave(); return true; }, isRec || isPaused);
+  // The header's back asks the same question on both platforms; idle just goes back.
+  const onHeaderBack = () => { if (isRec || isPaused) confirmLeave(); else nav.goBack(); };
+
   if (busyMsg) {
     return (
       <View style={styles.center}>
@@ -124,7 +148,9 @@ export default function RecordScreen() {
   const permissionDenied = !!rec.error && /麥克風權限/.test(rec.error);
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom + spacing.xl }]}>
+    <View style={[styles.screen, { paddingBottom: insets.bottom + spacing.xl }]}>
+      <ScreenHeader title="錄音" onBack={onHeaderBack} />
+      <View style={styles.container}>
       {/* status + timer */}
       <View style={styles.header}>
         <View style={styles.status}>
@@ -161,7 +187,7 @@ export default function RecordScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={isPaused ? '繼續錄音' : '暫停錄音'}
-              onPress={isPaused ? rec.resume : rec.pause}
+              onPress={onPauseResume}
               style={({ pressed }) => [styles.side, pressed && styles.pressedIcon]}
             >
               <View style={styles.pauseBtn}>
@@ -178,7 +204,7 @@ export default function RecordScreen() {
               accessibilityLabel={stopMode ? '停止錄音' : '開始錄音'}
               accessibilityState={{ busy: isStarting || loading, disabled: !sid || isStarting || loading }}
               style={({ pressed }) => [styles.recordBtn, pressed && styles.pressedFill]}
-              onPress={stopMode ? onStop : rec.start}
+              onPress={stopMode ? onStop : onStart}
               disabled={!sid || isStarting || loading}
             >
               {isStarting
@@ -267,6 +293,7 @@ export default function RecordScreen() {
 
         {err && <AppText variant="small" color="danger" style={styles.err}>{err}</AppText>}
       </View>
+      </View>
     </View>
   );
 }
@@ -274,6 +301,7 @@ export default function RecordScreen() {
 const RECORD_SIZE = 72;
 const PAUSE_SIZE = 52;
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: layout.screenPaddingH },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   busy: { marginTop: spacing.md },

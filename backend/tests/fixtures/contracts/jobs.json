@@ -1,0 +1,9 @@
+{
+  "active": [
+    {"id": "a1b2c3", "kind": "transcribe", "status": "running", "pct": 0.42, "message": "辨識中（含講者分離）…", "started_at": 1763100000.0, "finished_at": null, "duration_s": null, "error": null}
+  ],
+  "recent": [
+    {"id": "d4e5f6", "kind": "analyze", "status": "done", "pct": 1.0, "message": "完成", "started_at": 1763099000.0, "finished_at": 1763099018.5, "duration_s": 18.5, "error": null},
+    {"id": "0a9b8c", "kind": "transcribe", "status": "error", "pct": 0.35, "message": "失敗", "started_at": 1763098000.0, "finished_at": 1763098004.0, "duration_s": 4.0, "error": "找不到 Breeze ASR server（port 7765）。"}
+  ]
+}

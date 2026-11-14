@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Two independently-deployed pieces, in one repo:
 
 - `app/` — bare React Native client (`@react-native-community/cli`, **not Expo**), native iOS + Android. Developed on Mac, shipped to TestFlight via fastlane.
-- `backend/` — FastAPI service, deployed as a **Docker Compose unit** (`backend/deploy`: `haoji-backend` + `breeze-asr` + `ollama`) on a machine with an NVIDIA GPU (Breeze ASR + Ollama need it). The app reaches it over Tailscale (`http://100.106.118.45:7780`) or same-WiFi LAN (`http://192.168.100.10:7780`). Do not run the backend on the Mac.
+- `backend/` — FastAPI service, deployed as a **Docker Compose unit** (`backend/deploy`: `haoji-backend` + `breeze-asr` + `ollama`) on a machine with an NVIDIA GPU (Breeze ASR + Ollama need it). The app reaches it over Tailscale (`http://<tailscale-ip>:7780`) or same-WiFi LAN (`http://<lan-ip>:7780`). Do not run the backend on the Mac.
 
 ## Bare React Native discipline
 
@@ -48,7 +48,7 @@ python -m pytest -q
 python -m pytest tests/test_parts.py -q  # single file
 ```
 
-`react-native-config` (`.env` → `Config.API_BASE`) selects the backend URL, read in `app/lib/config.ts` (fallback = Tailscale IP so TestFlight works without `.env` wiring). The iOS ATS exception (`ios/Haoji/Info.plist`) and Android `network_security_config.xml` are pinned to the Tailscale + LAN IPs — keep them in sync if those change. Signing/TestFlight config lives in `ios/fastlane/`.
+The server is chosen at runtime: `app/lib/server.ts` holds the paired server (URL + token, AsyncStorage, set via the `haoji://pair?url=…&token=…` link or the Pair screen). Precedence: paired URL → build-time `Config.API_BASE` (`.env`, read in `app/lib/config.ts`, no hardcoded fallback) → `null` = unpaired (recording still works; server actions show 連接主機). `api.ts` resolves the base and Bearer header on every call. Because a self-hosted server can live at any address, iOS ATS allows arbitrary loads and Android permits cleartext. Signing/TestFlight config lives in `ios/fastlane/`.
 
 ## Backend architecture (v2 "parts" flow)
 

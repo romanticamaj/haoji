@@ -10,6 +10,8 @@ jest.mock('../../lib/api', () => ({
   uploadPart: (...a: any[]) => mockUploadPart(...a),
   transcribe: (...a: any[]) => mockTranscribe(...a),
   getSession: (...a: any[]) => mockGetSession(...a),
+  // The server-status poll (useServerStatus): a connected server (busy still accepts work).
+  getStatus: jest.fn().mockResolvedValue(require('../../../backend/tests/fixtures/contracts/status.json')),
 }));
 const mockReplace = jest.fn();
 jest.mock('@react-navigation/native', () => ({
@@ -39,4 +41,15 @@ test('polls until done, saves session, navigates to Results', async () => {
   const saved = await store.get('sess123');
   expect(saved?.transcript?.speakers).toEqual(['SPEAKER_00']);
   expect(saved?.backendId).toBe('backend-abc');
+});
+
+test('transcript ready fires the success haptic as it moves on to Results', async () => {
+  const trigger = require('react-native-haptic-feedback').default.trigger as jest.Mock;
+  mockCreateSession.mockResolvedValue('backend-abc');
+  mockTranscribe.mockResolvedValue(undefined);
+  mockGetSession.mockResolvedValue({ status: 'done', pct: 1, message: '完成',
+    transcript: { segments: [{ start: 0, end: 1, speaker: 'SPEAKER_00', text: '你好' }], speakers: ['SPEAKER_00'] } });
+  await render(<StoreProvider store={createMemoryStore()}><ProcessingScreen /></StoreProvider>);
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('Results', expect.anything()), { timeout: 8000 });
+  expect(trigger.mock.calls.map((c) => c[0])).toEqual(['notificationSuccess']);
 });

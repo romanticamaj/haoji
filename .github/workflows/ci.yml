@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check-public.sh
+
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q -p no:cacheprovider
+
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npx jest --ci --forceExit
+
+  console:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend/console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/console/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx vitest run
+      - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [backend, console]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the backend image (console + API) from the repo root
+        run: docker build -f backend/Dockerfile -t haoji-backend:ci .
+      - name: Smoke — status, console, admin gate
+        run: |
+          docker run -d --name haoji -p 7780:7780 -e HAOJI_ADMIN_TOKEN=ci haoji-backend:ci
+          for i in $(seq 1 30); do curl -fsS localhost:7780/health && break; sleep 1; done
+          curl -fsS localhost:7780/api/status | tee /dev/stderr | grep -q '"checks"'
+          curl -fsS localhost:7780/console/ | grep -q '<div id="root"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'localhost:7780/api/status?detail=1')" = 401
+          curl -fsS -H 'Authorization: Bearer ci' 'localhost:7780/api/status?detail=1' | grep -q '"gpu"'
+      - if: failure()
+        run: docker logs haoji
+
+  console-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [console]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/console/package-lock.json
+      - working-directory: backend/console
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          npm run build
+          HAOJI_PYTHON=python npm run e2e

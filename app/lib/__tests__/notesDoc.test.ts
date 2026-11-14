@@ -45,6 +45,8 @@ describe('looksLikeAutoTitle', () => {
     expect(looksLikeAutoTitle('7/15/2026, 12:07:52 AM')).toBe(true);
     expect(looksLikeAutoTitle('2026/7/15 上午12:07')).toBe(true);
     expect(looksLikeAutoTitle('')).toBe(true);
+    // The zh-TW recovered-recording stamp stays replaceable by the AI title.
+    expect(looksLikeAutoTitle('已復原的錄音（10月29日 下午4:31）')).toBe(true);
   });
   test('false for a user-typed name', () => {
     expect(looksLikeAutoTitle('產品週會')).toBe(false);

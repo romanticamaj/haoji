@@ -24,7 +24,9 @@ def init_db():
                           ("notes_error", "TEXT"), ("expected_parts", "INTEGER"),
                           ("notes_pct", "REAL"), ("notes_message", "TEXT"),
                           # push_*: where to say "done" once transcription ends. Cleared after use.
-                          ("push_token", "TEXT"), ("push_env", "TEXT"), ("push_title", "TEXT")):
+                          ("push_token", "TEXT"), ("push_env", "TEXT"), ("push_title", "TEXT"),
+                          # fetched_at: first time the client collected a finished transcript (retention=0)
+                          ("fetched_at", "REAL")):
             if col not in cols:
                 c.execute(f"ALTER TABLE sessions ADD COLUMN {col} {decl}")
 
@@ -129,3 +131,31 @@ def parts_complete(sid):
     parts = get_parts(sid)
     filled = sum(1 for p in parts[:expected] if p)
     return filled >= expected
+
+
+def delete_session(sid):
+    with _conn() as c:
+        return c.execute("DELETE FROM sessions WHERE id=?", (sid,)).rowcount > 0
+
+
+def mark_fetched(sid, now):
+    with _conn() as c:
+        c.execute("UPDATE sessions SET fetched_at=? WHERE id=? AND fetched_at IS NULL", (now, sid))
+
+
+def purge_expired(now, ttl_s):
+    """Blank the transcript and notes of sessions older than ttl_s (the row stays so a late client
+    gets status "expired" instead of 404). ttl_s == 0 means "as soon as the phone has collected it":
+    only rows with fetched_at set are purged. Selection is by *content still present*, not by status,
+    so notes that land on an already-expired row are swept on the next pass. Never touches a session
+    still transcribing or whose notes are still being generated. Returns rows purged."""
+    keep = ("status NOT IN ('queued','running') AND COALESCE(notes_status,'') NOT IN ('queued','running') "
+            "AND (transcript IS NOT NULL OR notes IS NOT NULL)")
+    with _conn() as c:
+        if ttl_s <= 0:
+            q = (f"UPDATE sessions SET transcript=NULL, notes=NULL, status='expired', message='' "
+                 f"WHERE fetched_at IS NOT NULL AND fetched_at <= ? AND {keep}")
+            return c.execute(q, (now,)).rowcount
+        q = (f"UPDATE sessions SET transcript=NULL, notes=NULL, status='expired', message='' "
+             f"WHERE created < ? AND {keep}")
+        return c.execute(q, (now - ttl_s,)).rowcount

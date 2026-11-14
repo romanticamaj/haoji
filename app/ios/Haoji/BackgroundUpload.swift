@@ -43,6 +43,20 @@ class BackgroundUpload: RCTEventEmitter, URLSessionDelegate, URLSessionTaskDeleg
   @objc(enqueue:filePath:taskId:resolver:rejecter:)
   func enqueue(_ urlString: String, filePath: String, taskId: String,
                resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    start(urlString, filePath: filePath, taskId: taskId, headers: [:], resolve: resolve, reject: reject)
+  }
+
+  /// Same as `enqueue`, plus extra request headers — the pairing token (`Authorization: Bearer …`).
+  /// The OS sends this request with no JS running, so the header has to be set here.
+  @objc(enqueueWithHeaders:filePath:taskId:headers:resolver:rejecter:)
+  func enqueueWithHeaders(_ urlString: String, filePath: String, taskId: String, headers: NSDictionary,
+                          resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    start(urlString, filePath: filePath, taskId: taskId,
+          headers: (headers as? [String: String]) ?? [:], resolve: resolve, reject: reject)
+  }
+
+  private func start(_ urlString: String, filePath: String, taskId: String, headers: [String: String],
+                     resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     guard let url = URL(string: urlString) else {
       reject("bad_url", "Invalid upload URL: \(urlString)", nil); return
     }
@@ -53,6 +67,7 @@ class BackgroundUpload: RCTEventEmitter, URLSessionDelegate, URLSessionTaskDeleg
     var req = URLRequest(url: url)
     req.httpMethod = "PUT"
     req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+    for (name, value) in headers { req.setValue(value, forHTTPHeaderField: name) }
 
     // The part files live in Documents and are not deleted until the session is, so the source stays
     // available for as long as the OS needs it — no temp copy required.

@@ -1,0 +1,8 @@
+{
+  "models": [
+    {"id": "breeze-asr", "kind": "asr", "name": "Breeze ASR 25", "state": "ready", "size_bytes": null, "managed_by": "breeze-asr", "selected": true},
+    {"id": "pyannote", "kind": "diarization", "name": "pyannote speaker-diarization 3.1", "state": "ready", "size_bytes": null, "managed_by": "breeze-asr", "selected": true},
+    {"id": "gemma4:e4b-it-qat", "kind": "llm", "name": "gemma4:e4b-it-qat", "state": "loaded", "size_bytes": 4200000000, "managed_by": "ollama", "selected": true},
+    {"id": "qwen3:8b", "kind": "llm", "name": "qwen3:8b", "state": "ready", "size_bytes": 5200000000, "managed_by": "ollama", "selected": false}
+  ]
+}

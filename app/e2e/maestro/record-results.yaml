@@ -1,0 +1,34 @@
+# Record ~4 s → stop → 生成逐字稿 → the stub's canned transcript appears in Results.
+appId: com.garyhsieh.haoji
+---
+- runFlow: pair.yaml
+- tapOn:
+    id: "home-record"                 # bottom bar 記下來
+- tapOn: "開始錄音"
+- runFlow:                            # first recording after clearState meets the mic prompt
+    when:
+      visible: "Allow|允許|好"
+    commands:
+      - tapOn: "Allow|允許|好"
+- extendedWaitUntil:
+    visible: "錄音中"
+    timeout: 10000
+- swipe:                              # ~4 s of audio
+    direction: UP
+    duration: 4000
+- tapOn: "停止錄音"                    # first tap arms, second confirms
+- tapOn:
+    text: "停止錄音"
+    optional: true
+- extendedWaitUntil:
+    visible: "錄好了，先聽聽看"
+    timeout: 10000
+- tapOn: "生成逐字稿"
+- runFlow:                            # 「逐字稿完成」 push needs permission the first time
+    when:
+      visible: "Allow|允許"
+    commands:
+      - tapOn: "Allow|允許"
+- extendedWaitUntil:
+    visible: "今天主要確認下一季的產品方向。"
+    timeout: 60000

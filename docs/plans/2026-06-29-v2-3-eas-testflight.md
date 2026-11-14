@@ -10,8 +10,8 @@
 
 - Bundle identifier: `com.garyhsieh.haoji`
 - Apple Team ID: `64N77Z6TV3`
-- App Store Connect API key: `C:\Users\gary.hsieh\Downloads\AuthKey_S4KA24P9A5.p8` (Key ID `S4KA24P9A5`, Issuer ID `efcfbd71-5d12-4d85-8efc-5cee020286d9`)
-- App backend (Tailscale): `http://100.106.118.45:8780` → `EXPO_PUBLIC_API_BASE`
+- App Store Connect API key: `%USERPROFILE%\Downloads\AuthKey_<ASC_KEY_ID>.p8` (Key ID `<ASC_KEY_ID>`, Issuer ID `<ASC_ISSUER_ID>`)
+- App backend (Tailscale): `http://<tailscale-ip>:8780` → `EXPO_PUBLIC_API_BASE`
 - The `.p8` is a SECRET: never commit it; reference by path only. Add `*.p8` to `.gitignore`.
 
 ---
@@ -35,7 +35,7 @@ Set the iOS native config. Merge into `app.json` `expo` block:
         "UIBackgroundModes": ["audio"],
         "NSAppTransportSecurity": {
           "NSExceptionDomains": {
-            "100.106.118.45": {
+            "<tailscale-ip>": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
               "NSIncludesSubdomains": false
             }
@@ -61,15 +61,15 @@ Install + init: `cd app && npm install --save-dev eas-cli` (or use `npx eas-cli`
   "build": {
     "production": {
       "ios": { "distribution": "store", "autoIncrement": true },
-      "env": { "EXPO_PUBLIC_API_BASE": "http://100.106.118.45:8780" }
+      "env": { "EXPO_PUBLIC_API_BASE": "http://<tailscale-ip>:8780" }
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "ascApiKeyPath": "C:/Users/gary.hsieh/Downloads/AuthKey_S4KA24P9A5.p8",
-        "ascApiKeyId": "S4KA24P9A5",
-        "ascApiKeyIssuerId": "efcfbd71-5d12-4d85-8efc-5cee020286d9",
+        "ascApiKeyPath": "%USERPROFILE%/Downloads/AuthKey_<ASC_KEY_ID>.p8",
+        "ascApiKeyId": "<ASC_KEY_ID>",
+        "ascApiKeyIssuerId": "<ASC_ISSUER_ID>",
         "appleTeamId": "64N77Z6TV3"
       }
     }
@@ -138,7 +138,7 @@ This uploads the build to App Store Connect using the `.p8` API key (no Apple pa
 
 1. Install the **TestFlight** app on your iPhone from the App Store.
 2. As the account holder you're automatically an internal tester — the build shows up in TestFlight. Install it.
-3. Make sure **Tailscale is running on the phone** (same tailnet) so it reaches `100.106.118.45:8780`.
+3. Make sure **Tailscale is running on the phone** (same tailnet) so it reaches `<tailscale-ip>:8780`.
 4. Make sure the **backend is running** on the PC (`cd backend && python app.py`) and Breeze ASR + Ollama are up.
 5. Walk the flow: record (try locking the screen / a phone call mid-record → background keeps recording / resume prompt), see raw recordings, analyze, tap-edit speakers, Markdown notes, unlock (dev stub).
 

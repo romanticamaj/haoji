@@ -58,6 +58,19 @@ const AUDIO_SET: AudioSet = {
   AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
 };
 
+// Android's MediaRecorder cannot write WAV, so Android records AAC — and must SAY so: the part is
+// named .m4a. (It used to be named .wav while holding an MP4/AAC stream at 48 kHz, which the WAV-only
+// crash-repair and merge code would have mistaken for PCM.) 16 kHz mono matches what the backend
+// transcribes at, so nothing useful is lost and uploads stay small.
+const ANDROID_SET: AudioSet = {
+  AudioSourceAndroid: AudioSourceAndroidType.MIC,
+  OutputFormatAndroid: OutputFormatAndroidType.MPEG_4,
+  AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
+  AudioSamplingRate: 16000,
+  AudioChannels: 1,
+  AudioEncodingBitRate: 64000,
+};
+
 // Last-resort settings if PCM/WAV is refused by the device or the audio session. AAC loses the
 // crash-safety WAV gives us (a killed .m4a has no index and can't be recovered), but being unable to
 // record AT ALL is far worse — so we degrade rather than fail.
@@ -134,13 +147,17 @@ export function useRecorder(sessionId: string, existingParts: Part[] = NO_PARTS)
       extRef.current = ext;
       await Sound.startRecorder(tmp, set, true);
     };
-    try {
-      await attempt('wav', AUDIO_SET);
-    } catch (e) {
-      // PCM/WAV refused (e.g. the format never reached the native layer, or this route can't do it).
-      // Recording must not be impossible, so fall back to AAC — crash-safety is lost for this take,
-      // but a take that happens beats a take that doesn't.
-      await attempt('m4a', AAC_FALLBACK_SET);
+    if (Platform.OS === 'android') {
+      await attempt('m4a', ANDROID_SET);
+    } else {
+      try {
+        await attempt('wav', AUDIO_SET);
+      } catch (e) {
+        // PCM/WAV refused (e.g. the format never reached the native layer, or this route can't do it).
+        // Recording must not be impossible, so fall back to AAC — crash-safety is lost for this take,
+        // but a take that happens beats a take that doesn't.
+        await attempt('m4a', AAC_FALLBACK_SET);
+      }
     }
     Sound.addRecordBackListener((e) => {
       durationRef.current = e.currentPosition ?? 0;

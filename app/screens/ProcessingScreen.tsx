@@ -4,11 +4,19 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useStore } from '../lib/store-context';
 import { SavedSession } from '../lib/store';
 import { ensureJob, restartJob, onJobChange } from '../lib/jobRunner';
-import { overallPct } from '../lib/job';
+import { overallPct, stageOf } from '../lib/job';
+import { transcribeGate } from '../lib/serverStatus';
+import { useServerStatus } from '../hooks/useServerStatus';
+import { useAndroidBack } from '../hooks/useAndroidBack';
 import { AppText } from '../components/AppText';
-import { PrimaryButton, SecondaryButton } from '../components/Buttons';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { SecondaryButton } from '../components/Buttons';
+import { TranscribeButton } from '../components/TranscribeButton';
+import { StageRow } from '../components/StageRow';
 import { IconAlert, IconLoader } from '../components/icons';
 import { colors, layout, spacing, tabularNums } from '../lib/theme';
+import { zhDateTime } from '../lib/dateFormat';
+import { haptic } from '../lib/haptics';
 
 // This screen no longer OWNS the work — it just watches it.
 //
@@ -29,6 +37,16 @@ export default function ProcessingScreen() {
   // still carrying job.stage === 'done', and acting on that before the restart cleared it bounced
   // straight back to the results — "重新生成逐字稿 一進去就跳出".
   const [started, setStarted] = useState(false);
+  // Retrying needs a server: unpaired → offer to connect; offline → say so and keep 重試 disabled.
+  const srv = useServerStatus();
+  const gate = transcribeGate(srv.summary, srv.loading);
+  // Android back goes Home (the job keeps running), not back into Review/Record. Only while this
+  // screen is on top — Pair can be pushed over it from the unpaired gate.
+  useAndroidBack(() => {
+    if (nav.isFocused && !nav.isFocused()) return false;
+    nav.popToTop();
+    return true;
+  });
 
   useEffect(() => {
     let alive = true;
@@ -39,7 +57,7 @@ export default function ProcessingScreen() {
       // against a missing record — create a minimal one so the pipeline has something to write to.
       if (!(await store.get(sessionId))) {
         await store.upsert({
-          id: sessionId, createdAt: Date.now(), title: new Date().toLocaleString(),
+          id: sessionId, createdAt: Date.now(), title: zhDateTime(Date.now()),
           names: {}, unlocked: false, parts: [],
         });
       }
@@ -60,45 +78,61 @@ export default function ProcessingScreen() {
   // Finished while we were watching → go straight to the result. Only ever act on a stage produced
   // by this visit (see `started`), never on one left over from a previous analysis.
   useEffect(() => {
-    if (started && job?.stage === 'done' && session) nav.replace('Results', { sessionId, session });
+    if (started && job?.stage === 'done' && session) {
+      haptic('ready');
+      nav.replace('Results', { sessionId, session });
+    }
   }, [started, job?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Failure: say what failed, what is still safe, and what to do (GUIDELINE §5.5).
   if (started && job?.stage === 'error') return (
-    <View style={styles.center}>
-      <View style={styles.iconCircle}><IconAlert size={28} /></View>
-      <AppText variant="section" color="heading" accessibilityRole="header">逐字稿沒有整理完成</AppText>
-      <AppText variant="body" color="muted" style={styles.centerText}>錄音還在手機上，沒有不見。</AppText>
-      {!!job.error && <AppText variant="small" color="muted" style={styles.centerText}>{job.error}</AppText>}
-      <View style={styles.actions}>
-        <PrimaryButton label="重試" onPress={() => void restartJob(sessionId, store)} />
-        <SecondaryButton label="返回" onPress={() => nav.popToTop()} />
+    <View style={styles.screen}>
+      <ScreenHeader title="整理中" />
+      <View style={styles.center}>
+        <View style={styles.iconCircle}><IconAlert size={28} /></View>
+        <AppText variant="section" color="heading" accessibilityRole="header">逐字稿沒有整理完成</AppText>
+        <AppText variant="body" color="muted" style={styles.centerText}>錄音還在手機上，沒有不見。</AppText>
+        {!!job.error && <AppText variant="small" color="muted" style={styles.centerText}>{job.error}</AppText>}
+        <View style={styles.actions}>
+          <TranscribeButton
+            gate={gate}
+            label="重試"
+            onPress={() => void restartJob(sessionId, store)}
+            onConnect={() => nav.navigate('Pair')}
+          />
+          <SecondaryButton label="返回" onPress={() => nav.popToTop()} />
+        </View>
       </View>
     </View>
   );
 
   const pct = job ? Math.round(overallPct(job) * 100) : 0;
   return (
-    <View style={styles.center}>
-      <View style={styles.iconCircle}><IconLoader size={28} color={colors.primaryDark} /></View>
-      <AppText variant="section" color="heading" accessibilityRole="header">正在整理逐字稿…</AppText>
-      <AppText variant="small" color="muted">{job?.message || '準備中…'}</AppText>
-      <View style={styles.barTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: pct }}>
-        <View style={[styles.barFill, { width: `${pct}%` }]} />
+    <View style={styles.screen}>
+      <ScreenHeader title="整理中" />
+      <View style={styles.center}>
+        <View style={styles.iconCircle}><IconLoader size={28} color={colors.primaryDark} /></View>
+        <AppText variant="section" color="heading" accessibilityRole="header">正在整理逐字稿…</AppText>
+        <StageRow current={stageOf(job)} />
+        <AppText variant="small" color="muted">{job?.message || '準備中…'}</AppText>
+        <View style={styles.barTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: pct }}>
+          <View style={[styles.barFill, { width: `${pct}%` }]} />
+        </View>
+        <AppText variant="small" color="muted" style={tabularNums}>{pct}%</AppText>
+  
+        <AppText variant="body" color="muted" style={[styles.centerText, styles.note]}>
+          {job?.stage === 'transcribing'
+            ? '已開始整理，離開 App 也會繼續。完成後會通知你。'
+            : '上傳完成後會自己繼續整理，不用一直開著 App。'}
+        </AppText>
+        <SecondaryButton label="在背景繼續" onPress={() => nav.popToTop()} style={styles.bg} />
       </View>
-      <AppText variant="small" color="muted" style={tabularNums}>{pct}%</AppText>
-
-      <AppText variant="body" color="muted" style={[styles.centerText, styles.note]}>
-        {job?.stage === 'transcribing'
-          ? '已開始整理，離開 App 也會繼續。完成後會通知你。'
-          : '上傳完成後會自己繼續整理，不用一直開著 App。'}
-      </AppText>
-      <SecondaryButton label="在背景繼續" onPress={() => nav.popToTop()} style={styles.bg} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   // EmptyState-like centre layout: 72 circle + section title + muted description.
   center: {
     flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background,
