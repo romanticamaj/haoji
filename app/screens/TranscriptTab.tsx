@@ -4,7 +4,8 @@ import {
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { SavedSession } from '../lib/store';
-import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText, speakerStats } from '../lib/transcript';
+import { mmss, nameOf, mergedParagraphs, applyTurnEdit, activeParagraph, transcriptPlainText, speakerStats, speakersByFirstAppearance } from '../lib/transcript';
+import { STACK_MAX, avatarInitial } from '../lib/sessionList';
 import SpeakerSheet from '../components/SpeakerSheet';
 import { IconCheck, IconCopy, IconLoader, IconTranscript, IconTrash, IconAudioLines } from '../components/icons';
 import { AppText } from '../components/AppText';
@@ -14,9 +15,6 @@ import { TranscribeButton } from '../components/TranscribeButton';
 import type { Gate } from '../lib/serverStatus';
 import { isActive, overallPct } from '../lib/job';
 import { colors, fontScale, layout, radius, spacing, tabularNums, speakerColor, typography } from '../lib/theme';
-
-// The toolbar's avatar stack shows this many faces, then +N.
-const STACK_MAX = 4;
 
 export default function TranscriptTab(
   { session, onUpdate, onRegenerate, onViewProgress, onSeek, activeMs = 0, onDelete, gate = 'ok', onConnect }:
@@ -49,6 +47,8 @@ export default function TranscriptTab(
   // The speaker sheet: null = closed, '' = opened from the toolbar, otherwise the speaker to focus.
   const [editing, setEditing] = React.useState<string | null>(null);
   const stats = React.useMemo(() => speakerStats(segs, speakers), [segs, speakers]);
+  // The toolbar's avatar stack: first to speak first, the same order and cap as the Home card.
+  const stackOrder = React.useMemo(() => speakersByFirstAppearance(segs, speakers), [segs, speakers]);
   // One trigger only. The chip stays disabled from the moment it is confirmed until this screen is
   // replaced by 分析中 — without it a second tap in that window starts the whole job twice.
   // A ref, not just state: taps arrive faster than React re-renders, so a state read inside the
@@ -185,24 +185,21 @@ export default function TranscriptTab(
               style={({ pressed }) => [styles.stackChip, pressed && styles.pressedRow]}
             >
               <View style={styles.stack}>
-                {stats.slice(0, STACK_MAX).map(({ speaker: sp }, k) => {
-                  const named = !!session.names[sp];
-                  return (
-                    <View
-                      key={sp}
-                      testID={`stack-avatar-${sp}`}
-                      style={[styles.stackAv, k > 0 && styles.stackOverlap, { backgroundColor: speakerColor(speakerIndex[sp] ?? 0) }]}
-                    >
-                      <AppText variant="small" color="onPrimary" style={styles.stackText} maxFontSizeMultiplier={fontScale.chrome}>
-                        {named ? nameOf(sp, session.names).trim().charAt(0) : String((speakerIndex[sp] ?? 0) + 1)}
-                      </AppText>
-                    </View>
-                  );
-                })}
-                {stats.length > STACK_MAX && (
+                {stackOrder.slice(0, STACK_MAX).map(({ speaker: sp, index }, k) => (
+                  <View
+                    key={sp}
+                    testID={`stack-avatar-${sp}`}
+                    style={[styles.stackAv, k > 0 && styles.stackOverlap, { backgroundColor: speakerColor(index) }]}
+                  >
+                    <AppText variant="small" color="onPrimary" style={styles.stackText} maxFontSizeMultiplier={fontScale.chrome}>
+                      {avatarInitial(sp, index, session.names)}
+                    </AppText>
+                  </View>
+                ))}
+                {stackOrder.length > STACK_MAX && (
                   <View style={[styles.stackAv, styles.stackOverlap, styles.stackMore]}>
                     <AppText variant="small" color="heading" style={styles.stackText} maxFontSizeMultiplier={fontScale.chrome}>
-                      +{stats.length - STACK_MAX}
+                      +{stackOrder.length - STACK_MAX}
                     </AppText>
                   </View>
                 )}

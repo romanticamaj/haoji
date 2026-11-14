@@ -2,7 +2,7 @@
 // stay a thin map from grouped sessions to cards. All time math takes `now` as a parameter so the
 // relative-day / grouping logic is deterministic in tests.
 import { SavedSession } from './store';
-import { mmss, nameOf } from './transcript';
+import { mmss, nameOf, speakersByFirstAppearance } from './transcript';
 import { isActive } from './job';
 import { isNotesActive } from './notesJob';
 
@@ -88,19 +88,26 @@ export function inlineStatus(session: SavedSession): string {
   return '還沒生成';
 }
 
-export type AvatarSpec ={ initials: string[]; overflow: number };
+/** How many faces an avatar stack shows before it says +N (Home cards and the Results toolbar). */
+export const STACK_MAX = 3;
 
-// Up to 3 speaker initials plus an overflow count. Each initial is the first char of the mapped
-// real name (session.names), falling back to the 1-based speaker index when unnamed. No transcript
-// → no avatars.
-export function avatarSpec(session: SavedSession, max = 3): AvatarSpec {
-  const speakers = session.transcript?.speakers ?? [];
-  const shown = speakers.slice(0, max);
-  const initials = shown.map((sp, i) => {
-    const name = nameOf(sp, session.names);
-    // nameOf returns the raw speaker code when unnamed; show the 1-based index instead of a code.
-    const named = !!session.names[sp] && session.names[sp].trim().length > 0;
-    return named ? [...name.trim()][0] : String(i + 1);
-  });
-  return { initials, overflow: Math.max(0, speakers.length - shown.length) };
+export type AvatarSpec = { initials: string[]; colorIndex: number[]; overflow: number };
+
+/** One face: the first char of the speaker's real name, or their 1-based speaker number when unnamed. */
+export function avatarInitial(speaker: string, index: number, names: Record<string, string>): string {
+  const named = !!names[speaker] && names[speaker].trim().length > 0;
+  // nameOf returns the raw speaker code when unnamed; show the number instead of a code.
+  return named ? [...nameOf(speaker, names).trim()][0] : String(index + 1);
+}
+
+// Up to STACK_MAX faces in first-appearance order, plus an overflow count. `colorIndex` is each face's
+// speaker index, so its colour matches the transcript. No transcript → no avatars.
+export function avatarSpec(session: SavedSession, max = STACK_MAX): AvatarSpec {
+  const ordered = speakersByFirstAppearance(session.transcript?.segments ?? [], session.transcript?.speakers ?? []);
+  const shown = ordered.slice(0, max);
+  return {
+    initials: shown.map((o) => avatarInitial(o.speaker, o.index, session.names)),
+    colorIndex: shown.map((o) => o.index),
+    overflow: Math.max(0, ordered.length - shown.length),
+  };
 }

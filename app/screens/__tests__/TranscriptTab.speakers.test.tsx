@@ -76,6 +76,26 @@ test('the speakers chip is an avatar stack with the named count', async () => {
   within(stack).getByText('講者 1/2');
 });
 
+// Issue #32 item 5: same order and cap as the Home card — first to speak first, 3 faces, then +N.
+test('the avatar stack follows first appearance, shows 3 faces, then +N', async () => {
+  const s: SavedSession = {
+    ...session,
+    transcript: { speakers: ['A', 'B', 'C', 'D', 'E'], segments: [
+      { start: 0, end: 1, speaker: 'D', text: '一' },
+      { start: 1, end: 2, speaker: 'B', text: '二' },
+      { start: 2, end: 3, speaker: 'E', text: '三' },
+      { start: 3, end: 4, speaker: 'A', text: '四' },
+    ] },
+  };
+  const { getByTestId } = await render(<TranscriptTab session={s} onUpdate={() => {}} />);
+  const stack = getByTestId('open-speakers');
+  const faces = within(stack).getAllByTestId(/^stack-avatar-/).map((el: any) => el.props.testID);
+  expect(faces).toEqual(['stack-avatar-D', 'stack-avatar-B', 'stack-avatar-E']);
+  expect(bg(within(stack).getByTestId('stack-avatar-D'))).toBe(speakerColor(3));
+  within(stack).getByText('4');           // D is 講者 4, as in its transcript turn
+  within(stack).getByText('+2');
+});
+
 test('transcript text may grow to the content ceiling; chrome stops at the chrome ceiling', async () => {
   const { getByText, getByTestId } = await render(<TranscriptTab session={session} onUpdate={() => {}} />);
   expect(getByText('第一段').props.maxFontSizeMultiplier).toBe(fontScale.content);
