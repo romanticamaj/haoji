@@ -1,4 +1,5 @@
 import { serverBase, authHeaders, NotPairedError } from './server';
+import { isPublicStatus, VALIDATE_TIMEOUT_MS, type PublicStatus } from './serverStatus';
 import { SessionStatus, Transcript } from './types';
 
 // RN's fetch has no default timeout, so a stalled backend (or a half-open Tailscale connection)
@@ -117,6 +118,13 @@ export async function analyzeInBackground(
       client_id: opts.clientId, background: true,
     }),
   }, 20000));
+}
+
+/** GET /api/status (public). Throws if the answer isn't a Haoji status; NotPairedError when unpaired. */
+export async function getStatus(): Promise<PublicStatus> {
+  const body = await asJson(await call('/api/status', {}, VALIDATE_TIMEOUT_MS));
+  if (!isPublicStatus(body)) throw new Error('這個網址不是好記主機。');
+  return body;
 }
 
 export async function getModels(): Promise<{ ok: boolean; models: string[]; default: string }> {

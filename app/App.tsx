@@ -13,6 +13,7 @@ import ImportConfirmScreen from './screens/ImportConfirmScreen';
 import ReviewScreen from './screens/ReviewScreen';
 import ProcessingScreen from './screens/ProcessingScreen';
 import ResultsScreen from './screens/ResultsScreen';
+import SettingsScreen from './screens/SettingsScreen';
 
 // Paint every scene with the app's paper background from frame one. Without this the native push
 // briefly reveals the default (black) window layer behind the incoming screen, which read as buttons
@@ -82,6 +83,7 @@ export default function App() {
             <Stack.Screen name="Review" component={ReviewScreen} options={{ title: '錄音檢視', headerBackVisible: false }} />
             <Stack.Screen name="Processing" component={ProcessingScreen} options={{ title: '整理中', headerBackVisible: false }} />
             <Stack.Screen name="Results" component={ResultsScreen} options={{ title: '' }} />
+            <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '設定' }} />
           </Stack.Navigator>
         </NavigationContainer>
       </StoreProvider>
