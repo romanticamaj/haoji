@@ -9,7 +9,7 @@ Two layers. Each catches what the other can't.
 
 ```bash
 node e2e/stub-server.mjs                       # :7799, serves backend/tests/fixtures/contracts
-maestro test e2e/maestro/pair.yaml             # iOS simulator (STUB_HOST=127.0.0.1)
+maestro test e2e/maestro/pair.yaml             # iOS simulator (STUB_HOST defaults to 127.0.0.1)
 maestro test -e STUB_HOST=10.0.2.2 e2e/maestro/pair.yaml   # Android emulator → host loopback
 maestro test e2e/maestro/record-results.yaml
 maestro test e2e/maestro/search.yaml
