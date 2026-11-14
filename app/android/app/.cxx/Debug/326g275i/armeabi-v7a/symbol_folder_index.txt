@@ -1,1 +1,0 @@
-/Users/gary.hsieh/garysrc/haoji/app/android/app/build/intermediates/cxx/Debug/326g275i/obj/armeabi-v7a

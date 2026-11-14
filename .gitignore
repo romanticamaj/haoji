@@ -45,3 +45,6 @@ backend/.venv/
 
 # APNs key mounted into the backend container
 backend/deploy/secrets/
+
+# Android native build cache (CMake) — absolute local paths, never commit
+.cxx/
