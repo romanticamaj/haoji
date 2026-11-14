@@ -221,6 +221,50 @@
 - [ ] **Step 2–4:** Run (fail), implement, run (pass).
 - [ ] **Step 5: Commit** `feat(backend): serve the control console at /console`.
 
+### Task 7: close the leak chain from `docs/system-design-note.md` §4
+
+**Files:**
+- Modify: `backend/app.py`
+  - `/api/debug/jobs` is admin-only.
+  - CORS is narrowed: `allow_origins` = `HAOJI_CORS_ORIGINS` (comma-separated, default empty). The phone app needs no CORS, and the console is same-origin.
+  - New endpoint `DELETE /api/sessions/{sid}`, guarded by the pairing guard.
+- Modify: `backend/sessions.py`
+  - New `purge_expired(now, ttl_s)`: blanks `transcript` and `notes` on rows older than the TTL.
+  - New `delete_session(sid)`.
+- Modify: `backend/config.py`: `RETENTION_HOURS = int(env HAOJI_RETENTION_HOURS or 24)`.
+- Test: `backend/tests/test_retention.py`
+
+**Interfaces:**
+- A background sweep runs at startup, then every 15 min on a daemon thread. It calls `sessions.purge_expired(time.time(), RETENTION_HOURS*3600)`.
+- Retention can be set to 0. That means the transcript is cleared as soon as the client has fetched a `done` status once; a column `fetched_at` records that fetch.
+
+- [ ] **Tests:**
+  - `test_debug_jobs_requires_admin`
+  - `test_cors_not_wildcard`: preflight from `https://evil.example` → no `access-control-allow-origin`.
+  - `test_delete_session`
+  - `test_purge_expired_blanks_text_keeps_row`
+  - `test_retention_zero_purges_after_fetch`
+- [ ] Run them (they should fail), implement, then run them again (they should pass).
+- [ ] Commit `fix(backend): lock debug jobs, narrow CORS, server-side retention and delete`.
+
+### Task 8: OpenAI-compatible LLM provider (the design note's "cloud API" profile)
+
+**Files:**
+- Modify: `backend/llm.py`. Add `OpenAICompatProvider`, which POSTs to `{base}/v1/chat/completions` with an optional Bearer key, applies the same prompt, and runs the same `<think>` strip and s2tw conversion.
+- Modify: `backend/settings.py`. New keys:
+  - `llm_provider` (`ollama` | `openai`, env `LLM_PROVIDER`)
+  - `openai_base_url` (env `OPENAI_BASE_URL`)
+  - `openai_api_key` (env `OPENAI_API_KEY`; **write-only**: `describe()` returns `{"configured": bool}`, never the value)
+- Test: `backend/tests/test_llm_openai.py`
+
+- [ ] **Tests:**
+  - `test_provider_switch_by_setting`
+  - `test_openai_payload_and_auth_header`
+  - `test_api_key_never_returned`
+  - `test_think_block_stripped`
+- [ ] Run them (they should fail), implement, then run them again (they should pass).
+- [ ] Commit.
+
 ## Self-review notes
 
 - Spec §5.1 is covered as follows:
