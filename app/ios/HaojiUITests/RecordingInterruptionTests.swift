@@ -32,14 +32,19 @@ final class RecordingInterruptionTests: XCTestCase {
 
   /// The mm:ss the recorder is showing right now, as seconds.
   private func timerSeconds(file: StaticString = #filePath, line: UInt = #line) -> Int {
-    let clock = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "^\\d{2}:\\d{2}$")).firstMatch
+    // The timer's accessibility label is a sentence (「已錄 00:04」), so match the mm:ss at the end.
+    let clock = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "^(已錄 )?\\d{2}:\\d{2}$")).firstMatch
     XCTAssertTrue(clock.waitForExistence(timeout: 5), "找不到計時器", file: file, line: line)
-    let parts = clock.label.split(separator: ":").compactMap { Int($0) }
+    let parts = clock.label.split(separator: " ").last.map { $0.split(separator: ":").compactMap { Int($0) } } ?? []
     return parts.count == 2 ? parts[0] * 60 + parts[1] : -1
   }
 
   private func startNewMeetingRecording() {
-    tap("新會議")
+    // A fresh install opens on the first-run introduction (no server paired yet). Recording never
+    // needs a server, so skip it the way a user would.
+    let skip = app.buttons["略過介紹"]
+    if skip.waitForExistence(timeout: 3) { skip.tap() }
+    tap("記下來：開始錄音")
     tap("開始錄音")
     assertText("錄音中")
   }
@@ -107,6 +112,8 @@ final class RecordingInterruptionTests: XCTestCase {
     let meeting = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "今天")).firstMatch
     XCTAssertTrue(meeting.waitForExistence(timeout: 10), "列表上找不到剛存的會議")
     meeting.tap()
+    // 繼續錄音 lives in the meeting's 「…」 menu since the Results restructure (#26).
+    tap("更多動作")
     tap("繼續錄音")
 
     assertText("準備接續錄音")

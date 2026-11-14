@@ -78,6 +78,9 @@ const xcargs = [
 ];
 
 console.log(`模擬器 ${device}`);
+// Start from an empty app: the ffprobe pass below reads EVERY part on disk, so seeded scenarios
+// (sim-setup.sh, including the deliberately broken one) would otherwise be judged as test output.
+try { sh('xcrun', ['simctl', 'uninstall', device, BUNDLE]); } catch { /* not installed */ }
 console.log(`跑 XCUITest（畫面層）…\n`);
 const run = spawnSync('xcodebuild', xcargs, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 const log = (run.stdout || '') + (run.stderr || '');

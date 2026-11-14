@@ -13,6 +13,7 @@ let proc;
 beforeAll(async () => {
   proc = spawn(process.execPath, [path.join(__dirname, '..', 'stub-server.mjs'), String(PORT)], {
     env: { ...process.env, STUB_TOKEN: 'e2e' },
+    stdio: 'ignore', // piped stdio keeps handles open and jest never exits on CI
   });
   for (let i = 0; i < 50; i++) {
     try { if ((await fetch(`${base}/health`)).ok) return; } catch {}
@@ -20,7 +21,11 @@ beforeAll(async () => {
   }
   throw new Error('stub did not start');
 });
-afterAll(() => { proc.kill(); });
+afterAll(async () => {
+  const exited = new Promise((r) => proc.once('exit', r));
+  proc.kill();
+  await exited;
+});
 
 const auth = { Authorization: 'Bearer e2e' };
 
