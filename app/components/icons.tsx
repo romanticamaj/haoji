@@ -2,7 +2,7 @@ import React from 'react';
 import {
   AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CircleAlert, Copy, Ellipsis, FileAudio, FileText,
   GripVertical, Image, Loader, Lock, Mic, NotebookPen, Pause, Pencil, Play, RotateCcw, RotateCw,
-  Search, Share, Square, SquareCheck, Trash2, Undo2, UserRound, UsersRound, X, type LucideIcon,
+  Search, Server, Share, Square, SquareCheck, Trash2, Undo2, UserRound, UsersRound, X, type LucideIcon,
 } from 'lucide-react-native';
 import { colors } from '../lib/theme';
 
@@ -54,6 +54,7 @@ export const IconStop = make(Square, colors.onPrimary, { fill: true });
 export const IconUndo = make(Undo2, colors.heading);
 export const IconClose = make(X, colors.heading);
 export const IconUser = make(UserRound, colors.heading);
+export const IconServer = make(Server, colors.heading);
 
 // Content
 export const IconTranscript = make(FileText, colors.muted);

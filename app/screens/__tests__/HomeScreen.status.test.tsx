@@ -1,5 +1,7 @@
 import React from 'react';
-import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+import { render, fireEvent, waitFor, act, within } from '@testing-library/react-native';
+import { colors } from '../../lib/theme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 jest.mock('@react-native-documents/picker', () => ({
   pick: jest.fn(), keepLocalCopy: jest.fn(), types: { audio: 'a', video: 'v' },
@@ -63,10 +65,28 @@ test('unpaired', async () => {
   await waitFor(() => getByLabelText('主機狀態：還沒連接主機'));
 });
 
-test('the status button sits next to search and opens Settings, even with no meetings', async () => {
+test('the status button sits next to search and opens Settings at the 狀態 card, even with no meetings', async () => {
   respond(green);
   const { getByLabelText } = await renderHome();
   await waitFor(() => getByLabelText('主機狀態：主機已連線'));
   await fireEvent.press(getByLabelText('主機狀態：主機已連線'));
-  expect(mockNavigate).toHaveBeenCalledWith('Settings');
+  expect(mockNavigate).toHaveBeenCalledWith('Settings', { focus: 'status' });
+});
+
+// Issue #32 item 6: a Server icon (20) with the status dot as an 8 pt badge, top-right, ringed in surface.
+test('the status button is a server icon with the dot as a ringed badge', async () => {
+  respond(green);
+  const { getByTestId } = await renderHome();
+  await waitFor(() => getByTestId('status-dot-ready'));
+  const btn = getByTestId('home-status');
+  within(btn).getByTestId('home-status-icon');
+  const badge = within(btn).getByTestId('home-status-badge');
+  const st = StyleSheet.flatten(badge.props.style);
+  expect(st.position).toBe('absolute');
+  expect(st.top).toBeDefined();
+  expect(st.right).toBeDefined();
+  const dot = StyleSheet.flatten(within(badge).getByTestId('status-dot-ready').props.style);
+  expect(dot.width).toBe(8);
+  expect(dot.borderWidth).toBe(1.5);
+  expect(dot.borderColor).toBe(colors.surface);
 });

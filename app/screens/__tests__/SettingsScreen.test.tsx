@@ -1,10 +1,12 @@
 import React from 'react';
-import { Alert, Linking } from 'react-native';
+import { Alert, Linking, ScrollView } from 'react-native';
 import { render, fireEvent, act, waitFor } from '@testing-library/react-native';
 
 const mockNavigate = jest.fn();
+let mockParams: any;
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: mockNavigate, addListener: () => () => {} }),
+  useRoute: () => ({ params: mockParams }),
 }));
 
 import SettingsScreen from '../SettingsScreen';
@@ -17,6 +19,7 @@ const respond = (body: any) => { global.fetch = jest.fn().mockResolvedValue({ ok
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockParams = undefined;
   await server.forgetServer();
 });
 afterEach(() => jest.restoreAllMocks());
@@ -103,6 +106,27 @@ test('no 中斷連線 when the address comes from the build, not from pairing', 
   const { getByText, queryByText } = await renderSettings();
   await waitFor(() => getByText('主機已連線'));
   expect(queryByText('中斷連線')).toBeNull();
+});
+
+// Issue #32 item 6: Home's status badge opens Settings with focus: 'status' and lands on 狀態.
+test('focus: status scrolls to the 狀態 card once it is laid out', async () => {
+  const scrollTo = (ScrollView as any).prototype.scrollTo as jest.Mock;
+  respond(green);
+  mockParams = { focus: 'status' };
+  const { getByTestId } = await renderSettings();
+  scrollTo.mockClear();
+  await act(async () => { fireEvent(getByTestId('settings-card-status'), 'layout', { nativeEvent: { layout: { x: 0, y: 320, width: 300, height: 100 } } }); });
+  expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ y: expect.any(Number) }));
+  expect(scrollTo.mock.calls[0][0].y).toBeGreaterThan(0);
+});
+
+test('without focus, Settings opens at the top', async () => {
+  const scrollTo = (ScrollView as any).prototype.scrollTo as jest.Mock;
+  respond(green);
+  const { getByTestId } = await renderSettings();
+  scrollTo.mockClear();
+  await act(async () => { fireEvent(getByTestId('settings-card-status'), 'layout', { nativeEvent: { layout: { x: 0, y: 320, width: 300, height: 100 } } }); });
+  expect(scrollTo).not.toHaveBeenCalled();
 });
 
 test('關於 shows the version and opens the source link', async () => {

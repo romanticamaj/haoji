@@ -171,7 +171,7 @@ export default function HomeScreen() {
         status={{
           tone: srv.summary.tone,
           label: srv.loading ? '正在確認…' : srv.summary.label,
-          onPress: () => nav.navigate('Settings'),
+          onPress: () => nav.navigate('Settings', { focus: 'status' }),
         }}
       />
 

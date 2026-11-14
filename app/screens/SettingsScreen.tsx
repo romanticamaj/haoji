@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useServerStatus } from '../hooks/useServerStatus';
 import { forgetServer } from '../lib/server';
 import { AppText } from '../components/AppText';
@@ -16,7 +16,17 @@ export const SOURCE_URL = 'https://github.com/romanticamaj/haoji';
 // Four cards (spec §5.3 B): 主機 / 狀態 / 隱私 / 關於.
 export default function SettingsScreen() {
   const nav = useNavigation<any>();
+  const route = useRoute<any>();
+  const focus: 'status' | undefined = route?.params?.focus;
   const srv = useServerStatus();
+  // Opened from Home's status badge: land on 狀態 as soon as its card has a position, once.
+  const scrollRef = useRef<ScrollView>(null);
+  const focused = useRef(false);
+  const onStatusLayout = (y: number) => {
+    if (focus !== 'status' || focused.current) return;
+    focused.current = true;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - spacing.lg), animated: true });
+  };
   const { summary } = srv;
   const unpaired = !srv.loading && !srv.base;
 
@@ -28,7 +38,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={styles.content}>
       <Card title="主機">
         {unpaired ? (
           <>
@@ -48,7 +58,7 @@ export default function SettingsScreen() {
         )}
       </Card>
 
-      <Card title="狀態">
+      <Card title="狀態" testID="settings-card-status" onLayout={onStatusLayout}>
         <View
           style={styles.statusRow}
           accessible
@@ -83,9 +93,11 @@ export default function SettingsScreen() {
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children, testID, onLayout }: {
+  title: string; children: React.ReactNode; testID?: string; onLayout?(y: number): void;
+}) {
   return (
-    <View style={styles.cardWrap}>
+    <View style={styles.cardWrap} testID={testID} onLayout={onLayout ? (e) => onLayout(e.nativeEvent.layout.y) : undefined}>
       <AppText variant="section" color="heading" accessibilityRole="header" style={styles.cardTitle}>{title}</AppText>
       <View style={styles.card}>{children}</View>
     </View>
