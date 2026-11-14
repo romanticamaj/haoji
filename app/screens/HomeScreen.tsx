@@ -26,6 +26,7 @@ import { isActive, overallPct } from '../lib/job';
 import { isNotesActive } from '../lib/notesJob';
 import { useImport } from '../hooks/useImport';
 import { useServerStatus } from '../hooks/useServerStatus';
+import { deleteRemote } from '../lib/api';
 
 // Repair crash-truncated WAV headers once per app launch (not on every screen focus).
 let wavRepairDone = false;
@@ -51,6 +52,8 @@ export default function HomeScreen() {
     if (!s) return;
     await store.remove(s.id);
     await deleteSessionFiles(s.id);
+    // Final now, so the server may drop its copy too. Fire-and-forget: never blocks or fails a delete.
+    if (s.backendId) void deleteRemote(s.backendId);
   }, [store]);
 
   // Reload + resume. Resuming is the other half of durable jobs (lib/job.ts): a transcription that

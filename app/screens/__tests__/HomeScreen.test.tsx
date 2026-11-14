@@ -16,6 +16,9 @@ jest.mock('react-native-image-picker', () => ({ launchImageLibrary: jest.fn() })
 import HomeScreen from '../HomeScreen';
 import { StoreProvider } from '../../lib/store-context';
 import { createMemoryStore, SavedSession } from '../../lib/store';
+import * as api from '../../lib/api';
+
+afterEach(() => jest.restoreAllMocks());
 
 const mk = (id: string, t: number, title: string): SavedSession =>
   ({ id, createdAt: t, title, names: {}, unlocked: false, parts: [] });
@@ -100,4 +103,43 @@ test('復原 brings the meeting back and never deletes it', async () => {
   getByText('會議A');
   expect(queryByText('已刪除「會議A」')).toBeNull();
   expect(await store.get('a')).toBeTruthy();
+});
+
+test('a final delete also asks the server to drop its copy (best-effort)', async () => {
+  jest.useFakeTimers();
+  try {
+    const spy = jest.spyOn(api, 'deleteRemote').mockResolvedValue(undefined);
+    const { getByText, getByTestId } = await renderHome([{ ...mk('a', 1, '會議A'), backendId: 'srv-a' }]);
+    await waitFor(() => getByText('會議A'));
+    await act(async () => { fireEvent.press(getByTestId('session-a-delete')); });
+    expect(spy).not.toHaveBeenCalled(); // still undoable
+    await act(async () => { jest.advanceTimersByTime(10000); });
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('srv-a'));
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('復原 never calls the server delete', async () => {
+  const spy = jest.spyOn(api, 'deleteRemote').mockResolvedValue(undefined);
+  const { getByText, getByTestId } = await renderHome([{ ...mk('a', 1, '會議A'), backendId: 'srv-a' }]);
+  await waitFor(() => getByText('會議A'));
+  await act(async () => { fireEvent.press(getByTestId('session-a-delete')); });
+  await act(async () => { fireEvent.press(getByTestId('undo-delete')); });
+  expect(spy).not.toHaveBeenCalled();
+});
+
+test('a meeting that never reached the server is deleted on the phone only', async () => {
+  jest.useFakeTimers();
+  try {
+    const spy = jest.spyOn(api, 'deleteRemote').mockResolvedValue(undefined);
+    const { store, getByText, getByTestId } = await renderHome([mk('a', 1, '會議A')]);
+    await waitFor(() => getByText('會議A'));
+    await act(async () => { fireEvent.press(getByTestId('session-a-delete')); });
+    await act(async () => { jest.advanceTimersByTime(10000); });
+    await waitFor(async () => expect(await store.get('a')).toBeNull());
+    expect(spy).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
 });
