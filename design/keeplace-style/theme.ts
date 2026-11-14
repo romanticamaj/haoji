@@ -11,7 +11,7 @@ const k = {
   primaryDark: '#536550', // active text/icons on light surfaces, pressed primary
   heading: '#262626',     // titles, selected tab label, dark snackbar
   body: '#343630',        // body text
-  muted: '#77746E',       // secondary text, inactive icons, tab labels
+  muted: '#6F6C66',       // secondary text, inactive icons, tab labels
   hint: '#A6A29A',        // placeholder / tertiary text (derived: between muted and outline)
   outline: '#DEDCD3',     // 1px borders and dividers
   accent: '#C58D75',      // warm peach — KEEPLACE "wishlist"; used sparingly (unnamed speaker, live recording)
