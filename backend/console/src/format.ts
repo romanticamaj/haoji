@@ -13,7 +13,7 @@ export const mbToGb = (mb: number) => (mb / 1024).toFixed(1);
 /** 18.5 → "18.5 秒", 125 → "2 分 5 秒". */
 export function formatDuration(s: number | null | undefined): string {
   if (s == null || !Number.isFinite(s)) return '—';
-  if (s < 60) return `${s < 10 ? s.toFixed(1).replace(/\.0$/, '') : Math.round(s)} 秒`;
+  if (s < 60) return `${s.toFixed(1).replace(/\.0$/, '')} 秒`;
   const m = Math.floor(s / 60);
   const rest = Math.round(s % 60);
   if (m < 60) return rest ? `${m} 分 ${rest} 秒` : `${m} 分`;
