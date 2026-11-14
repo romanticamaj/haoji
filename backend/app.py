@@ -10,7 +10,7 @@ import math, os, json, re, time, logging, threading
 from typing import Optional
 from logging.handlers import RotatingFileHandler
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
@@ -38,7 +38,11 @@ log = logging.getLogger("haoji")
 logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 
 app = FastAPI(title="好記 Haoji API")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# No wildcard CORS: the phone app doesn't need CORS at all and the console is same-origin. A deployer
+# who serves another web client can list its origin(s) in HAOJI_CORS_ORIGINS.
+_cors = [o.strip() for o in (os.environ.get("HAOJI_CORS_ORIGINS") or "").split(",") if o.strip()]
+if _cors:
+    app.add_middleware(CORSMiddleware, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"])
 
 # skip noisy pollers: /health and the GET status poll during transcription
 _SKIP_LOG = re.compile(r"^/health$|^/api/sessions/[^/]+$")
@@ -96,6 +100,7 @@ os.makedirs(PARTS_DIR, exist_ok=True)
 def _startup():
     sessions.init_db()
     settings.init()
+    threading.Thread(target=_retention_sweep, daemon=True, name="retention").start()
     # Never log the token itself — only where to read it.
     if auth.admin_token_source() == "env":
         log.info("console: /console — admin token set by HAOJI_ADMIN_TOKEN")
@@ -406,6 +411,8 @@ def session_status(sid: str):
     out = {"status": s["status"], "pct": s["pct"], "message": s["message"]}
     if s.get("transcript"):
         out["transcript"] = json.loads(s["transcript"])
+        if s["status"] == "done":
+            sessions.mark_fetched(sid, time.time())
     if s.get("error"):
         out["error"] = s["error"]
     # Notes are reported here too so a client that vanished mid-generation (backgrounded, killed) can
@@ -426,7 +433,27 @@ def session_status(sid: str):
             out["notes_queue_position"] = pos
     return out
 
-@app.get("/api/debug/jobs")
+@app.delete("/api/sessions/{sid}")
+def delete_session(sid: str):
+    """The phone deleted this meeting: drop the server copy too (parts are already gone)."""
+    if not sessions.delete_session(sid):
+        return JSONResponse({"error": "查無此工作"}, status_code=404)
+    log.info("[%s] session deleted by client", sid)
+    return {"ok": True}
+
+
+def _retention_sweep():
+    while True:
+        try:
+            n = sessions.purge_expired(time.time(), config.RETENTION_HOURS * 3600)
+            if n:
+                log.info("retention: purged transcript/notes of %d session(s)", n)
+        except Exception as e:
+            log.warning("retention sweep failed: %s", e)
+        time.sleep(60 if config.RETENTION_HOURS == 0 else 900)
+
+
+@app.get("/api/debug/jobs", dependencies=[Depends(auth.require_admin)])
 def debug_jobs():
     """What the server is actually working on — the first thing to check when something 'hangs'.
 

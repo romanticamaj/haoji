@@ -24,7 +24,9 @@ def init_db():
                           ("notes_error", "TEXT"), ("expected_parts", "INTEGER"),
                           ("notes_pct", "REAL"), ("notes_message", "TEXT"),
                           # push_*: where to say "done" once transcription ends. Cleared after use.
-                          ("push_token", "TEXT"), ("push_env", "TEXT"), ("push_title", "TEXT")):
+                          ("push_token", "TEXT"), ("push_env", "TEXT"), ("push_title", "TEXT"),
+                          # fetched_at: first time the client collected a finished transcript (retention=0)
+                          ("fetched_at", "REAL")):
             if col not in cols:
                 c.execute(f"ALTER TABLE sessions ADD COLUMN {col} {decl}")
 
@@ -129,3 +131,29 @@ def parts_complete(sid):
     parts = get_parts(sid)
     filled = sum(1 for p in parts[:expected] if p)
     return filled >= expected
+
+
+def delete_session(sid):
+    with _conn() as c:
+        return c.execute("DELETE FROM sessions WHERE id=?", (sid,)).rowcount > 0
+
+
+def mark_fetched(sid, now):
+    with _conn() as c:
+        c.execute("UPDATE sessions SET fetched_at=? WHERE id=? AND fetched_at IS NULL", (now, sid))
+
+
+def purge_expired(now, ttl_s):
+    """Blank the transcript and notes of finished sessions older than ttl_s (the row stays so a late
+    client gets status "expired" instead of 404). ttl_s == 0 means "as soon as the phone has collected
+    it": only rows with fetched_at set are purged. Never touches a session whose notes are still being
+    generated. Returns how many rows were purged."""
+    busy = "COALESCE(notes_status,'') NOT IN ('queued','running')"
+    with _conn() as c:
+        if ttl_s <= 0:
+            q = (f"UPDATE sessions SET transcript=NULL, notes=NULL, status='expired', message='' "
+                 f"WHERE status IN ('done','error') AND fetched_at IS NOT NULL AND fetched_at <= ? AND {busy}")
+            return c.execute(q, (now,)).rowcount
+        q = (f"UPDATE sessions SET transcript=NULL, notes=NULL, status='expired', message='' "
+             f"WHERE status IN ('done','error') AND created < ? AND {busy}")
+        return c.execute(q, (now - ttl_s,)).rowcount

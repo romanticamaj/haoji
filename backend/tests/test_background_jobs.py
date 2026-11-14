@@ -12,6 +12,15 @@ from fastapi.testclient import TestClient
 import app as appmod, sessions
 
 
+# /api/debug/jobs is admin-only (it used to leak session ids — docs/system-design-note.md §4).
+_ADMIN = {"Authorization": "Bearer test-admin"}
+
+
+@pytest.fixture(autouse=True)
+def _admin_token(monkeypatch):
+    monkeypatch.setenv("HAOJI_ADMIN_TOKEN", "test-admin")
+
+
 @pytest.fixture(autouse=True)
 def _reset_module_state():
     """app.py keeps in-flight/queued sets at module level, so one test's leftovers would otherwise
@@ -231,7 +240,7 @@ def test_notes_generation_does_not_share_the_transcription_pool(tmp_path, monkey
 def test_debug_jobs_reports_what_the_server_is_working_on(tmp_path, monkeypatch):
     _db(tmp_path, monkeypatch)
     c = TestClient(appmod.app)
-    j = c.get("/api/debug/jobs").json()
+    j = c.get("/api/debug/jobs", headers=_ADMIN).json()
     assert set(j) == {"transcribe", "notes"}
     for k in ("in_flight", "workers", "queued"):
         assert k in j["transcribe"] and k in j["notes"]
@@ -354,7 +363,7 @@ def test_a_queued_notes_job_is_reported_as_waiting_not_generating(tmp_path, monk
     assert c.get(f"/api/sessions/{sid2}").json()["notes_queue_position"] == 2
     # and the debug endpoint lists who is waiting
     assert appmod.notes_queue_position(sid) == 1
-    assert c.get("/api/debug/jobs").json()["notes"]["waiting"] == [sid, sid2]
+    assert c.get("/api/debug/jobs", headers=_ADMIN).json()["notes"]["waiting"] == [sid, sid2]
 
 
 def test_a_job_that_starts_running_leaves_the_queue(tmp_path, monkeypatch):
@@ -380,7 +389,7 @@ def test_a_job_that_starts_running_leaves_the_queue(tmp_path, monkeypatch):
 
     assert seen_status["while_running"] == "running"
     assert seen_status["position"] == 0            # left the queue
-    assert c.get("/api/debug/jobs").json()["notes"]["waiting"] == []
+    assert c.get("/api/debug/jobs", headers=_ADMIN).json()["notes"]["waiting"] == []
 
 
 def test_recognition_progress_moves_instead_of_freezing(tmp_path, monkeypatch):
