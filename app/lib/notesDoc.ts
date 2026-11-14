@@ -35,7 +35,7 @@ export function stripLeadingH1(notes: string): string {
 // the AI title — a title the user typed themselves is left alone.
 export function looksLikeAutoTitle(title: string): boolean {
   if (!title) return true;
-  return /\d/.test(title) && /[:：]/.test(title) && /[/\-年]/.test(title);
+  return /\d/.test(title) && /[:：]/.test(title) && /[/\-年月]/.test(title);
 }
 
 /**

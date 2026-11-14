@@ -17,6 +17,7 @@ jest.mock('../audioMerge', () => ({
 }));
 import * as rec from '../recordings';
 import * as audioMerge from '../audioMerge';
+import { zhDateTime } from '../dateFormat';
 
 const dir = (name: string): any => ({ name, path: `/doc/haoji/${name}`, isDirectory: () => true, isFile: () => false });
 const file = (name: string, path: string, size = 100, mtime = new Date(1_000)): any =>
@@ -107,6 +108,9 @@ test('recoverOrphanedRecordings rebuilds a draft for an on-disk session with no 
     { uri: 'haoji/orphan1/part-1.m4a', durationMs: 0 },
   ]);
   expect(out[0].createdAt).toBe(5_000);
+  // The title reads in zh-TW (「10月29日 下午4:31」), never an en-US "1/1/1970, 8:00:05 AM".
+  expect(out[0].title).toBe(`已復原的錄音（${zhDateTime(5_000)}）`);
+  expect(out[0].title).not.toMatch(/AM|PM/);
 });
 
 test('recoverOrphanedRecordings skips a dir whose parts are all empty (0-byte)', async () => {
