@@ -57,10 +57,11 @@ def _find(name, fallback):
         return p
     return fallback if os.path.exists(fallback) else name
 
-# Windows dev-box fallback; inside the container ffmpeg is on PATH so _find wins.
-_WINGET = (r"C:\Users\gary.hsieh\AppData\Local\Microsoft\WinGet\Packages"
-           r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin")
-FFMPEG = os.environ.get("FFMPEG_PATH") or _find("ffmpeg", os.path.join(_WINGET, "ffmpeg.exe"))
-FFPROBE = os.environ.get("FFPROBE_PATH") or _find("ffprobe", os.path.join(_WINGET, "ffprobe.exe"))
+# ffmpeg/ffprobe: PATH (the Docker image ships them), or FFMPEG_PATH / FFPROBE_PATH.
+FFMPEG = os.environ.get("FFMPEG_PATH") or _find("ffmpeg", "ffmpeg")
+FFPROBE = os.environ.get("FFPROBE_PATH") or _find("ffprobe", "ffprobe")
+
+# Built control console (backend/console → npm run build). Served at /console when present.
+CONSOLE_DIR = os.environ.get("HAOJI_CONSOLE_DIR") or os.path.join(ROOT, "console", "dist")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)

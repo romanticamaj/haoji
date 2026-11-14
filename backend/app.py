@@ -553,6 +553,17 @@ async def analyze(sid: str, req: Request):
     log.info("[%s] analyze done: %d chars notes, took %.0fs", sid, len(notes), time.time() - t0)
     return {"notes": notes, "model": model}
 
+# Control console (static SPA). Mounted last so it never shadows an API route.
+if os.path.isdir(config.CONSOLE_DIR):
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import RedirectResponse
+    app.mount("/console", StaticFiles(directory=config.CONSOLE_DIR, html=True), name="console")
+
+    @app.get("/", include_in_schema=False)
+    def _root():
+        return RedirectResponse("/console/")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=config.WEB_HOST, port=config.WEB_PORT, log_level="warning")
