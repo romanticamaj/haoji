@@ -2,6 +2,7 @@ import RNFS from 'react-native-fs';
 import type { SavedSession } from './store';
 import * as audioMerge from './audioMerge';
 import { AUDIO_EXTS } from './importMedia';
+import { zhDateTime } from './dateFormat';
 
 // RNFS wants bare POSIX paths; the rest of the app wants file:// URIs. Convert at the edges.
 //
@@ -152,7 +153,7 @@ export async function recoverOrphanedRecordings(knownIds: Set<string>): Promise<
     // header so it actually plays instead of surfacing as '音檔無法播放'.
     for (const f of partFiles) if (f.name.endsWith('.wav')) await repairWavHeader(f.path);
     const at = partFiles[0].mtime instanceof Date ? partFiles[0].mtime.getTime() : Date.now();
-    out.push({ id: d.name, createdAt: at, title: `已復原的錄音（${new Date(at).toLocaleString()}）`, names: {}, unlocked: false, parts });
+    out.push({ id: d.name, createdAt: at, title: `已復原的錄音（${zhDateTime(at)}）`, names: {}, unlocked: false, parts });
   }
   return out;
 }

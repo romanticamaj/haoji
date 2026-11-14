@@ -7,6 +7,7 @@ import { ensureJob, restartJob, onJobChange } from '../lib/jobRunner';
 import { overallPct, stageOf } from '../lib/job';
 import { transcribeGate } from '../lib/serverStatus';
 import { useServerStatus } from '../hooks/useServerStatus';
+import { useAndroidBack } from '../hooks/useAndroidBack';
 import { AppText } from '../components/AppText';
 import { SecondaryButton } from '../components/Buttons';
 import { TranscribeButton } from '../components/TranscribeButton';
@@ -37,6 +38,13 @@ export default function ProcessingScreen() {
   // Retrying needs a server: unpaired → offer to connect; offline → say so and keep 重試 disabled.
   const srv = useServerStatus();
   const gate = transcribeGate(srv.summary, srv.loading);
+  // Android back goes Home (the job keeps running), not back into Review/Record. Only while this
+  // screen is on top — Pair can be pushed over it from the unpaired gate.
+  useAndroidBack(() => {
+    if (nav.isFocused && !nav.isFocused()) return false;
+    nav.popToTop();
+    return true;
+  });
 
   useEffect(() => {
     let alive = true;

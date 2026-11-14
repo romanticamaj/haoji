@@ -3,12 +3,12 @@
  */
 // The Maestro stub must keep speaking the same contract as the real server, or device e2e fails for
 // reasons that have nothing to do with the app. Runs the stub as a child process and talks HTTP to it.
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+const { spawn } = require('child_process');
+const path = require('path');
 
 const PORT = 17799 + Math.floor(Math.random() * 100);
 const base = `http://127.0.0.1:${PORT}`;
-let proc: ChildProcess;
+let proc;
 
 beforeAll(async () => {
   proc = spawn(process.execPath, [path.join(__dirname, '..', 'stub-server.mjs'), String(PORT)], {
@@ -29,7 +29,7 @@ test('status matches the public contract and is all green', async () => {
   const s = await (await fetch(`${base}/api/status`)).json();
   expect(Object.keys(s).sort()).toEqual(Object.keys(contract).sort());
   expect(s.ok).toBe(true);
-  expect(s.checks.every((c: { ok: boolean }) => c.ok)).toBe(true);
+  expect(s.checks.every((c) => c.ok)).toBe(true);
 });
 
 test('sessions require the pairing token when one is set', async () => {

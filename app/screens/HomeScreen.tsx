@@ -13,20 +13,26 @@ import { BrandHeader } from '../components/BrandHeader';
 import { BottomActionBar } from '../components/BottomActionBar';
 import { EmptyState } from '../components/EmptyState';
 import { UndoSnackbar } from '../components/UndoSnackbar';
-import {
-  IconAlert, IconAudioLines, IconCheck, IconFile, IconImage, IconLoader, IconSearch,
-} from '../components/icons';
+import { ImportSheet } from '../components/ImportSheet';
+import { SearchResults } from '../components/SearchResults';
+import { IconAudioLines, IconFile, IconSearch, IconUser } from '../components/icons';
 import { colors, layout, radius, spacing, tabularNums, speakerColor, typography } from '../lib/theme';
 import {
-  groupSessions, relativeDay, durationLabel, speakerCount, avatarSpec, hasTranscript, hasNotes,
+  groupSessions, relativeDay, durationLabel, speakerCount, avatarSpec, inlineStatus,
 } from '../lib/sessionList';
+import { searchSessions, type SearchHit } from '../lib/search';
 import { promoteTitleFromNotes } from '../lib/notesDoc';
 import { resumeAllJobs, onJobChange } from '../lib/jobRunner';
-import { isActive, overallPct } from '../lib/job';
-import { isNotesActive } from '../lib/notesJob';
 import { useImport } from '../hooks/useImport';
 import { useServerStatus } from '../hooks/useServerStatus';
 import { haptic } from '../lib/haptics';
+import { deleteRemote } from '../lib/api';
+
+/** Search runs this long after the last keystroke, so typing a word doesn't search every letter. */
+export const SEARCH_DEBOUNCE_MS = 150;
+// The import sheet slides away before a picker is presented: iOS refuses to present the picker over
+// a modal that is still dismissing.
+const SHEET_CLOSE_MS = 350;
 
 // Repair crash-truncated WAV headers once per app launch (not on every screen focus).
 let wavRepairDone = false;
@@ -39,6 +45,8 @@ export default function HomeScreen() {
   const [loaded, setLoaded] = useState(false);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
   const imp = useImport({ leave: 'navigate' });
   const srv = useServerStatus();
 
@@ -52,6 +60,8 @@ export default function HomeScreen() {
     if (!s) return;
     await store.remove(s.id);
     await deleteSessionFiles(s.id);
+    // Final now, so the server may drop its copy too. Fire-and-forget: never blocks or fails a delete.
+    if (s.backendId) void deleteRemote(s.backendId);
   }, [store]);
 
   // Reload + resume. Resuming is the other half of durable jobs (lib/job.ts): a transcription that
@@ -109,21 +119,37 @@ export default function HomeScreen() {
 
   const visible = useMemo(() => items.filter((s) => s.id !== pending?.id), [items, pending]);
 
-  // Search matches the title, case-insensitive.
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return visible;
-    return visible.filter((s) => s.title.toLowerCase().includes(q));
-  }, [visible, query]);
+  // Search (lib/search): title, speaker names, notes and transcript, debounced.
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [query]);
+  const activeQuery = searching ? debounced : '';
+  const hits = useMemo(() => (activeQuery ? searchSessions(visible, activeQuery) : []), [visible, activeQuery]);
+  const byId = useMemo(() => new Map(visible.map((s) => [s.id, s])), [visible]);
+  const openHit = (h: SearchHit) => {
+    const session = byId.get(h.sessionId);
+    nav.navigate('Results', {
+      sessionId: h.sessionId,
+      ...(session ? { session } : {}),
+      // Results scrolling to this turn lands separately; the param is already passed.
+      ...(h.segmentIndex != null ? { focusSegment: h.segmentIndex } : {}),
+    });
+  };
 
   // Bucket into 今天 / 本週 / 更早. `now` is captured per render; order within a group is newest-first.
   const sections = useMemo(() => {
     const now = Date.now();
-    return groupSessions(filtered, now).map((g) => ({ title: g.key, data: g.items, now }));
-  }, [filtered]);
+    return groupSessions(visible, now).map((g) => ({ title: g.key, data: g.items, now }));
+  }, [visible]);
 
   const toggleSearch = () => {
-    setSearching((on) => { if (on) setQuery(''); return !on; });
+    setSearching((on) => { if (on) { setQuery(''); setDebounced(''); } return !on; });
+  };
+
+  const importAfterClose = (run: () => void) => {
+    setImportOpen(false);
+    setTimeout(run, SHEET_CLOSE_MS);
   };
 
   if (imp.busyMsg) {
@@ -175,12 +201,14 @@ export default function HomeScreen() {
           title="還沒有任何會議"
           description="按下方的「記下來」開始錄音，或匯入一段音檔。"
         />
-      ) : filtered.length === 0 ? (
+      ) : activeQuery && hits.length === 0 ? (
         <EmptyState
           icon={<IconSearch size={28} color={colors.muted} />}
-          title={`找不到「${query.trim()}」`}
+          title={`找不到「${activeQuery}」`}
           description="換個關鍵字試試，或清除搜尋看全部會議。"
         />
+      ) : activeQuery ? (
+        <SearchResults hits={hits} titleOf={(id) => byId.get(id)?.title ?? ''} onOpen={openHit} />
       ) : (
         <SectionList
           sections={sections}
@@ -220,10 +248,18 @@ export default function HomeScreen() {
       />
 
       <BottomActionBar
-        left={{ label: '匯入', a11y: '匯入音檔', Icon: IconFile, onPress: imp.pickFiles, testID: 'home-import' }}
+        left={{ label: '匯入', a11y: '匯入音檔或影片', Icon: IconFile, onPress: () => setImportOpen(true), testID: 'home-import' }}
         onRecord={() => nav.navigate('Record')}
-        right={{ label: '影片', a11y: '從相簿選影片', Icon: IconImage, onPress: imp.pickVideo, testID: 'home-video' }}
+        right={{ label: '設定', a11y: '設定與資料', Icon: IconUser, onPress: () => nav.navigate('Settings'), testID: 'home-settings' }}
       />
+
+      {importOpen && (
+        <ImportSheet
+          onClose={() => setImportOpen(false)}
+          onAudio={() => importAfterClose(imp.pickFiles)}
+          onVideo={() => importAfterClose(imp.pickVideo)}
+        />
+      )}
     </View>
   );
 }
@@ -232,9 +268,8 @@ function SessionCard({ session, now, onPress }: { session: SavedSession; now: nu
   const dur = durationLabel(session);
   const speakers = speakerCount(session);
   const { initials, overflow } = avatarSpec(session);
-  const transcribed = hasTranscript(session);
-  const noted = hasNotes(session);
-  const meta = [relativeDay(session.createdAt, now), dur, speakers > 0 ? `${speakers} 位講者` : null]
+  // The status rides at the end of the meta line (· 已有逐字稿 / · 處理中 / · 還沒生成).
+  const meta = [relativeDay(session.createdAt, now), dur, speakers > 0 ? `${speakers} 位講者` : null, inlineStatus(session)]
     .filter(Boolean).join(' · ');
 
   return (
@@ -247,61 +282,21 @@ function SessionCard({ session, now, onPress }: { session: SavedSession; now: nu
       <AppText variant="cardTitle" color="heading" numberOfLines={1} style={styles.cardTitle}>{session.title}</AppText>
       <AppText variant="small" color="muted" style={tabularNums}>{meta}</AppText>
 
-      <View style={styles.foot}>
-        {initials.length > 0 && (
-          <View style={styles.avatars}>
-            {initials.map((ch, i) => (
-              <View key={i} style={[styles.av, { backgroundColor: speakerColor(i), marginLeft: i === 0 ? 0 : -6 }]}>
-                <AppText variant="small" color="onPrimary" style={styles.avText}>{ch}</AppText>
-              </View>
-            ))}
-            {overflow > 0 && (
-              <View style={[styles.av, styles.avMore, { marginLeft: -6 }]}>
-                <AppText variant="small" color="muted" style={styles.avText}>+{overflow}</AppText>
-              </View>
-            )}
-          </View>
-        )}
-        <View style={styles.statuses}>
-          <SessionStatus session={session} transcribed={transcribed} noted={noted} />
+      {initials.length > 0 && (
+        <View style={styles.avatars}>
+          {initials.map((ch, i) => (
+            <View key={i} style={[styles.av, { backgroundColor: speakerColor(i), marginLeft: i === 0 ? 0 : -6 }]}>
+              <AppText variant="small" color="onPrimary" style={styles.avText}>{ch}</AppText>
+            </View>
+          ))}
+          {overflow > 0 && (
+            <View style={[styles.av, styles.avMore, { marginLeft: -6 }]}>
+              <AppText variant="small" color="muted" style={styles.avText}>+{overflow}</AppText>
+            </View>
+          )}
         </View>
-      </View>
-    </Pressable>
-  );
-}
-
-// Inline icon + text statuses — never coloured pills (GUIDELINE §7 Card).
-function SessionStatus({ session, transcribed, noted }: { session: SavedSession; transcribed: boolean; noted: boolean }) {
-  if (isActive(session.job)) {
-    return <Status icon={<IconLoader size={13} />} text={`整理中 ${Math.round(overallPct(session.job!) * 100)}%`} tone="primaryDark" />;
-  }
-  if (session.job?.stage === 'error' && !transcribed) {
-    return <Status icon={<IconAlert size={13} />} text="整理沒有完成" tone="danger" />;
-  }
-  return (
-    <>
-      {isNotesActive(session.notesJob) && (
-        // Notes are the slowest step, so their progress shows right here rather than inside the meeting.
-        <Status
-          icon={<IconLoader size={13} />}
-          text={session.notesJob?.stage === 'queued' ? '排隊中…' : '正在寫會議記錄…'}
-          tone="primaryDark"
-        />
       )}
-      {transcribed && <Status icon={<IconCheck size={13} />} text="逐字稿" tone="primaryDark" />}
-      {noted ? <Status icon={<IconCheck size={13} />} text="會議記錄" tone="primaryDark" />
-        : transcribed && !isNotesActive(session.notesJob) ? <Status text="還沒有會議記錄" tone="muted" />
-        : !transcribed ? <Status text="還沒有逐字稿" tone="muted" /> : null}
-    </>
-  );
-}
-
-function Status({ icon, text, tone }: { icon?: React.ReactNode; text: string; tone: 'primaryDark' | 'muted' | 'danger' }) {
-  return (
-    <View style={styles.status}>
-      {icon}
-      <AppText variant="small" color={tone}>{text}</AppText>
-    </View>
+    </Pressable>
   );
 }
 
@@ -330,14 +325,11 @@ const styles = StyleSheet.create({
   cardPressed: { opacity: 0.8 },
   cardTitle: { fontWeight: '600' },
 
-  foot: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, gap: spacing.md },
-  avatars: { flexDirection: 'row', alignItems: 'center' },
+  avatars: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm },
   av: {
     width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1.5, borderColor: colors.surface,
   },
   avText: { fontSize: 11, lineHeight: 13, fontWeight: '600' },
   avMore: { backgroundColor: colors.primarySoft },
-  statuses: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: spacing.md },
-  status: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
 });

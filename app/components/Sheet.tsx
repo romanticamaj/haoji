@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppText } from './AppText';
 import { colors, layout, radius, spacing } from '../lib/theme';
+import { useAndroidBack } from '../hooks/useAndroidBack';
 
 // The one bottom sheet (KEEPLACE OptionSheet, GUIDELINE §7): slides up over the dim overlay, surface
 // with a 24 top radius, `section` title, safe-area padding. Tapping the backdrop closes it.
@@ -18,6 +19,9 @@ export function Sheet({ title, subtitle, onClose, children, footer, testID, scri
   maxHeight?: `${number}%` | number;
 }) {
   const insets = useSafeAreaInsets();
+  // Android back closes the sheet first (registered after the screen, so it runs before it). The
+  // Modal's onRequestClose covers the native path; this covers the BackHandler chain.
+  useAndroidBack(() => { onClose(); return true; });
   return (
     <Modal transparent visible animationType="slide" onRequestClose={onClose}>
       <View style={styles.root}>

@@ -16,6 +16,9 @@ jest.mock('react-native-image-picker', () => ({ launchImageLibrary: jest.fn() })
 import HomeScreen from '../HomeScreen';
 import { StoreProvider } from '../../lib/store-context';
 import { createMemoryStore, SavedSession } from '../../lib/store';
+import * as api from '../../lib/api';
+
+afterEach(() => jest.restoreAllMocks());
 
 const mk = (id: string, t: number, title: string): SavedSession =>
   ({ id, createdAt: t, title, names: {}, unlocked: false, parts: [] });
@@ -46,11 +49,11 @@ test('lists saved sessions newest-first', async () => {
   getByText('會議A');
 });
 
-test('has the 記下來 record action, plus import and video in the bottom bar', async () => {
+test('has the 記下來 record action, plus 匯入 and 設定 in the bottom bar', async () => {
   const { getByLabelText } = await renderHome([]);
   await waitFor(() => getByLabelText('記下來：開始錄音'));
-  getByLabelText('匯入音檔');
-  getByLabelText('從相簿選影片');
+  getByLabelText('匯入音檔或影片');
+  getByLabelText('設定與資料');
 });
 
 test('search filters the list by title (case-insensitive) and shows a no-match message', async () => {
@@ -110,4 +113,43 @@ test('deleting a meeting fires the warning haptic once', async () => {
   await waitFor(() => getByText('會議A'));
   await act(async () => { fireEvent.press(getByTestId('session-a-delete')); });
   expect(trigger.mock.calls.map((c) => c[0])).toEqual(['notificationWarning']);
+});
+
+test('a final delete also asks the server to drop its copy (best-effort)', async () => {
+  jest.useFakeTimers();
+  try {
+    const spy = jest.spyOn(api, 'deleteRemote').mockResolvedValue(undefined);
+    const { getByText, getByTestId } = await renderHome([{ ...mk('a', 1, '會議A'), backendId: 'srv-a' }]);
+    await waitFor(() => getByText('會議A'));
+    await act(async () => { fireEvent.press(getByTestId('session-a-delete')); });
+    expect(spy).not.toHaveBeenCalled(); // still undoable
+    await act(async () => { jest.advanceTimersByTime(10000); });
+    await waitFor(() => expect(spy).toHaveBeenCalledWith('srv-a'));
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test('復原 never calls the server delete', async () => {
+  const spy = jest.spyOn(api, 'deleteRemote').mockResolvedValue(undefined);
+  const { getByText, getByTestId } = await renderHome([{ ...mk('a', 1, '會議A'), backendId: 'srv-a' }]);
+  await waitFor(() => getByText('會議A'));
+  await act(async () => { fireEvent.press(getByTestId('session-a-delete')); });
+  await act(async () => { fireEvent.press(getByTestId('undo-delete')); });
+  expect(spy).not.toHaveBeenCalled();
+});
+
+test('a meeting that never reached the server is deleted on the phone only', async () => {
+  jest.useFakeTimers();
+  try {
+    const spy = jest.spyOn(api, 'deleteRemote').mockResolvedValue(undefined);
+    const { store, getByText, getByTestId } = await renderHome([mk('a', 1, '會議A')]);
+    await waitFor(() => getByText('會議A'));
+    await act(async () => { fireEvent.press(getByTestId('session-a-delete')); });
+    await act(async () => { jest.advanceTimersByTime(10000); });
+    await waitFor(async () => expect(await store.get('a')).toBeNull());
+    expect(spy).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
 });

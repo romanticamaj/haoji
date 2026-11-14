@@ -120,6 +120,16 @@ export async function analyzeInBackground(
   }, 20000));
 }
 
+// The meeting was deleted on the phone: ask the server to drop its copy too (transcript, notes).
+// Best-effort and fire-and-forget — the phone is the source of truth, so being unpaired, offline,
+// or the server not knowing the id must never surface as an error.
+export async function deleteRemote(id: string): Promise<void> {
+  try {
+    if (!(await serverBase())) return;
+    await call(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }, 20000);
+  } catch { /* best-effort */ }
+}
+
 /** GET /api/status (public). Throws if the answer isn't a Haoji status; NotPairedError when unpaired. */
 export async function getStatus(): Promise<PublicStatus> {
   const body = await asJson(await call('/api/status', {}, VALIDATE_TIMEOUT_MS));

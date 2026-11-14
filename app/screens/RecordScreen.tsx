@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Pressable, StyleSheet, ActivityIndicator, Linking } from 'react-native';
+import { View, Pressable, StyleSheet, ActivityIndicator, Linking, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useRecorder } from '../hooks/useRecorder';
 import { useImport } from '../hooks/useImport';
+import { useAndroidBack } from '../hooks/useAndroidBack';
 import { mergeSessionParts } from '../lib/recordings';
 import { mmss } from '../lib/transcript';
 import { useStore } from '../lib/store-context';
@@ -115,6 +116,17 @@ export default function RecordScreen() {
   const isRec = rec.state === 'recording';
   const isPaused = rec.state === 'paused';
   const isStarting = rec.state === 'starting';
+
+  // Android back mid-take asks first. 結束 is exactly the stop button (onStop → rec.stop(), which
+  // finalizes the part per useRecorder's C1/I2 ordering, then saves and opens Review) — back never
+  // drops a take on the floor. Idle → back is left to navigation.
+  useAndroidBack(() => {
+    Alert.alert('要結束這段錄音嗎？', '錄好的部分會留在手機上。', [
+      { text: '繼續錄音', style: 'cancel' },
+      { text: '結束', onPress: () => { void onStop(); } },
+    ]);
+    return true;
+  }, isRec || isPaused);
 
   if (busyMsg) {
     return (
