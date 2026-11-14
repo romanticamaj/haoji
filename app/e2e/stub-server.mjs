@@ -20,7 +20,7 @@ status.checks = status.checks.map((c) => ({ ...c, ok: true, hint: '' }));
 export const TRANSCRIPT = {
   segments: [
     { start: 0, end: 4.2, speaker: 'SPEAKER_00', text: '今天主要確認下一季的產品方向。' },
-    { start: 4.2, end: 9.8, speaker: 'SPEAKER_01', text: '我這邊補充一下時程，預計三月上線。' },
+    { start: 4.2, end: 9.8, speaker: 'SPEAKER_01', text: '我這邊補充一下時程，預計 Q1 上線。' },
     { start: 9.8, end: 14.0, speaker: 'SPEAKER_00', text: '好，那我們就照這個排。' },
   ],
   speakers: ['SPEAKER_00', 'SPEAKER_01'],

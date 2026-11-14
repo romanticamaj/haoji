@@ -4,9 +4,10 @@ appId: com.garyhsieh.haoji
 - launchApp
 - tapOn:
     id: "home-search-toggle"
-- inputText: "時程"
+# Maestro's iOS driver can't type CJK, so the stub transcript carries an ASCII token to search for.
+- inputText: "Q1"
 - extendedWaitUntil:
-    visible: ".*時程.*"
+    visible: ".*Q1.*"
     timeout: 5000
-- tapOn: ".*時程.*"
+- tapOn: ".*Q1.*"
 - assertVisible: "逐字稿"
