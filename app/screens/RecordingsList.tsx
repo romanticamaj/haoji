@@ -20,20 +20,47 @@ type Part = { uri: string; durationMs: number };
 
 // Imperative handle the transcript uses to jump the player: given a GLOBAL meeting time (ms), find the
 // right part + offset and play from there. Exposed via forwardRef; see ResultsScreen wiring.
-export type RecordingsHandle = { seekToGlobal(globalMs: number): void };
+export type RecordingsHandle = {
+  seekToGlobal(globalMs: number): void;
+  /** Play/pause from outside (the Results mini player): pauses whatever plays, else plays the last-used part. */
+  toggle(): void;
+  /** Next playback speed, applied to every part. */
+  cycleSpeed(): void;
+};
+
+/** What the docked mini player needs to draw itself. Position comes through onProgress. */
+export type PlayerStatus = { playing: boolean; totalMs: number; speed: number };
 
 // What each row registers with the list: stop (used when another row starts) + playFrom (seek to an
-// offset within this part and start playing). Richer than the raw waveform ref so a transcript tap can
-// drive the row through its own play logic (keeps `playing`/startedRef in sync — no state desync).
-type RowHandle = { stop: () => void; playFrom: (offsetMs: number) => void };
+// offset within this part and start playing) + toggle (its own play/pause button). Richer than the raw
+// waveform ref so outside callers drive the row through its own play logic (keeps `playing`/startedRef
+// in sync — no state desync).
+type RowHandle = { stop: () => void; playFrom: (offsetMs: number) => void; toggle: () => void };
+
+// Export the raw recording out to another app (Files, AirDrop, Messages…). Each part is shared as a
+// file:// url the OS share sheet can read; several parts of one meeting go out together.
+export async function exportParts(parts: Part[]): Promise<void> {
+  if (parts.length === 0) return;
+  const urls = parts.map((p) => resolvePartUri(p.uri));
+  const type = parts.every((p) => p.uri.endsWith('.wav')) ? 'audio/wav' : 'audio/m4a';
+  try {
+    await Share.open({ urls, type, failOnCancel: false });
+  } catch { /* user dismissed the share sheet — not an error */ }
+}
 
 // The audio player is the native `react-native-audio-waveform` static Waveform: it extracts the REAL
 // waveform from each part's file, renders it full-width, and owns play/pause + drag-to-scrub seeking
 // with an accurate playhead (this replaced the hand-rolled nitro-sound player, whose fake bars never
 // lined up and whose seek jumped back to the head). Each part is one Waveform instance keyed by its
 // internal `PlayerFor${path}` key. We coordinate across rows so only one plays at a time.
-const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?: (globalMs: number) => void }>(
-  function RecordingsList({ parts, onProgress }, ref,
+const RecordingsList = forwardRef<RecordingsHandle, {
+  parts: Part[];
+  onProgress?: (globalMs: number) => void;
+  onState?: (s: PlayerStatus) => void;
+  /** The in-card 匯出錄音 link; Results turns it off because its `…` menu carries the action. */
+  showExport?: boolean;
+}>(
+  function RecordingsList({ parts, onProgress, onState, showExport = true }, ref,
 ) {
   const rowRefs = useRef<Map<number, RowHandle>>(new Map());
   // Live-measured part durations (index → ms), reported by rows as they load/play. Seeds the
@@ -41,12 +68,21 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
   // played yet. A ref (not state) so seekToGlobal reads the latest without re-rendering the list.
   const liveDur = useRef<Record<number, number>>({});
   const { stopAllPlayers } = useAudioPlayer();
+  // One speed for the whole meeting: a mini player can't show three different ones.
+  const [speed, setSpeed] = useState<PlaybackSpeedType>(1.0);
+  // Which rows are playing, and the part the outside play button should resume.
+  const playingRows = useRef<Set<number>>(new Set());
+  const activeRow = useRef(0);
+  const [playing, setPlaying] = useState(false);
+  const [durTick, setDurTick] = useState(0);   // bumps when a live duration lands → totalMs recomputes
 
   // Reset when the session's parts change (navigating to a different meeting) or on unmount, so no
   // audio keeps playing from another session. The signature keys on the actual part uris.
   const sig = parts.map((p) => p.uri).join('|');
   useEffect(() => {
     liveDur.current = {};
+    playingRows.current.clear();
+    activeRow.current = 0;
     return () => { void stopAllPlayers(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);
@@ -56,9 +92,19 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
   };
   // Before a row starts playing, stop every OTHER row (keeps this row's own prepared position intact).
   const stopOthers = (keep: number) => {
+    activeRow.current = keep;
     rowRefs.current.forEach((h, i) => { if (i !== keep) h.stop(); });
   };
-  const reportDuration = (i: number, ms: number) => { if (ms > 0) liveDur.current[i] = ms; };
+  const reportPlaying = (i: number, on: boolean) => {
+    if (on) { playingRows.current.add(i); activeRow.current = i; } else playingRows.current.delete(i);
+    setPlaying(playingRows.current.size > 0);
+  };
+  const reportDuration = (i: number, ms: number) => {
+    if (ms > 0 && liveDur.current[i] !== ms) { liveDur.current[i] = ms; setDurTick((t) => t + 1); }
+  };
+
+  const totalMs = parts.reduce((acc, p, i) => acc + (liveDur.current[i] || p.durationMs || 0), 0);
+  useEffect(() => { onState?.({ playing, totalMs, speed }); }, [playing, totalMs, speed, durTick]); // eslint-disable-line react-hooks/exhaustive-deps
   // Cumulative start (ms) of a part in the whole-meeting timeline = sum of earlier parts' durations.
   const partStart = (i: number) => {
     let acc = 0;
@@ -75,17 +121,14 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
       const { part, offsetMs } = locatePart(globalMs, durations);
       rowRefs.current.get(part)?.playFrom(offsetMs);
     },
+    toggle() {
+      const [on] = Array.from(playingRows.current);
+      rowRefs.current.get(on ?? activeRow.current)?.toggle();
+    },
+    cycleSpeed() { setSpeed((s) => nextSpeed(s) as PlaybackSpeedType); },
   }), [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Export the raw recording out to another app (Files, AirDrop, Messages…). Each part is shared as a
-  // file:// url the OS share sheet can read; several parts of one meeting go out together.
-  const onExport = async () => {
-    const urls = parts.map((p) => resolvePartUri(p.uri));
-    const type = parts.every((p) => p.uri.endsWith('.wav')) ? 'audio/wav' : 'audio/m4a';
-    try {
-      await Share.open({ urls, type, failOnCancel: false });
-    } catch { /* user dismissed the share sheet — not an error */ }
-  };
+  const onExport = () => exportParts(parts);
 
   if (parts.length === 0) return null;
   return (
@@ -101,9 +144,12 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
           stopOthers={stopOthers}
           reportDuration={reportDuration}
           reportProgress={reportProgress}
+          reportPlaying={reportPlaying}
+          speed={speed}
+          onCycleSpeed={() => setSpeed((s) => nextSpeed(s) as PlaybackSpeedType)}
         />
       ))}
-      <Pressable
+      {showExport && <Pressable
         style={({ pressed }) => [styles.exportBtn, pressed && styles.pressedIcon]}
         onPress={onExport}
         accessibilityRole="button"
@@ -112,7 +158,7 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
       >
         <IconShare size={16} color={colors.primaryDark} />
         <AppText variant="cardTitle" color="primaryDark">匯出錄音</AppText>
-      </Pressable>
+      </Pressable>}
     </View>
   );
 });
@@ -122,13 +168,16 @@ const RecordingsList = forwardRef<RecordingsHandle, { parts: Part[]; onProgress?
 export default React.memo(RecordingsList);
 
 function PlayerRow(
-  { index, storedUri, storedMs, multi, register, stopOthers, reportDuration, reportProgress }:
+  { index, storedUri, storedMs, multi, register, stopOthers, reportDuration, reportProgress, reportPlaying, speed, onCycleSpeed }:
   {
     index: number; storedUri: string; storedMs: number; multi: boolean;
     register: (i: number, handle: RowHandle | null) => void;
     stopOthers: (keep: number) => void;
     reportDuration: (i: number, ms: number) => void;
     reportProgress: (i: number, cur: number) => void;
+    reportPlaying: (i: number, on: boolean) => void;
+    speed: PlaybackSpeedType;
+    onCycleSpeed: () => void;
   },
 ) {
   const ref = useRef<IWaveformRef>(null);
@@ -145,7 +194,6 @@ function PlayerRow(
   const startedRef = useRef(false);
   const [progressMs, setProgressMs] = useState(0);
   const [durationMs, setDurationMs] = useState(storedMs);
-  const [speed, setSpeed] = useState<PlaybackSpeedType>(1.0);
   // The file is present but the library couldn't extract/play it (bad codec, 0 bytes, truncated) →
   // the Waveform onError fires. We surface a hint instead of leaving a blank waveform area.
   const [failed, setFailed] = useState(false);
@@ -166,6 +214,7 @@ function PlayerRow(
   useEffect(() => {
     const handle: RowHandle = {
       stop: () => { setPlaying(false); void ref.current?.stopPlayer(); },
+      toggle: () => { void toggleRef.current(); },
       playFrom: async (offsetMs: number) => {
         stopOthers(index);
         const target = Math.max(0, Math.round(offsetMs));
@@ -193,13 +242,19 @@ function PlayerRow(
     else { startedRef.current = true; await ref.current?.startPlayer({ finishMode: FinishMode.stop }); }
   };
 
+  // The handle is registered once per mount, so it reaches the CURRENT toggle through a ref rather
+  // than a stale closure over `playing`.
+  const toggleRef = useRef(onTogglePlay);
+  toggleRef.current = onTogglePlay;
+  // Tell the list (and through it the mini player) whenever this row starts or stops.
+  useEffect(() => { reportPlaying(index, playing); }, [playing]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => reportPlaying(index, false), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const onSkip = async (delta: number) => {
     const target = skipTo(progressMs, delta, total);
     setProgressMs(target); // optimistic — the native seek confirms via onCurrentProgressChange
     try { await seekToPlayer({ playerKey, progress: target }); } catch { /* not prepared yet */ }
   };
-
-  const onCycleSpeed = () => setSpeed((s) => nextSpeed(s) as PlaybackSpeedType);
 
   // The audio can't be played — either the file is gone (cleared by the OS) or it's present but
   // unreadable (bad codec / truncated). Show a clear iconed notice instead of a blank waveform.

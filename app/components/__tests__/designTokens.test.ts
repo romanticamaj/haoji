@@ -29,3 +29,19 @@ test('no drop shadows: KEEPLACE surfaces use a 1px outline instead', () => {
   const offenders = uiFiles().filter((f) => /shadowColor|shadowOpacity|cardShadow|elevation:/.test(fs.readFileSync(f, 'utf8')));
   expect(offenders.map((f) => path.relative(ROOT, f))).toEqual([]);
 });
+
+// Motion (spec §5.3 E, lib/motion.ts): one ease-out curve, durations of 120/180/240 ms. A spring or a
+// long hand-written duration is how the UI starts to feel sluggish or bouncy again.
+test('no springs in screens or components', () => {
+  const offenders = uiFiles().filter((f) => /withSpring\s*\(/.test(fs.readFileSync(f, 'utf8')));
+  expect(offenders.map((f) => path.relative(ROOT, f))).toEqual([]);
+});
+
+test('no numeric duration literal above 250 ms in screens or components', () => {
+  const offenders = uiFiles().flatMap((f) =>
+    fs.readFileSync(f, 'utf8').split('\n')
+      .map((line, i) => ({ line, i, m: /\bduration\s*:\s*(\d+)/.exec(line) }))
+      .filter(({ line, m }) => !line.trim().startsWith('//') && !!m && Number(m[1]) > 250)
+      .map(({ i }) => `${path.relative(ROOT, f)}:${i + 1}`));
+  expect(offenders).toEqual([]);
+});

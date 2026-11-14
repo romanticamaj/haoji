@@ -9,7 +9,7 @@ const k = {
   primaryDark: '#536550', // active text/icons on light surfaces, pressed primary
   heading: '#262626',     // titles, selected tab label, dark snackbar
   body: '#343630',        // body text
-  muted: '#77746E',       // secondary text, inactive icons, tab labels
+  muted: '#6F6C66',       // secondary text, inactive icons, tab labels
   hint: '#A6A29A',        // placeholder / tertiary text (derived: between muted and outline)
   outline: '#DEDCD3',     // 1px borders and dividers
   accent: '#C58D75',      // warm peach — KEEPLACE "wishlist"; used sparingly (unnamed speaker, live recording)
@@ -75,6 +75,12 @@ export const typography = {
 } as const satisfies Record<string, TextStyleToken>;
 
 export const motion = { maxDurationMs: 250 } as const;
+
+/**
+ * Dynamic Type ceilings (`maxFontSizeMultiplier`). Chrome (headers, tabs, chips, timestamps) stops at
+ * 1.3× so buttons stay on screen; content (the transcript, the notes) may grow to 1.6×.
+ */
+export const fontScale = { chrome: 1.3, content: 1.6 } as const;
 
 // Apply to any Text that shows times/durations so digits line up.
 export const tabularNums = { fontVariant: ['tabular-nums' as const] };

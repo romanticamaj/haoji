@@ -26,6 +26,7 @@ import { isActive, overallPct } from '../lib/job';
 import { isNotesActive } from '../lib/notesJob';
 import { useImport } from '../hooks/useImport';
 import { useServerStatus } from '../hooks/useServerStatus';
+import { haptic } from '../lib/haptics';
 
 // Repair crash-truncated WAV headers once per app launch (not on every screen focus).
 let wavRepairDone = false;
@@ -90,6 +91,7 @@ export default function HomeScreen() {
   }, [load, commitDelete]));
 
   const onDelete = (s: SavedSession) => {
+    haptic('delete');
     // A second delete supersedes the first offer, so the first becomes permanent now.
     if (pendingRef.current) void commitDelete(pendingRef.current);
     setPending(s);

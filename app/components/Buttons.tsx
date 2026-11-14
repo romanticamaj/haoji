@@ -1,7 +1,7 @@
 import React, { type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { AppText } from './AppText';
-import { colors, layout, radius, spacing } from '../lib/theme';
+import { colors, fontScale, layout, radius, spacing } from '../lib/theme';
 
 // KEEPLACE's button family (GUIDELINE §7). One filled primary per view; everything else is an outline.
 type Common = {
@@ -29,7 +29,7 @@ export function PrimaryButton({ label, onPress, disabled, icon, testID, accessib
       {loading ? <ActivityIndicator color={colors.onPrimary} /> : (
         <>
           {icon}
-          <AppText variant="cardTitle" color="onPrimary" style={styles.bold}>{label}</AppText>
+          <AppText variant="cardTitle" color="onPrimary" style={styles.bold} maxFontSizeMultiplier={fontScale.chrome}>{label}</AppText>
         </>
       )}
     </Pressable>
@@ -49,7 +49,7 @@ export function SecondaryButton({ label, onPress, disabled, icon, testID, access
       style={({ pressed }) => [styles.secondary, disabled && styles.disabled, pressed && styles.pressedRow, style]}
     >
       {icon}
-      <AppText variant="body" color="heading">{label}</AppText>
+      <AppText variant="body" color="heading" maxFontSizeMultiplier={fontScale.chrome}>{label}</AppText>
     </Pressable>
   );
 }
@@ -65,7 +65,7 @@ export function DangerButton({ label, onPress, icon, testID, accessibilityLabel,
       style={({ pressed }) => [styles.secondary, styles.danger, pressed && styles.pressedRow, style]}
     >
       {icon}
-      <AppText variant="body" color="danger">{label}</AppText>
+      <AppText variant="body" color="danger" maxFontSizeMultiplier={fontScale.chrome}>{label}</AppText>
     </Pressable>
   );
 }
@@ -84,7 +84,7 @@ export function Chip({ label, onPress, disabled, icon, testID, accessibilityLabe
       style={({ pressed }) => [styles.chip, selected && styles.chipOn, disabled && styles.disabled, pressed && styles.pressedRow, style]}
     >
       {icon}
-      <AppText variant="cardTitle" color={selected ? 'onPrimary' : 'heading'} style={selected && styles.bold}>{label}</AppText>
+      <AppText variant="cardTitle" color={selected ? 'onPrimary' : 'heading'} style={selected && styles.bold} maxFontSizeMultiplier={fontScale.chrome}>{label}</AppText>
     </Pressable>
   );
 }

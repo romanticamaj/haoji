@@ -101,3 +101,13 @@ test('復原 brings the meeting back and never deletes it', async () => {
   expect(queryByText('已刪除「會議A」')).toBeNull();
   expect(await store.get('a')).toBeTruthy();
 });
+
+// Delete is the one warning haptic (lib/haptics.ts).
+test('deleting a meeting fires the warning haptic once', async () => {
+  const trigger = require('react-native-haptic-feedback').default.trigger as jest.Mock;
+  trigger.mockClear();
+  const { getByText, getByTestId } = await renderHome([mk('a', 1, '會議A')]);
+  await waitFor(() => getByText('會議A'));
+  await act(async () => { fireEvent.press(getByTestId('session-a-delete')); });
+  expect(trigger.mock.calls.map((c) => c[0])).toEqual(['notificationWarning']);
+});
