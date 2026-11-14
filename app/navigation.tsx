@@ -12,7 +12,8 @@ export type RootStackParamList = {
   Processing: { sessionId: string; regen?: boolean };
   // `session` is an optional preloaded snapshot (the Home list already has it) so Results can render
   // fully during the push animation instead of flashing an empty loading state while it reads storage.
-  Results: { sessionId: string; session?: SavedSession };
+  // `focusSegment`: a transcript segment index to scroll to (a search hit on Home); absent = top.
+  Results: { sessionId: string; session?: SavedSession; focusSegment?: number };
   // Server connection + status, privacy, about.
   Settings: undefined;
   // Connect to a server. url/token arrive prefilled from a haoji://pair link; `error` when the link

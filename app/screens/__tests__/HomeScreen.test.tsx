@@ -49,11 +49,11 @@ test('lists saved sessions newest-first', async () => {
   getByText('會議A');
 });
 
-test('has the 記下來 record action, plus import and video in the bottom bar', async () => {
+test('has the 記下來 record action, plus 匯入 and 設定 in the bottom bar', async () => {
   const { getByLabelText } = await renderHome([]);
   await waitFor(() => getByLabelText('記下來：開始錄音'));
-  getByLabelText('匯入音檔');
-  getByLabelText('從相簿選影片');
+  getByLabelText('匯入音檔或影片');
+  getByLabelText('設定與資料');
 });
 
 test('search filters the list by title (case-insensitive) and shows a no-match message', async () => {

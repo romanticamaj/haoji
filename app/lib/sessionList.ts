@@ -3,6 +3,8 @@
 // relative-day / grouping logic is deterministic in tests.
 import { SavedSession } from './store';
 import { mmss, nameOf } from './transcript';
+import { isActive } from './job';
+import { isNotesActive } from './notesJob';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const WEEKDAY_ZH = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'] as const;
@@ -77,7 +79,16 @@ export function hasNotes(session: SavedSession): boolean {
   return !!session.notes && session.notes.trim().length > 0;
 }
 
-export type AvatarSpec = { initials: string[]; overflow: number };
+// The one status word a Home card carries at the end of its meta line (· 已有逐字稿 / · 處理中 /
+// · 還沒生成). It replaced the row of separate icon+text statuses under each card.
+export function inlineStatus(session: SavedSession): string {
+  if (isActive(session.job) || isNotesActive(session.notesJob)) return '處理中';
+  if (hasTranscript(session)) return '已有逐字稿';
+  if (session.job?.stage === 'error') return '整理沒有完成';
+  return '還沒生成';
+}
+
+export type AvatarSpec ={ initials: string[]; overflow: number };
 
 // Up to 3 speaker initials plus an overflow count. Each initial is the first char of the mapped
 // real name (session.names), falling back to the 1-based speaker index when unnamed. No transcript
