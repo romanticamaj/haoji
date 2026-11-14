@@ -3,7 +3,9 @@ import { Wordmark } from './Wordmark';
 
 export function Rail({ active }: { active: RouteId }) {
   return (
-    <aside className="rail">
+    // The outer column stretches the full page height (carries the divider); the inner rail is sticky.
+    <aside className="rail-col">
+      <div className="rail">
       <Wordmark sub="主機控制台" />
       <nav className="rail-nav" aria-label="主選單">
         {ROUTES.map(({ id, path, zh, en, icon: Icon }) => (
@@ -17,6 +19,7 @@ export function Rail({ active }: { active: RouteId }) {
         ))}
       </nav>
       <p className="rail-foot small muted">錄音和逐字稿只留在手機上，這台主機處理完就刪除。</p>
+      </div>
     </aside>
   );
 }

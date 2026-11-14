@@ -92,6 +92,10 @@ input {
   min-height: 100vh;
 }
 
+.rail-col {
+  border-right: 1px solid var(--outline);
+}
+
 .rail {
   position: sticky;
   top: 0;
@@ -100,13 +104,16 @@ input {
   flex-direction: column;
   gap: 32px;
   padding: 32px 16px 24px;
-  border-right: 1px solid var(--outline);
 }
 
 .wordmark {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* In the rail, align the wordmark with the nav link text. */
+.rail .wordmark {
   padding: 0 12px;
 }
 
@@ -249,11 +256,13 @@ input {
   .shell {
     grid-template-columns: 1fr;
   }
+  .rail-col {
+    border-right: 0;
+    border-bottom: 1px solid var(--outline);
+  }
   .rail {
     position: static;
     height: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--outline);
   }
   .content {
     padding: 32px 16px 64px;

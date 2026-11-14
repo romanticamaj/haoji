@@ -54,14 +54,24 @@ function JobTable({ title, id, jobs, emptyText }: { title: string; id: string; j
   return (
     <Card flush title={title} labelledBy={id} action={<span className="small muted num">{jobs.length} 筆</span>}>
       <div className="table-scroll">
-        <table className="table">
+        {/* Fixed layout + shared widths so the 進行中 and 最近完成 tables line up column for column. */}
+        <table className="table" style={{ tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: '14%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '14%' }} />
+            <col style={{ width: '22%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '13%' }} />
+          </colgroup>
           <thead>
             <tr>
-              <th style={{ width: 120 }}>時間</th>
+              <th>時間</th>
               <th>編號</th>
               <th>類型</th>
               <th>狀態</th>
-              <th style={{ width: 180 }}>進度</th>
+              <th>進度</th>
               <th className="right">耗時</th>
               <th className="right">
                 <span className="visually-hidden">錯誤</span>
