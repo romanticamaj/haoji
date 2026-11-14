@@ -60,6 +60,16 @@ beforeEach(() => {
   mockGetStatus.mockResolvedValue(STATUS);
 });
 
+// Issue #32 item 8: while the push finishes, placeholder turns stand in for the transcript — no spinner.
+test('before the content mounts, Results shows the skeleton turns, not a spinner', async () => {
+  const store = createMemoryStore([seed]);
+  const r = await render(<StoreProvider store={store}><ResultsScreen /></StoreProvider>);
+  r.getByTestId('results-skeleton');
+  expect(r.getAllByTestId('skeleton-turn')).toHaveLength(6);
+  await r.findByText('嗨大家好');
+  expect(r.queryByTestId('results-skeleton')).toBeNull();
+});
+
 test('the header shows the title on one line with back and …', async () => {
   const r = await renderResults();
   expect(r.getByRole('header', { name: '週會' }).props.numberOfLines).toBe(1);

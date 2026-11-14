@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Pressable, StyleSheet, ActivityIndicator, TextInput, Alert, Animated } from 'react-native';
+import { View, Pressable, StyleSheet, TextInput, Alert, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useStore } from '../lib/store-context';
@@ -14,6 +14,7 @@ import { PrimaryButton } from '../components/Buttons';
 import { ResultsHeader } from '../components/ResultsHeader';
 import { OverflowMenu, type OverflowItem } from '../components/OverflowMenu';
 import { MiniPlayer } from '../components/MiniPlayer';
+import { TranscriptSkeleton } from '../components/TranscriptSkeleton';
 import { promoteTitleFromNotes } from '../lib/notesDoc';
 import { onJobChange } from '../lib/jobRunner';
 import { deleteSessionFiles } from '../lib/recordings';
@@ -135,7 +136,7 @@ export default function ResultsScreen() {
     }).start();
   }, [tab, reduced, slide]);
 
-  if (!session) return <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>;
+  if (!session) return <View style={styles.container}><TranscriptSkeleton /></View>;
 
   const hasParts = parts.length > 0;
   const hasTranscript = (session.transcript?.segments?.length ?? 0) > 0;
@@ -244,7 +245,8 @@ export default function ResultsScreen() {
           )}
         </>
       ) : (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+        // The transcript's shape while the push finishes (and the heavy content waits to mount).
+        <TranscriptSkeleton />
       )}
 
       {menuOpen && <OverflowMenu title="這場會議" items={menu} onClose={() => setMenuOpen(false)} />}
@@ -287,7 +289,6 @@ function TitleSheet({ current, onClose, onCommit }: { current: string; onClose()
 }
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   tabs: {
     flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outline,
     paddingHorizontal: layout.screenPaddingH,
